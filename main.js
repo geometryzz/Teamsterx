@@ -19,6 +19,32 @@ let currentAuthUser = null;
 const DEBUG = false;
 
 // ===================================
+// EARLY GLOBAL FUNCTIONS (must be defined before DOM loads)
+// ===================================
+window.generateJoinLink = function() {
+    if (!appState?.currentTeamData?.teamCode) {
+        if (typeof showToast === 'function') {
+            showToast('No team code available', 'error');
+        } else {
+            alert('No team code available');
+        }
+        return;
+    }
+    const baseUrl = window.location.origin + window.location.pathname.replace(/\/[^\/]*$/, '');
+    const joinUrl = `${baseUrl}/index.html?join=${appState.currentTeamData.teamCode}`;
+    
+    navigator.clipboard.writeText(joinUrl).then(() => {
+        if (typeof showToast === 'function') {
+            showToast('Join link copied to clipboard!', 'success');
+        } else {
+            alert('Join link copied!');
+        }
+    }).catch(() => {
+        prompt('Copy this join link:', joinUrl);
+    });
+};
+
+// ===================================
 // TABLE PRESETS
 // ===================================
 const TASKS_TABLE_PRESET = {
