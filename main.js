@@ -16185,6 +16185,23 @@ window.copyTeamCode = async function() {
     }
 };
 
+// Generate shareable join link
+window.generateJoinLink = function() {
+    if (!appState.currentTeamData?.teamCode) {
+        showToast('No team code available', 'error');
+        return;
+    }
+    const baseUrl = window.location.origin + window.location.pathname.replace(/\/[^\/]*$/, '');
+    const joinUrl = `${baseUrl}/index.html?join=${appState.currentTeamData.teamCode}`;
+    
+    navigator.clipboard.writeText(joinUrl).then(() => {
+        showToast('Join link copied to clipboard!', 'success');
+    }).catch(() => {
+        // Fallback - show the link
+        prompt('Copy this join link:', joinUrl);
+    });
+};
+
 // Join team with code input (from no-team card)
 window.joinTeamWithCodeInput = function() {
     const input = document.getElementById('joinTeamCodeInput');
