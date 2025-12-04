@@ -6905,13 +6905,26 @@ body.dark-mode .dropdown-menu-option.active {
    MOBILE LAYOUT (768px and below)
    =================================== */
 @media (max-width: 768px) {
+    /* Full width app container - remove all margins and rounded corners */
     .app-container {
         flex-direction: column;
         border-radius: 0;
-        padding-bottom: 80px; /* Space for bottom nav */
+        margin: 0;
+        max-width: 100%;
+        width: 100%;
+        max-height: 100vh;
+        padding-bottom: 70px; /* Space for bottom nav */
+        border: none;
+        box-shadow: none;
     }
     
-    /* Hide desktop sidebar */
+    /* Body adjustments for mobile */
+    body {
+        padding: 0;
+        margin: 0;
+    }
+    
+    /* Hide desktop sidebar - becomes bottom nav */
     .sidebar {
         position: fixed;
         bottom: 0;
@@ -6936,12 +6949,12 @@ body.dark-mode .dropdown-menu-option.active {
         display: none;
     }
     
-    /* Mobile bottom navigation */
+    /* Mobile bottom navigation - accessible touch targets */
     .sidebar-nav {
         flex-direction: row;
         justify-content: space-around;
         align-items: center;
-        padding: 8px 0;
+        padding: 8px 4px;
         width: 100%;
         overflow-x: auto;
         overflow-y: hidden;
@@ -6959,13 +6972,15 @@ body.dark-mode .dropdown-menu-option.active {
         justify-content: center;
         align-items: center;
         gap: 4px;
-        padding: 8px 16px;
-        min-width: auto;
+        padding: 8px 6px;
+        min-width: 48px; /* Minimum 48px touch target */
+        min-height: 48px;
         flex: 1;
-        max-width: 90px;
+        max-width: 80px;
         font-size: 11px;
         border-radius: 12px;
         white-space: nowrap;
+        position: relative;
     }
     
     .nav-item i {
@@ -6983,13 +6998,14 @@ body.dark-mode .dropdown-menu-option.active {
     .nav-item.active {
         background-color: var(--accent-soft);
         color: var(--accent);
+        border: none;
     }
     
     /* Position notification badges for mobile */
     .nav-item .notification-badge {
         position: absolute;
-        top: 6px;
-        right: 12px;
+        top: 4px;
+        right: 4px;
         min-width: 16px;
         height: 16px;
         padding: 0 4px;
@@ -7002,23 +7018,39 @@ body.dark-mode .dropdown-menu-option.active {
         display: none;
     }
     
-    /* Main content adjustments */
+    /* Main content - full width with no side padding */
     .main-content {
-        padding: 16px;
+        padding: 0;
+        border-radius: 0;
+        width: 100%;
+    }
+    
+    /* Top bar - full width */
+    .top-bar {
+        padding: 12px 16px;
         border-radius: 0;
     }
     
+    /* Content sections - full width, minimal padding */
     .content-section {
-        padding: 16px;
+        padding: 0;
+        width: 100%;
     }
     
+    /* Section headers - full width edge to edge */
     .section-header {
         padding: 16px;
-        margin: -16px -16px 20px -16px;
+        margin: 0 0 16px 0;
+        background: var(--bg-surface);
     }
     
     .section-header h1 {
-        font-size: 28px;
+        font-size: 24px;
+    }
+    
+    .section-header-actions {
+        flex-wrap: wrap;
+        gap: 8px;
     }
     
     /* Search bar */
@@ -7282,7 +7314,7 @@ body.dark-mode .dropdown-menu-option.active {
     
     /* Chat adjustments */
     .chat-messages {
-        padding: 16px;
+        padding: 12px;
     }
     
     .message-text {
@@ -7308,17 +7340,317 @@ body.dark-mode .dropdown-menu-option.active {
         font-size: 14px;
     }
     
-    /* Buttons */
+    /* Buttons - minimum touch target 44x44 */
     .btn-primary,
     .btn-secondary,
     .btn-danger {
         padding: 12px 20px;
         font-size: 14px;
+        min-height: 44px;
     }
     
     /* Hide non-essential UI on mobile */
     .section-subtitle {
         font-size: 13px;
+    }
+    
+    /* ===================================
+       MOBILE FULL-WIDTH CONTAINERS
+       =================================== */
+    
+    /* Activity feed - full width */
+    .activity-feed {
+        border-radius: 0;
+        padding: 16px;
+        margin: 0;
+        border-left: none;
+        border-right: none;
+    }
+    
+    .activity-item {
+        margin: 0 -16px;
+        padding: 16px;
+        border-radius: 0;
+        border-left: none;
+        border-right: none;
+    }
+    
+    /* Chat container - full width */
+    .chat-container {
+        border-radius: 0;
+        border-left: none;
+        border-right: none;
+        max-height: calc(100vh - 160px);
+    }
+    
+    /* Calendar - full width */
+    .calendar-container {
+        border-radius: 0;
+        margin: 0;
+        padding: 16px;
+        border-left: none;
+        border-right: none;
+    }
+    
+    /* Upcoming events - full width */
+    .upcoming-events {
+        padding: 16px;
+        margin: 0 -16px;
+    }
+    
+    /* Team section - full width */
+    .team-section {
+        padding: 0;
+    }
+    
+    .team-header {
+        margin: 0 0 16px 0;
+        padding: 16px;
+        border-radius: 0;
+    }
+    
+    .team-list {
+        padding: 0 16px;
+    }
+    
+    .teammate-card {
+        border-radius: 12px;
+    }
+    
+    /* Settings - full width cards */
+    .settings-card {
+        border-radius: 0;
+        margin: 0 0 1px 0;
+        border-left: none;
+        border-right: none;
+    }
+    
+    .settings-card:first-child {
+        border-top-left-radius: 0;
+        border-top-right-radius: 0;
+    }
+    
+    .settings-card:last-child {
+        border-bottom-left-radius: 0;
+        border-bottom-right-radius: 0;
+    }
+    
+    /* ===================================
+       SPREADSHEET MOBILE LAYOUT
+       =================================== */
+    
+    /* Spreadsheet header - stack controls */
+    .spreadsheet-header {
+        flex-direction: column;
+        gap: 12px;
+        padding: 12px 16px;
+        align-items: stretch;
+    }
+    
+    .spreadsheet-tabs {
+        order: 1;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        padding-bottom: 4px;
+    }
+    
+    .spreadsheet-controls {
+        order: 2;
+        flex-wrap: wrap;
+        gap: 8px;
+        justify-content: space-between;
+    }
+    
+    .spreadsheet-controls button,
+    .spreadsheet-controls select {
+        flex: 1;
+        min-width: 44px;
+        min-height: 44px;
+    }
+    
+    /* Spreadsheet table container - full width with horizontal scroll */
+    .spreadsheet-wrapper {
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+        margin: 0;
+        padding: 0;
+    }
+    
+    .spreadsheet-table {
+        min-width: 800px; /* Force horizontal scroll on narrow screens */
+    }
+    
+    /* Spreadsheet empty state - full width */
+    .spreadsheet-empty {
+        padding: 40px 16px;
+        margin: 0;
+        border-radius: 0;
+    }
+    
+    /* ===================================
+       METRICS MOBILE LAYOUT
+       =================================== */
+    
+    /* Metrics section - full width */
+    #metrics .section-header {
+        padding: 16px;
+        margin: 0 0 16px 0;
+    }
+    
+    .metrics-stats-row {
+        padding: 0 16px;
+        gap: 12px;
+    }
+    
+    .metrics-stat-card {
+        border-radius: 12px;
+    }
+    
+    .metrics-section-title {
+        padding: 0 16px;
+    }
+    
+    .metrics-charts-container {
+        padding: 0 16px;
+    }
+    
+    /* ===================================
+       MODAL MOBILE IMPROVEMENTS
+       =================================== */
+    
+    .modal-content {
+        width: 100%;
+        max-width: 100%;
+        max-height: 100vh;
+        border-radius: 0;
+        margin: 0;
+    }
+    
+    .modal-header {
+        padding: 16px;
+        position: sticky;
+        top: 0;
+        background: var(--bg-surface);
+        z-index: 10;
+    }
+    
+    .modal-body {
+        padding: 16px;
+        overflow-y: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    
+    .modal-footer {
+        padding: 16px;
+        position: sticky;
+        bottom: 0;
+        background: var(--bg-surface);
+        flex-direction: column-reverse;
+        gap: 8px;
+        border-top: 1px solid var(--border-subtle);
+    }
+    
+    .modal-footer button {
+        width: 100%;
+        min-height: 48px;
+    }
+    
+    /* ===================================
+       DROPDOWN MOBILE IMPROVEMENTS
+       =================================== */
+    
+    .settings-dropdown,
+    .notifications-dropdown {
+        position: fixed;
+        top: auto;
+        bottom: 80px; /* Above bottom nav */
+        left: 8px;
+        right: 8px;
+        max-height: 60vh;
+        border-radius: 16px;
+    }
+    
+    .notifications-dropdown {
+        width: calc(100% - 16px);
+    }
+    
+    /* ===================================
+       TOUCH ACCESSIBILITY
+       =================================== */
+    
+    /* Ensure all interactive elements have 44px minimum touch target */
+    button,
+    .btn-icon,
+    .btn-icon-small,
+    .icon-btn,
+    .nav-item,
+    input[type="checkbox"],
+    input[type="radio"],
+    select {
+        min-height: 44px;
+        min-width: 44px;
+    }
+    
+    /* Form inputs - larger touch targets */
+    input[type="text"],
+    input[type="email"],
+    input[type="password"],
+    input[type="number"],
+    input[type="date"],
+    input[type="time"],
+    textarea,
+    select {
+        min-height: 48px;
+        font-size: 16px; /* Prevents iOS zoom on focus */
+        padding: 12px 16px;
+    }
+    
+    /* Action buttons with proper spacing */
+    .task-item-actions,
+    .event-actions,
+    .message-actions {
+        gap: 8px;
+    }
+    
+    .task-item-actions button,
+    .event-actions button,
+    .message-actions button {
+        min-width: 44px;
+        min-height: 44px;
+        padding: 8px;
+    }
+    
+    /* ===================================
+       SEARCH MOBILE
+       =================================== */
+    
+    .search-wrapper {
+        max-width: none;
+        width: 100%;
+    }
+    
+    .search-results {
+        position: fixed;
+        top: 60px;
+        left: 0;
+        right: 0;
+        max-height: calc(100vh - 140px);
+        border-radius: 0;
+        border-left: none;
+        border-right: none;
+    }
+    
+    /* ===================================
+       TOP BAR MOBILE
+       =================================== */
+    
+    .top-bar-actions {
+        gap: 4px;
+    }
+    
+    .top-bar-actions .icon-btn {
+        width: 44px;
+        height: 44px;
     }
 }
 
@@ -7332,19 +7664,51 @@ body.dark-mode .dropdown-menu-option.active {
     
     .nav-item {
         padding: 10px 8px;
-        max-width: 60px;
+        max-width: 56px;
     }
     
     .section-header h1 {
-        font-size: 24px;
+        font-size: 22px;
     }
     
-    .modal-content {
+    .section-header-actions {
         width: 100%;
-        height: 100%;
-        max-height: 100vh;
-        border-radius: 0;
-        margin: 0;
+    }
+    
+    .section-header-actions button {
+        flex: 1;
+    }
+    
+    /* Even smaller padding on very small screens */
+    .section-header,
+    .activity-feed,
+    .chat-messages,
+    .calendar-container,
+    .team-header,
+    .team-list {
+        padding-left: 12px;
+        padding-right: 12px;
+    }
+    
+    /* Stack buttons vertically on very small screens */
+    .spreadsheet-controls {
+        flex-direction: column;
+    }
+    
+    .spreadsheet-controls button,
+    .spreadsheet-controls select {
+        width: 100%;
+    }
+    
+    /* Adjust chart sizes */
+    .metrics-stat-value {
+        font-size: 1.25rem;
+    }
+    
+    .metrics-stat-icon {
+        width: 36px;
+        height: 36px;
+        font-size: 14px;
     }
 }
 
@@ -14029,5 +14393,477 @@ body.dark-mode .add-metric-option-action {
     
     .add-metric-option-name {
         font-size: 0.85rem;
+    }
+}
+
+/* ===================================
+   COMPREHENSIVE MOBILE OVERRIDES
+   Final overrides for full-width layout
+   =================================== */
+
+@media (max-width: 768px) {
+    /* ===================================
+       SPREADSHEET PANEL MOBILE
+       =================================== */
+    .spreadsheet-panel {
+        position: fixed;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 70px; /* Above bottom nav */
+        z-index: 900;
+        border-radius: 0;
+    }
+    
+    .spreadsheet-panel-header {
+        padding: 12px 16px;
+        gap: 12px;
+        flex-wrap: wrap;
+    }
+    
+    .panel-header-left {
+        flex: 1;
+        gap: 8px;
+    }
+    
+    .spreadsheet-title-input {
+        font-size: 16px;
+        max-width: 150px;
+    }
+    
+    .panel-header-right {
+        gap: 8px;
+    }
+    
+    .back-btn,
+    .icon-btn {
+        min-width: 44px;
+        min-height: 44px;
+    }
+    
+    /* Batch actions bar - full width */
+    .batch-actions-bar {
+        flex-wrap: wrap;
+        padding: 12px 16px;
+        gap: 12px;
+    }
+    
+    .batch-buttons {
+        flex-wrap: wrap;
+        gap: 8px;
+        width: 100%;
+        justify-content: space-between;
+    }
+    
+    .batch-btn {
+        flex: 1;
+        min-height: 44px;
+        font-size: 13px;
+    }
+    
+    /* Column sidebar - slide from bottom on mobile */
+    .column-toggle-sidebar {
+        position: fixed;
+        top: auto;
+        bottom: 70px;
+        left: 0;
+        right: 0;
+        width: 100%;
+        max-height: 50vh;
+        border-radius: 16px 16px 0 0;
+        transform: translateY(100%);
+        transition: transform 0.3s ease;
+        z-index: 950;
+        display: block;
+    }
+    
+    .column-toggle-sidebar.open {
+        transform: translateY(0);
+    }
+    
+    /* Table container - horizontal scroll */
+    .spreadsheet-table-area {
+        padding: 0;
+        overflow-x: auto;
+        -webkit-overflow-scrolling: touch;
+    }
+    
+    .table-container {
+        border-radius: 0;
+        border-left: none;
+        border-right: none;
+        overflow-x: auto;
+    }
+    
+    .spreadsheet-table {
+        min-width: 600px;
+    }
+    
+    .spreadsheet-table td,
+    .spreadsheet-table th {
+        padding: 12px;
+        font-size: 13px;
+    }
+    
+    /* Spreadsheet empty state */
+    .spreadsheet-empty {
+        padding: 48px 24px;
+        border-radius: 0;
+        margin: 0;
+    }
+    
+    /* ===================================
+       TEAM SECTION MOBILE
+       =================================== */
+    .team-section {
+        padding: 0;
+    }
+    
+    .team-header {
+        border-radius: 0;
+        margin: 0;
+        padding: 16px;
+    }
+    
+    .team-list {
+        padding: 0 16px 16px 16px;
+    }
+    
+    /* Teammate cards - larger touch targets */
+    .teammate-card {
+        padding: 16px;
+        min-height: 72px;
+    }
+    
+    .teammate-avatar {
+        width: 48px;
+        height: 48px;
+        font-size: 14px;
+    }
+    
+    /* ===================================
+       OVERVIEW/ACTIVITY MOBILE
+       =================================== */
+    #activity {
+        padding: 0;
+    }
+    
+    #activity .section-header {
+        padding: 16px;
+        margin: 0 0 16px 0;
+        background: var(--bg-surface);
+    }
+    
+    .activity-feed {
+        border-radius: 0;
+        margin: 0;
+        padding: 16px;
+        border-left: none;
+        border-right: none;
+    }
+    
+    .activity-item {
+        border-radius: 12px;
+        margin: 0 0 12px 0;
+        padding: 16px;
+    }
+    
+    /* ===================================
+       CHAT MOBILE
+       =================================== */
+    #chat {
+        padding: 0;
+    }
+    
+    .chat-container {
+        border-radius: 0;
+        border: none;
+        max-height: calc(100vh - 160px);
+        min-height: calc(100vh - 200px);
+    }
+    
+    .chat-messages {
+        padding: 12px 16px;
+    }
+    
+    .message {
+        gap: 10px;
+    }
+    
+    .message-avatar {
+        width: 32px;
+        height: 32px;
+        font-size: 11px;
+    }
+    
+    .message-text {
+        max-width: calc(100% - 50px);
+        padding: 10px 14px;
+    }
+    
+    .chat-input-container {
+        padding: 12px 16px;
+        gap: 10px;
+    }
+    
+    .chat-input {
+        padding: 12px 16px;
+        font-size: 16px;
+    }
+    
+    .send-btn {
+        width: 48px;
+        height: 48px;
+    }
+    
+    /* Reply preview bar */
+    .reply-preview-bar {
+        margin: 0 16px;
+        border-radius: 12px 12px 0 0;
+    }
+    
+    /* Mention dropdown */
+    .mention-dropdown {
+        left: 16px;
+        right: 16px;
+        bottom: calc(100% + 4px);
+        max-height: 200px;
+    }
+    
+    /* ===================================
+       CALENDAR MOBILE
+       =================================== */
+    #calendar {
+        padding: 0;
+    }
+    
+    #calendar .section-header {
+        padding: 16px;
+        margin: 0;
+    }
+    
+    .calendar-container {
+        border-radius: 0;
+        border-left: none;
+        border-right: none;
+        margin: 0;
+        padding: 16px;
+    }
+    
+    .calendar-header {
+        padding: 0;
+        margin-bottom: 16px;
+    }
+    
+    .calendar-grid {
+        gap: 2px;
+    }
+    
+    .calendar-day {
+        font-size: 13px;
+        min-height: 40px;
+    }
+    
+    /* Week view scroll indicator */
+    .week-view {
+        position: relative;
+    }
+    
+    .week-view::after {
+        content: '';
+        position: absolute;
+        top: 0;
+        right: 0;
+        bottom: 0;
+        width: 24px;
+        background: linear-gradient(to left, var(--bg-surface), transparent);
+        pointer-events: none;
+    }
+    
+    /* ===================================
+       SETTINGS MOBILE
+       =================================== */
+    #settings-section {
+        padding: 0;
+    }
+    
+    #settings-section .section-header {
+        padding: 16px;
+        margin: 0 0 8px 0;
+    }
+    
+    .settings-container {
+        padding: 0;
+    }
+    
+    .settings-card {
+        border-radius: 0;
+        border-left: none;
+        border-right: none;
+        margin: 0 0 8px 0;
+    }
+    
+    .settings-card-header,
+    .settings-card-body {
+        padding: 16px;
+    }
+    
+    /* Avatar color picker - grid on mobile */
+    .avatar-color-picker {
+        display: grid;
+        grid-template-columns: repeat(5, 1fr);
+        gap: 12px;
+        justify-items: center;
+    }
+    
+    .color-option {
+        width: 44px;
+        height: 44px;
+    }
+    
+    /* ===================================
+       METRICS MOBILE
+       =================================== */
+    #metrics-section {
+        padding: 0;
+    }
+    
+    #metrics-section .section-header {
+        padding: 16px;
+        margin: 0 0 16px 0;
+    }
+    
+    .metrics-layout {
+        padding: 0 16px 16px 16px;
+    }
+    
+    .metrics-stats-row {
+        padding: 0;
+        gap: 12px;
+    }
+    
+    .metrics-section-title {
+        padding: 0;
+        margin-bottom: 12px;
+    }
+    
+    /* ===================================
+       FORM ELEMENTS MOBILE
+       =================================== */
+    .form-group {
+        margin-bottom: 16px;
+    }
+    
+    .form-group label {
+        font-size: 14px;
+        margin-bottom: 8px;
+    }
+    
+    .form-row {
+        grid-template-columns: 1fr;
+        gap: 16px;
+    }
+    
+    /* ===================================
+       NOTIFICATIONS DROPDOWN MOBILE
+       =================================== */
+    .notifications-dropdown {
+        position: fixed;
+        top: 60px;
+        left: 0;
+        right: 0;
+        bottom: 70px;
+        width: 100%;
+        max-height: none;
+        border-radius: 0;
+        border: none;
+        border-top: 1px solid var(--border-subtle);
+    }
+    
+    .notifications-list {
+        max-height: calc(100vh - 200px);
+    }
+    
+    .notification-item {
+        padding: 16px;
+    }
+    
+    /* ===================================
+       SAFE AREA INSETS (for notched phones)
+       =================================== */
+    @supports (padding-bottom: env(safe-area-inset-bottom)) {
+        .sidebar {
+            padding-bottom: env(safe-area-inset-bottom);
+            height: calc(70px + env(safe-area-inset-bottom));
+        }
+        
+        .app-container {
+            padding-bottom: calc(70px + env(safe-area-inset-bottom));
+        }
+        
+        .spreadsheet-panel {
+            bottom: calc(70px + env(safe-area-inset-bottom));
+        }
+        
+        .column-toggle-sidebar {
+            bottom: calc(70px + env(safe-area-inset-bottom));
+        }
+        
+        .notifications-dropdown {
+            bottom: calc(70px + env(safe-area-inset-bottom));
+        }
+    }
+}
+
+/* ===================================
+   VERY SMALL MOBILE (400px and below)
+   =================================== */
+@media (max-width: 400px) {
+    /* Even more compact navigation */
+    .nav-item {
+        padding: 8px 4px;
+        max-width: 50px;
+    }
+    
+    .nav-item i {
+        font-size: 18px;
+    }
+    
+    /* Smaller section headers */
+    .section-header h1 {
+        font-size: 20px;
+    }
+    
+    /* Compact cards */
+    .teammate-card {
+        padding: 12px;
+        gap: 10px;
+    }
+    
+    .teammate-avatar {
+        width: 40px;
+        height: 40px;
+    }
+    
+    .teammate-name {
+        font-size: 13px;
+    }
+    
+    /* Smaller buttons */
+    .btn-primary,
+    .btn-secondary {
+        padding: 10px 16px;
+        font-size: 13px;
+    }
+    
+    /* Compact activity items */
+    .activity-item {
+        padding: 12px;
+    }
+    
+    .activity-icon {
+        width: 36px;
+        height: 36px;
+        font-size: 16px;
     }
 }
