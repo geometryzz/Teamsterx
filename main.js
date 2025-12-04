@@ -11654,8 +11654,33 @@ async function initializeUserTeam() {
         const { collection, query, where, getDocs, doc, getDoc, setDoc, addDoc, serverTimestamp, onSnapshot, updateDoc, deleteField } = 
             await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
 
-        // Set up real-time listener on user's document to detect team changes
         const userRef = doc(db, 'users', currentAuthUser.uid);
+        
+        // Check if user document exists
+        let userDoc = await getDoc(userRef);
+        let userTeams = [];
+        
+        if (userDoc.exists()) {
+            userTeams = userDoc.data().teams || [];
+            debugLog('📋 User has teams:', userTeams);
+        } else {
+            // Create user document if it doesn't exist
+            debugLog('📝 Creating user document...');
+            try {
+                await setDoc(userRef, {
+                    email: currentAuthUser.email,
+                    displayName: currentAuthUser.displayName || currentAuthUser.email.split('@')[0],
+                    teams: [],
+                    createdAt: serverTimestamp()
+                });
+                debugLog('✅ User document created');
+            } catch (createError) {
+                console.warn('Could not create user document:', createError.code || createError.message);
+                // Continue anyway - user can still be in team.members
+            }
+        }
+
+        // Set up real-time listener on user's document to detect team changes
         onSnapshot(userRef, async (userDocSnapshot) => {
             if (userDocSnapshot.exists()) {
                 const userData = userDocSnapshot.data();
@@ -11670,16 +11695,6 @@ async function initializeUserTeam() {
                 }
             }
         });
-
-        // Check if user document exists
-        const userDoc = await getDoc(userRef);
-
-        let userTeams = [];
-        
-        if (userDoc.exists()) {
-            userTeams = userDoc.data().teams || [];
-            debugLog('📋 User has teams:', userTeams);
-        }
 
         // CLEANUP: Verify user is actually a member of their listed team(s)
         if (userTeams.length > 0) {
@@ -12818,34 +12833,11 @@ window.approveJoinRequest = async function(userId) {
             [`pendingRequests.${userId}`]: deleteField()
         });
 
-        // CRITICAL: Also add team to user's teams array so they can see it
-        const userRef = doc(db, 'users', userId);
-        const userDoc = await getDoc(userRef);
-        
-        if (userDoc.exists()) {
-            const userData = userDoc.data();
-            const userTeams = userData.teams || [];
-            
-            // Only add if not already in the list
-            if (!userTeams.includes(appState.currentTeamId)) {
-                await updateDoc(userRef, {
-                    teams: [...userTeams, appState.currentTeamId]
-                });
-                debugLog('✅ Added team to user\'s teams array');
-            }
-        } else {
-            // Create user document with team
-            const { setDoc } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
-            await setDoc(userRef, {
-                teams: [appState.currentTeamId],
-                createdAt: serverTimestamp()
-            });
-            debugLog('✅ Created user document with team');
-        }
+        // NOTE: User's teams array will be updated automatically when they log in
+        // via the team membership scan in initializeUserTeam()
+        // We can't update their user document from here due to security rules
 
-        debugLog('✅ Approved join request - user now has full access');
-
-        debugLog('✅ Approved join request');
+        debugLog('✅ Approved join request - user added to team members');
         
         // Add activity log for approval
         await addActivity({
