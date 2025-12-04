@@ -17523,13 +17523,13 @@ function renderLinkItem(link, groupId) {
                 <div class="link-domain">${escapeHtml(link.domain || '')}</div>
             </div>
             <div class="link-actions">
-                <button class="link-action-btn star-btn ${link.favorite ? 'active' : ''}" onclick="toggleLinkFavorite('${groupId}', '${link.id}', ${!link.favorite})" title="${link.favorite ? 'Remove from favorites' : 'Add to favorites'}">
+                <button class="link-star-btn ${link.favorite ? 'active' : ''}" onclick="toggleLinkFavorite('${groupId}', '${link.id}', ${!link.favorite})" title="${link.favorite ? 'Remove from favorites' : 'Add to favorites'}">
                     <i class="fas fa-star"></i>
                 </button>
-                <button class="link-action-btn open-btn" onclick="openLink('${escapeHtml(link.url)}')" title="Open link">
-                    <i class="fas fa-external-link-alt"></i>
+                <button class="link-open-btn" onclick="openLink('${escapeHtml(link.url)}')" title="Open link">
+                    Open <i class="fas fa-external-link-alt"></i>
                 </button>
-                <button class="link-action-btn delete-btn" onclick="deleteLink('${groupId}', '${link.id}')" title="Delete link">
+                <button class="link-delete-btn" onclick="deleteLink('${groupId}', '${link.id}')" title="Delete link">
                     <i class="fas fa-trash"></i>
                 </button>
             </div>

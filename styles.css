@@ -9884,19 +9884,20 @@ body.dark-mode .notification-prefs-toggles .toggle-label:hover {
     background: var(--bg-surface);
     border: 1px solid var(--border-subtle);
     border-radius: var(--radius-md);
-    box-shadow: var(--shadow-soft);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.16);
     min-width: 180px;
-    z-index: 100;
+    z-index: 9999;
     opacity: 0;
     visibility: hidden;
-    transform: translateY(-8px);
+    transform: translateY(-8px) scale(0.95);
     transition: all 0.15s ease;
+    transform-origin: top right;
 }
 
 .link-group-menu-dropdown.active {
     opacity: 1;
     visibility: visible;
-    transform: translateY(0);
+    transform: translateY(0) scale(1);
 }
 
 .link-group-menu-item {
@@ -9942,12 +9943,12 @@ body.dark-mode .notification-prefs-toggles .toggle-label:hover {
 
 /* Links List */
 .link-group-content {
-    padding: 12px;
+    padding: 8px 12px 12px;
 }
 
 .link-group-empty {
     text-align: center;
-    padding: 24px 16px;
+    padding: 20px 16px;
     color: var(--text-muted);
     font-size: 0.85rem;
 }
@@ -9955,7 +9956,7 @@ body.dark-mode .notification-prefs-toggles .toggle-label:hover {
 .links-list {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 2px;
 }
 
 /* Domain Subgroup */
@@ -10025,48 +10026,43 @@ body.dark-mode .notification-prefs-toggles .toggle-label:hover {
     display: none;
 }
 
-/* Individual Link Item */
+/* Individual Link Item - Clean, flat design */
 .link-item {
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 12px 14px;
-    background: var(--bg-surface);
-    border: 1px solid var(--border-subtle);
+    padding: 10px 12px;
+    background: transparent;
     border-radius: var(--radius-md);
-    transition: all 0.15s ease;
+    transition: background 0.15s ease;
 }
 
 .link-item:hover {
-    border-color: var(--accent-soft);
-    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
+    background: var(--bg-body);
 }
 
 .link-item.favorite {
-    background: linear-gradient(135deg, rgba(255, 204, 0, 0.05) 0%, rgba(255, 149, 0, 0.05) 100%);
-    border-color: rgba(255, 204, 0, 0.2);
+    background: rgba(255, 204, 0, 0.06);
 }
 
 .link-favicon {
-    width: 24px;
-    height: 24px;
-    border-radius: 6px;
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
     object-fit: contain;
     flex-shrink: 0;
-    background: var(--bg-body);
-    padding: 2px;
 }
 
 .link-favicon-fallback {
-    width: 24px;
-    height: 24px;
-    border-radius: 6px;
+    width: 20px;
+    height: 20px;
+    border-radius: 4px;
     background: var(--accent-soft);
     color: var(--accent);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 12px;
+    font-size: 10px;
     flex-shrink: 0;
 }
 
@@ -10076,78 +10072,120 @@ body.dark-mode .notification-prefs-toggles .toggle-label:hover {
 }
 
 .link-label {
-    font-size: 0.9rem;
+    font-size: 0.875rem;
     font-weight: 500;
     color: var(--text-main);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
-    margin-bottom: 2px;
+    line-height: 1.3;
 }
 
 .link-domain {
-    font-size: 0.75rem;
-    color: var(--text-muted);
+    font-size: 0.7rem;
+    color: var(--text-light);
     white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    line-height: 1.2;
 }
 
 .link-actions {
     display: flex;
     align-items: center;
-    gap: 4px;
+    gap: 6px;
     flex-shrink: 0;
+    opacity: 0.6;
+    transition: opacity 0.15s ease;
 }
 
-.link-action-btn {
-    width: 32px;
-    height: 32px;
+.link-item:hover .link-actions {
+    opacity: 1;
+}
+
+/* Star Button - Minimal outline/filled style */
+.link-star-btn {
+    width: 28px;
+    height: 28px;
     border: none;
     background: transparent;
-    color: var(--text-muted);
-    border-radius: 8px;
+    color: var(--text-light);
+    border-radius: 6px;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
     transition: all 0.15s ease;
     font-size: 14px;
+    padding: 0;
 }
 
-.link-action-btn:hover {
-    background: var(--bg-body);
-    color: var(--text-main);
+.link-star-btn:hover {
+    color: #F5A623;
 }
 
-.link-action-btn.star-btn {
-    color: var(--text-light);
+.link-star-btn.active {
+    color: #F5A623;
 }
 
-.link-action-btn.star-btn:hover {
-    color: #FFD700;
-    background: rgba(255, 215, 0, 0.1);
+.link-star-btn .fa-star {
+    font-weight: 400; /* Regular (outline) */
 }
 
-.link-action-btn.star-btn.active {
-    color: #FFD700;
+.link-star-btn.active .fa-star {
+    font-weight: 900; /* Solid (filled) */
 }
 
-.link-action-btn.star-btn.active:hover {
-    background: rgba(255, 215, 0, 0.15);
-}
-
-.link-action-btn.open-btn {
+/* Open Button - Clean pill style */
+.link-open-btn {
+    display: inline-flex;
+    align-items: center;
+    gap: 5px;
+    padding: 6px 12px;
     background: var(--accent);
     color: white;
+    border: none;
+    border-radius: 6px;
+    font-size: 12px;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    text-decoration: none;
+    white-space: nowrap;
 }
 
-.link-action-btn.open-btn:hover {
+.link-open-btn:hover {
     background: var(--accent-hover);
-    color: white;
+    transform: translateY(-1px);
 }
 
-.link-action-btn.delete-btn:hover {
+.link-open-btn i {
+    font-size: 10px;
+}
+
+/* Delete Button - Subtle, appears on hover */
+.link-delete-btn {
+    width: 28px;
+    height: 28px;
+    border: none;
+    background: transparent;
+    color: var(--text-light);
+    border-radius: 6px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+    font-size: 13px;
+    padding: 0;
+    opacity: 0;
+}
+
+.link-item:hover .link-delete-btn {
+    opacity: 1;
+}
+
+.link-delete-btn:hover {
     color: var(--danger);
     background: var(--danger-soft);
 }
@@ -10254,8 +10292,17 @@ body.dark-mode .link-item.favorite {
     border-color: rgba(255, 204, 0, 0.25);
 }
 
-body.dark-mode .link-action-btn:hover {
-    background: rgba(255, 255, 255, 0.1);
+body.dark-mode .link-item:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+body.dark-mode .link-item.favorite {
+    background: rgba(255, 204, 0, 0.08);
+}
+
+body.dark-mode .link-group-menu-dropdown {
+    background: var(--bg-surface);
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
 }
 
 body.dark-mode .link-lobby-empty {
@@ -10291,9 +10338,17 @@ body.dark-mode .link-lobby-empty {
         font-size: 0.85rem;
     }
     
-    .link-action-btn {
-        width: 36px;
-        height: 36px;
+    .link-actions {
+        opacity: 1;
+    }
+    
+    .link-delete-btn {
+        opacity: 1;
+    }
+    
+    .link-open-btn {
+        padding: 6px 10px;
+        font-size: 11px;
     }
     
     .link-group-menu-dropdown {
@@ -10318,6 +10373,10 @@ body.dark-mode .link-lobby-empty {
     
     .link-group-actions {
         gap: 4px;
+    }
+    
+    .link-open-btn span {
+        display: none;
     }
 }
 
