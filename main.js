@@ -2166,13 +2166,25 @@ function initTasks() {
     
     // Initialize spreadsheet panel handlers
     initSpreadsheetPanelHandlers();
+    
+    // Initialize spreadsheet context menu
+    initSpreadsheetContextMenu();
 
-    // Progress slider update
-    const progressSlider = document.getElementById('taskProgress');
-    const progressValue = document.getElementById('taskProgressValue');
-    if (progressSlider && progressValue) {
-        progressSlider.addEventListener('input', () => {
-            progressValue.textContent = `${progressSlider.value}%`;
+    // Progress bar update (new gradient design)
+    const progressInput = document.getElementById('taskProgress');
+    const progressFill = document.getElementById('taskProgressFill');
+    if (progressInput && progressFill) {
+        progressInput.addEventListener('input', () => {
+            let value = parseInt(progressInput.value) || 0;
+            value = Math.max(0, Math.min(100, value));
+            progressFill.style.width = `${value}%`;
+        });
+        // Also update on change (when user finishes typing)
+        progressInput.addEventListener('change', () => {
+            let value = parseInt(progressInput.value) || 0;
+            value = Math.max(0, Math.min(100, value));
+            progressInput.value = value;
+            progressFill.style.width = `${value}%`;
         });
     }
 
@@ -2296,8 +2308,180 @@ function initTasks() {
         `;
 
         card.addEventListener('click', () => openSpreadsheetPanel(spreadsheet));
+        
+        // Right-click context menu
+        card.addEventListener('contextmenu', (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            showSpreadsheetContextMenu(e, spreadsheet);
+        });
+        
         return card;
     }
+
+    // ===================================
+    // SPREADSHEET CONTEXT MENU
+    // ===================================
+    let contextMenuSpreadsheet = null;
+    
+    function initSpreadsheetContextMenu() {
+        const menu = document.getElementById('spreadsheetContextMenu');
+        if (!menu) return;
+        
+        // Close menu when clicking outside
+        document.addEventListener('click', (e) => {
+            if (!menu.contains(e.target)) {
+                hideSpreadsheetContextMenu();
+            }
+        });
+        
+        // Close menu on escape
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                hideSpreadsheetContextMenu();
+            }
+        });
+        
+        // Open action
+        document.getElementById('contextMenuOpen')?.addEventListener('click', () => {
+            if (contextMenuSpreadsheet) {
+                openSpreadsheetPanel(contextMenuSpreadsheet);
+            }
+            hideSpreadsheetContextMenu();
+        });
+        
+        // Rename action
+        document.getElementById('contextMenuRename')?.addEventListener('click', () => {
+            if (contextMenuSpreadsheet) {
+                promptRenameSpreadsheet(contextMenuSpreadsheet);
+            }
+            hideSpreadsheetContextMenu();
+        });
+        
+        // Delete action
+        document.getElementById('contextMenuDelete')?.addEventListener('click', () => {
+            if (contextMenuSpreadsheet) {
+                confirmDeleteSpreadsheet(contextMenuSpreadsheet);
+            }
+            hideSpreadsheetContextMenu();
+        });
+    }
+    
+    function showSpreadsheetContextMenu(e, spreadsheet) {
+        const menu = document.getElementById('spreadsheetContextMenu');
+        if (!menu) return;
+        
+        contextMenuSpreadsheet = spreadsheet;
+        
+        // Position menu near cursor
+        let x = e.clientX;
+        let y = e.clientY;
+        
+        // Show temporarily to get dimensions
+        menu.style.left = x + 'px';
+        menu.style.top = y + 'px';
+        menu.classList.add('visible');
+        
+        // Adjust if menu goes off screen
+        const rect = menu.getBoundingClientRect();
+        if (rect.right > window.innerWidth) {
+            x = window.innerWidth - rect.width - 10;
+        }
+        if (rect.bottom > window.innerHeight) {
+            y = window.innerHeight - rect.height - 10;
+        }
+        
+        menu.style.left = x + 'px';
+        menu.style.top = y + 'px';
+        
+        // Disable delete for "default" spreadsheet
+        const deleteItem = document.getElementById('contextMenuDelete');
+        if (deleteItem) {
+            if (spreadsheet.id === 'default') {
+                deleteItem.style.opacity = '0.4';
+                deleteItem.style.pointerEvents = 'none';
+            } else {
+                deleteItem.style.opacity = '1';
+                deleteItem.style.pointerEvents = 'auto';
+            }
+        }
+    }
+    
+    function hideSpreadsheetContextMenu() {
+        const menu = document.getElementById('spreadsheetContextMenu');
+        if (menu) {
+            menu.classList.remove('visible');
+        }
+        contextMenuSpreadsheet = null;
+    }
+    
+    function promptRenameSpreadsheet(spreadsheet) {
+        const newName = prompt('Enter new name:', spreadsheet.name);
+        if (newName && newName.trim() && newName !== spreadsheet.name) {
+            spreadsheet.name = newName.trim();
+            saveSpreadsheetToFirestore(spreadsheet);
+            renderSpreadsheetCards();
+            showToast('Spreadsheet renamed', 'success');
+        }
+    }
+    
+    async function confirmDeleteSpreadsheet(spreadsheet) {
+        if (spreadsheet.id === 'default') {
+            showToast('Cannot delete the default spreadsheet', 'error');
+            return;
+        }
+        
+        // Check permissions
+        if (appState.currentTeamData && !isAdmin(appState.currentTeamData)) {
+            if (spreadsheet.createdBy !== currentAuthUser?.uid) {
+                showToast('You can only delete spreadsheets you created', 'error');
+                return;
+            }
+        }
+        
+        // Get task count
+        const taskCount = appState.tasks.filter(t => t.spreadsheetId === spreadsheet.id).length;
+        const message = taskCount > 0 
+            ? `Delete "${spreadsheet.name}"? This will also delete ${taskCount} task(s) in this spreadsheet.`
+            : `Delete "${spreadsheet.name}"?`;
+        
+        if (!confirm(message)) return;
+        
+        try {
+            // Delete from Firestore
+            if (db && appState.currentTeamId) {
+                const { doc, deleteDoc } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+                await deleteDoc(doc(db, 'teams', appState.currentTeamId, 'spreadsheets', spreadsheet.id));
+                
+                // Also delete tasks in this spreadsheet
+                if (taskCount > 0) {
+                    const tasksToDelete = appState.tasks.filter(t => t.spreadsheetId === spreadsheet.id);
+                    for (const task of tasksToDelete) {
+                        await deleteDoc(doc(db, 'teams', appState.currentTeamId, 'tasks', task.id));
+                    }
+                    // Remove from local state
+                    appState.tasks = appState.tasks.filter(t => t.spreadsheetId !== spreadsheet.id);
+                }
+            }
+            
+            // Remove from local state
+            appState.spreadsheets = appState.spreadsheets.filter(s => s.id !== spreadsheet.id);
+            
+            // Close panel if this spreadsheet was open
+            if (appState.currentSpreadsheet?.id === spreadsheet.id) {
+                closeSpreadsheetPanel();
+            }
+            
+            renderSpreadsheetCards();
+            showToast('Spreadsheet deleted', 'success');
+        } catch (error) {
+            console.error('Error deleting spreadsheet:', error);
+            showToast('Failed to delete spreadsheet', 'error');
+        }
+    }
+    
+    // Expose functions
+    window.initSpreadsheetContextMenu = initSpreadsheetContextMenu;
 
     // ===================================
     // SPREADSHEET PANEL
@@ -2309,11 +2493,32 @@ function initTasks() {
         const tasksSection = document.getElementById('tasks-section');
         if (!panel || !tasksSection) return;
 
-        // Ensure 'title' column is always first (it's required and can't be disabled)
+        // Determine if this is a leads table
+        const isLeadsTable = spreadsheet.type === 'leads';
+        const firstCol = isLeadsTable ? 'leadName' : 'title';
+        
+        // Ensure first column is present and columns are valid
         if (!spreadsheet.columns) {
-            spreadsheet.columns = ['title', 'status', 'assignee', 'priority', 'dueDate', 'progress'];
-        } else if (!spreadsheet.columns.includes('title')) {
-            spreadsheet.columns.unshift('title');
+            // Set default columns based on table type
+            if (isLeadsTable) {
+                spreadsheet.columns = ['leadName', 'status', 'source', 'value', 'contact', 'createdAt', 'notes'];
+            } else {
+                spreadsheet.columns = ['title', 'status', 'assignee', 'priority', 'dueDate', 'progress'];
+            }
+        } else {
+            // Ensure first column is present
+            if (!spreadsheet.columns.includes(firstCol)) {
+                spreadsheet.columns.unshift(firstCol);
+            }
+            // Remove duplicate columns
+            spreadsheet.columns = [...new Set(spreadsheet.columns)];
+            // For leads tables, filter out task-only columns that don't apply
+            if (isLeadsTable) {
+                const validLeadsCols = ['leadName', 'status', 'source', 'value', 'contact', 'createdAt', 'notes'];
+                spreadsheet.columns = spreadsheet.columns.filter(col => 
+                    validLeadsCols.includes(col) || col.startsWith('custom_')
+                );
+            }
         }
 
         // Reset state
@@ -3103,9 +3308,13 @@ function initTasks() {
         
         // Expose function to open modal in edit mode (called when clicking column header)
         window.openColumnEditModal = function(columnId, isBuiltIn = false) {
-            // Block editing of 'title' column entirely
+            // Block editing of 'title' and 'leadName' columns entirely (first column)
             if (columnId === 'title') {
                 showToast('The Task column cannot be edited', 'info');
+                return;
+            }
+            if (columnId === 'leadName') {
+                showToast('The Lead column cannot be edited', 'info');
                 return;
             }
             
@@ -3119,16 +3328,26 @@ function initTasks() {
             editingColumnIsBuiltIn = isBuiltIn;
             
             // Built-in column definitions with default options
+            // Includes both Task columns and Lead columns
             const builtInColumns = {
+                // === TASK COLUMNS ===
                 'title': { label: 'Title', icon: 'fa-heading', type: 'text' },
                 'status': { 
                     label: 'Status', icon: 'fa-circle-notch', type: 'dropdown',
-                    defaultOptions: [
-                        { label: 'To Do', color: '#9CA3AF' },
-                        { label: 'In Progress', color: '#3B82F6' },
-                        { label: 'Review', color: '#EAB308' },
-                        { label: 'Done', color: '#22C55E' }
-                    ]
+                    defaultOptions: appState.currentSpreadsheet?.type === 'leads' 
+                        ? [
+                            { label: 'New', color: '#007AFF' },
+                            { label: 'Contacted', color: '#5856D6' },
+                            { label: 'Qualified', color: '#FF9500' },
+                            { label: 'Won', color: '#34C759' },
+                            { label: 'Lost', color: '#FF3B30' }
+                        ]
+                        : [
+                            { label: 'To Do', color: '#9CA3AF' },
+                            { label: 'In Progress', color: '#3B82F6' },
+                            { label: 'Review', color: '#EAB308' },
+                            { label: 'Done', color: '#22C55E' }
+                        ]
                 },
                 'assignee': { label: 'Assignee', icon: 'fa-user', type: 'dropdown' },
                 'priority': { 
@@ -3150,7 +3369,24 @@ function initTasks() {
                     ]
                 },
                 'budget': { label: 'Budget', icon: 'fa-dollar-sign', type: 'number' },
-                'estimatedTime': { label: 'Est. Time', icon: 'fa-clock', type: 'number' }
+                'estimatedTime': { label: 'Est. Time', icon: 'fa-clock', type: 'number' },
+                
+                // === LEAD COLUMNS ===
+                'leadName': { label: 'Lead Name', icon: 'fa-user', type: 'text' },
+                'source': { 
+                    label: 'Source', icon: 'fa-globe', type: 'dropdown',
+                    defaultOptions: [
+                        { label: 'Website', color: '#007AFF' },
+                        { label: 'Referral', color: '#34C759' },
+                        { label: 'Ad Campaign', color: '#FF9500' },
+                        { label: 'Social Media', color: '#5856D6' },
+                        { label: 'Other', color: '#8E8E93' }
+                    ]
+                },
+                'value': { label: 'Value', icon: 'fa-dollar-sign', type: 'number' },
+                'contact': { label: 'Contact', icon: 'fa-phone', type: 'text' },
+                'createdAt': { label: 'Created', icon: 'fa-calendar-plus', type: 'date' },
+                'notes': { label: 'Notes', icon: 'fa-sticky-note', type: 'text' }
             };
             
             if (isBuiltIn) {
@@ -3345,7 +3581,16 @@ function initTasks() {
 
         // Build table HTML - use spreadsheet.columns as the single source of truth for visible columns
         // This array contains both built-in and custom column IDs that are currently visible
-        const visibleColumns = spreadsheet.columns || ['title', 'status', 'assignee', 'priority', 'dueDate'];
+        // Deduplicate columns and set proper defaults based on table type
+        let visibleColumns = spreadsheet.columns;
+        if (!visibleColumns || visibleColumns.length === 0) {
+            visibleColumns = isLeadsTable 
+                ? ['leadName', 'status', 'source', 'value', 'contact', 'createdAt', 'notes']
+                : ['title', 'status', 'assignee', 'priority', 'dueDate'];
+        } else {
+            // Remove duplicates
+            visibleColumns = [...new Set(visibleColumns)];
+        }
         const firstColHeader = isLeadsTable ? 'Lead' : 'Task';
         
         let tableHTML = `
@@ -3395,8 +3640,8 @@ function initTasks() {
         tableHTML += `
                 </tbody>
             </table>
-            <button class="add-row-btn" onclick="document.getElementById('addTaskBtn').click()">
-                <i class="fas fa-plus"></i> Add new task
+            <button class="add-row-btn" onclick="openAddItemModal()">
+                <i class="fas fa-plus"></i> Add new ${isLeadsTable ? 'lead' : 'task'}
             </button>
         `;
 
@@ -5183,18 +5428,14 @@ function initTasks() {
         document.getElementById('taskBudget').value = task.budget || '';
         document.getElementById('taskEstimatedTime').value = task.estimatedTime || '';
         
-        // Update progress slider with gradient
-        const progressSlider = document.getElementById('taskProgress');
-        const progressValue = document.getElementById('taskProgressValue');
-        if (progressSlider && progressValue) {
+        // Update progress bar (new gradient design)
+        const progressInput = document.getElementById('taskProgress');
+        const progressFill = document.getElementById('taskProgressFill');
+        if (progressInput) {
             const progress = task.progress || 0;
-            progressSlider.value = progress;
-            progressSlider.style.setProperty('--progress', progress + '%');
-            progressValue.textContent = `${progress}%`;
-            if (progress === 100) {
-                progressSlider.classList.add('complete');
-            } else {
-                progressSlider.classList.remove('complete');
+            progressInput.value = progress;
+            if (progressFill) {
+                progressFill.style.width = `${progress}%`;
             }
         }
 
@@ -5520,8 +5761,13 @@ function initTasks() {
                 // Use preset based on type
                 const preset = type === 'leads' ? LEADS_TABLE_PRESET : TASKS_TABLE_PRESET;
 
+                // Generate unique ID with type prefix for reliable type detection on reload
+                // leads_ prefix allows type detection even if type field is lost
+                const idPrefix = type === 'leads' ? 'leads_' : 'tasks_';
+                const uniqueId = idPrefix + Date.now().toString();
+
                 const newSpreadsheet = {
-                    id: Date.now().toString(),
+                    id: uniqueId,
                     name: name,
                     type: type, // 'tasks' or 'leads'
                     icon: icon,
@@ -5684,12 +5930,14 @@ function initTasks() {
                     taskDueDateInput.setAttribute('min', today);
                 }
                 
-                // Reset progress slider
-                const progressSlider = document.getElementById('taskProgress');
-                const progressValue = document.getElementById('taskProgressValue');
-                if (progressSlider && progressValue) {
-                    progressSlider.value = 0;
-                    progressValue.textContent = '0%';
+                // Reset progress bar (new design)
+                const progressInput = document.getElementById('taskProgress');
+                const progressFill = document.getElementById('taskProgressFill');
+                if (progressInput) {
+                    progressInput.value = 0;
+                    if (progressFill) {
+                        progressFill.style.width = '0%';
+                    }
                 }
                 
                 openModal('taskModal');
@@ -5723,11 +5971,18 @@ function initTasks() {
             // Ensure createdBy is set (required for permissions)
             const createdBy = spreadsheet.createdBy || currentAuthUser.uid;
             
+            // Determine default columns based on type
+            const isLeadsType = spreadsheet.type === 'leads';
+            const defaultColumns = isLeadsType 
+                ? ['leadName', 'status', 'source', 'value', 'contact', 'createdAt', 'notes']
+                : ['title', 'status', 'assignee', 'priority', 'dueDate', 'progress'];
+            
             const dataToSave = {
                 name: spreadsheet.name,
+                type: spreadsheet.type || 'tasks', // IMPORTANT: Save the type!
                 icon: spreadsheet.icon || 'fa-table',
                 color: spreadsheet.color || '#0070f3',
-                columns: spreadsheet.columns || ['title', 'status', 'assignee', 'priority', 'dueDate', 'progress'],
+                columns: spreadsheet.columns || defaultColumns,
                 visibility: spreadsheet.visibility || 'team',
                 createdBy: createdBy,
                 createdAt: spreadsheet.createdAt || Date.now(),
@@ -5765,13 +6020,46 @@ function initTasks() {
             appState.spreadsheets = [];
             snapshot.forEach(docSnap => {
                 const data = docSnap.data();
+                const docId = docSnap.id;
+                
+                // ROBUST TYPE DETECTION: Check multiple sources
+                // 1. First check saved type field
+                // 2. Fallback to ID prefix (leads_ or tasks_)
+                // 3. Last resort: check if columns contain lead-specific columns
+                let spreadsheetType = data.type;
+                
+                if (!spreadsheetType) {
+                    // Check ID prefix
+                    if (docId.startsWith('leads_')) {
+                        spreadsheetType = 'leads';
+                    } else if (docId.startsWith('tasks_')) {
+                        spreadsheetType = 'tasks';
+                    } else {
+                        // Check columns for lead indicators
+                        const cols = data.columns || [];
+                        if (cols.includes('leadName') || cols.includes('source') || cols.includes('value')) {
+                            spreadsheetType = 'leads';
+                        } else {
+                            spreadsheetType = 'tasks';
+                        }
+                    }
+                }
+                
+                const isLeadsType = spreadsheetType === 'leads';
+                
+                // Use type-appropriate default columns if none saved
+                const defaultColumns = isLeadsType 
+                    ? ['leadName', 'status', 'source', 'value', 'contact', 'createdAt', 'notes']
+                    : ['title', 'status', 'assignee', 'priority', 'dueDate', 'progress'];
+                
                 // Ensure all column-related fields are loaded properly
                 const spreadsheet = {
                     id: docSnap.id,
                     name: data.name,
+                    type: spreadsheetType, // CRITICAL: Load the type!
                     icon: data.icon || 'fa-table',
                     color: data.color || '#0070f3',
-                    columns: data.columns || ['title', 'status', 'assignee', 'priority', 'dueDate', 'progress'],
+                    columns: data.columns || defaultColumns,
                     visibility: data.visibility || 'team',
                     createdBy: data.createdBy,
                     createdAt: data.createdAt,
@@ -5781,6 +6069,15 @@ function initTasks() {
                     // Load built-in column customizations
                     columnSettings: data.columnSettings || {}
                 };
+                
+                // Debug logging
+                console.log(`📊 Loaded spreadsheet "${spreadsheet.name}":`, {
+                    id: spreadsheet.id,
+                    type: spreadsheet.type,
+                    savedType: data.type,
+                    columns: spreadsheet.columns
+                });
+                
                 appState.spreadsheets.push(spreadsheet);
             });
             
@@ -6259,24 +6556,29 @@ function initTaskTitleWordLimit() {
 }
 
 // ===================================
-// TASK MODAL PROGRESS SLIDER
-// Use same gradient slider as table
+// TASK MODAL PROGRESS BAR
+// Modern gradient progress bar
 // ===================================
 function initTaskModalProgressSlider() {
-    const slider = document.getElementById('taskProgress');
-    const valueDisplay = document.getElementById('taskProgressValue');
+    const progressInput = document.getElementById('taskProgress');
+    const progressFill = document.getElementById('taskProgressFill');
     
-    if (!slider || !valueDisplay) return;
+    if (!progressInput) return;
     
-    slider.addEventListener('input', (e) => {
-        const value = parseInt(e.target.value);
-        valueDisplay.textContent = value + '%';
-        slider.style.setProperty('--progress', value + '%');
-        
-        if (value === 100) {
-            slider.classList.add('complete');
-        } else {
-            slider.classList.remove('complete');
+    progressInput.addEventListener('input', (e) => {
+        let value = parseInt(e.target.value) || 0;
+        value = Math.max(0, Math.min(100, value));
+        if (progressFill) {
+            progressFill.style.width = value + '%';
+        }
+    });
+    
+    progressInput.addEventListener('change', (e) => {
+        let value = parseInt(e.target.value) || 0;
+        value = Math.max(0, Math.min(100, value));
+        progressInput.value = value;
+        if (progressFill) {
+            progressFill.style.width = value + '%';
         }
     });
 }
@@ -6338,14 +6640,14 @@ function resetTaskModalDropdowns() {
         `;
     }
     
-    // Reset Progress
-    const progressSlider = document.getElementById('taskProgress');
-    const progressValue = document.getElementById('taskProgressValue');
-    if (progressSlider && progressValue) {
-        progressSlider.value = 0;
-        progressSlider.style.setProperty('--progress', '0%');
-        progressSlider.classList.remove('complete');
-        progressValue.textContent = '0%';
+    // Reset Progress (new design)
+    const progressInput = document.getElementById('taskProgress');
+    const progressFill = document.getElementById('taskProgressFill');
+    if (progressInput) {
+        progressInput.value = 0;
+        if (progressFill) {
+            progressFill.style.width = '0%';
+        }
     }
     
     // Reset word counter
@@ -10881,11 +11183,14 @@ function initModals() {
         const taskStatus = document.getElementById('taskStatus');
         if (taskStatus) taskStatus.value = 'todo';
 
-        // Reset progress slider
-        if (progressSlider) {
-            progressSlider.value = 0;
-            const progressValue = document.getElementById('taskProgressValue');
-            if (progressValue) progressValue.textContent = '0%';
+        // Reset progress bar (new design)
+        const progressInput = document.getElementById('taskProgress');
+        const progressFill = document.getElementById('taskProgressFill');
+        if (progressInput) {
+            progressInput.value = 0;
+            if (progressFill) {
+                progressFill.style.width = '0%';
+            }
         }
         
         // Hide due date helper

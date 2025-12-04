@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Teamster - Internal Collaboration Platform</title>
-    <link rel="stylesheet" href="styles.css?v=4">
+    <link rel="stylesheet" href="styles.css?v=8">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
@@ -1599,12 +1599,17 @@
                     </div>
                 </div>
                 
-                <!-- Progress Slider - Same as table -->
+                <!-- Progress - Clean Minimal Design -->
                 <div class="form-group">
                     <label>Progress</label>
-                    <div class="modal-progress-container">
-                        <input type="range" id="taskProgress" min="0" max="100" value="0" class="progress-range-slider" style="--progress: 0%">
-                        <span class="progress-text" id="taskProgressValue">0%</span>
+                    <div class="task-progress-control">
+                        <div class="task-progress-track">
+                            <div class="task-progress-fill" id="taskProgressFill"></div>
+                        </div>
+                        <div class="task-progress-value">
+                            <input type="number" id="taskProgress" min="0" max="100" value="0">
+                            <span>%</span>
+                        </div>
                     </div>
                 </div>
                 
@@ -2159,10 +2164,27 @@
         </div>
     </div>
 
+    <!-- Spreadsheet Context Menu (Right-click) -->
+    <div class="spreadsheet-context-menu" id="spreadsheetContextMenu">
+        <div class="context-menu-item" id="contextMenuOpen">
+            <i class="fas fa-external-link-alt"></i>
+            <span>Open</span>
+        </div>
+        <div class="context-menu-item" id="contextMenuRename">
+            <i class="fas fa-pen"></i>
+            <span>Rename</span>
+        </div>
+        <div class="context-menu-divider"></div>
+        <div class="context-menu-item danger" id="contextMenuDelete">
+            <i class="fas fa-trash"></i>
+            <span>Delete</span>
+        </div>
+    </div>
+
     <!-- Toast Notification Container -->
     <div id="toastContainer"></div>
 
     <!-- Main JavaScript -->
-    <script src="main.js?v=4"></script>
+    <script src="main.js?v=9"></script>
 </body>
 </html>
