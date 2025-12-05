@@ -5540,7 +5540,7 @@ function initTasks() {
             }
             
             // Update trigger content
-            const triggerContent = trigger.querySelector('.dropdown-trigger-content');
+            const triggerContent = trigger.querySelector('.dropdown-trigger-content') || trigger.querySelector('.unified-dropdown-value');
             if (getTriggerContent && triggerContent) {
                 triggerContent.innerHTML = getTriggerContent(value, selectedOption);
             }
@@ -6334,10 +6334,13 @@ function populateTaskAssigneeDropdown() {
     // Set first member as default
     if (firstMember) {
         hiddenInput.value = firstMember.id;
-        trigger.querySelector('.dropdown-trigger-content').innerHTML = `
-            <div class="dropdown-assignee-avatar" style="background: ${firstMember.color}">${firstMember.initials}</div>
-            <span>${escapeHtml(firstMember.name)}</span>
-        `;
+        const triggerContent = trigger.querySelector('.dropdown-trigger-content') || trigger.querySelector('.unified-dropdown-value');
+        if (triggerContent) {
+            triggerContent.innerHTML = `
+                <div class="dropdown-assignee-avatar" style="background: ${firstMember.color}">${firstMember.initials}</div>
+                <span>${escapeHtml(firstMember.name)}</span>
+            `;
+        }
         // Mark as active
         const firstOption = menu.querySelector(`[data-value="${firstMember.id}"]`);
         if (firstOption) {
@@ -6414,10 +6417,13 @@ function populateTaskSpreadsheetDropdown(defaultSpreadsheetId = null) {
         
         const icon = selectedOption.querySelector('.dropdown-icon');
         const text = selectedOption.querySelector('span').textContent;
-        trigger.querySelector('.dropdown-trigger-content').innerHTML = `
-            <i class="fas ${icon ? icon.classList[1] : 'fa-table'} dropdown-icon"></i>
-            <span>${text}</span>
-        `;
+        const triggerContent = trigger.querySelector('.dropdown-trigger-content') || trigger.querySelector('.unified-dropdown-value');
+        if (triggerContent) {
+            triggerContent.innerHTML = `
+                <i class="fas ${icon ? icon.classList[1] : 'fa-table'} dropdown-icon"></i>
+                <span>${text}</span>
+            `;
+        }
     }
 }
 
@@ -6631,10 +6637,13 @@ function resetTaskModalDropdowns() {
     const priorityMenu = document.getElementById('taskPriorityMenu');
     if (priorityTrigger && priorityInput && priorityMenu) {
         priorityInput.value = 'medium';
-        priorityTrigger.querySelector('.dropdown-trigger-content').innerHTML = `
-            <span class="priority-dot medium"></span>
-            <span>Medium</span>
-        `;
+        const priorityTriggerContent = priorityTrigger.querySelector('.dropdown-trigger-content') || priorityTrigger.querySelector('.unified-dropdown-value');
+        if (priorityTriggerContent) {
+            priorityTriggerContent.innerHTML = `
+                <span class="unified-priority-dot medium"></span>
+                <span>Medium</span>
+            `;
+        }
         priorityMenu.querySelectorAll('.dropdown-menu-option').forEach(opt => {
             opt.classList.remove('active');
             const check = opt.querySelector('.fa-check');
@@ -6652,10 +6661,13 @@ function resetTaskModalDropdowns() {
     const statusMenu = document.getElementById('taskStatusMenu');
     if (statusTrigger && statusInput && statusMenu) {
         statusInput.value = 'todo';
-        statusTrigger.querySelector('.dropdown-trigger-content').innerHTML = `
-            <span class="status-dot todo"></span>
-            <span>To Do</span>
-        `;
+        const statusTriggerContent = statusTrigger.querySelector('.dropdown-trigger-content') || statusTrigger.querySelector('.unified-dropdown-value');
+        if (statusTriggerContent) {
+            statusTriggerContent.innerHTML = `
+                <span class="unified-status-dot todo"></span>
+                <span>To Do</span>
+            `;
+        }
         statusMenu.querySelectorAll('.dropdown-menu-option').forEach(opt => {
             opt.classList.remove('active');
             const check = opt.querySelector('.fa-check');
@@ -6672,9 +6684,12 @@ function resetTaskModalDropdowns() {
     const assigneeInput = document.getElementById('taskAssignee');
     if (assigneeTrigger && assigneeInput) {
         assigneeInput.value = '';
-        assigneeTrigger.querySelector('.dropdown-trigger-content').innerHTML = `
-            <span class="dropdown-placeholder">Select...</span>
-        `;
+        const assigneeTriggerContent = assigneeTrigger.querySelector('.dropdown-trigger-content') || assigneeTrigger.querySelector('.unified-dropdown-value');
+        if (assigneeTriggerContent) {
+            assigneeTriggerContent.innerHTML = `
+                <span class="dropdown-placeholder">Select...</span>
+            `;
+        }
     }
     
     // Reset Progress (new design)
@@ -14057,10 +14072,13 @@ function initLeadModalDropdowns() {
                 const value = opt.dataset.value;
                 const color = opt.dataset.color || '#007AFF';
                 statusInput.value = value;
-                statusTrigger.querySelector('.dropdown-trigger-content').innerHTML = `
-                    <span class="status-dot" style="background: ${color};"></span>
-                    <span>${value}</span>
-                `;
+                const statusContent = statusTrigger.querySelector('.dropdown-trigger-content') || statusTrigger.querySelector('.unified-dropdown-value');
+                if (statusContent) {
+                    statusContent.innerHTML = `
+                        <span class="status-dot" style="background: ${color};"></span>
+                        <span>${value}</span>
+                    `;
+                }
                 statusMenu.querySelectorAll('.dropdown-menu-option').forEach(o => {
                     o.classList.remove('active');
                     o.querySelector('.fa-check')?.remove();
@@ -14090,10 +14108,13 @@ function initLeadModalDropdowns() {
                 const value = opt.dataset.value;
                 const color = opt.dataset.color || '#007AFF';
                 sourceInput.value = value;
-                sourceTrigger.querySelector('.dropdown-trigger-content').innerHTML = `
-                    <span class="source-dot" style="background: ${color};"></span>
-                    <span>${value}</span>
-                `;
+                const sourceContent = sourceTrigger.querySelector('.dropdown-trigger-content') || sourceTrigger.querySelector('.unified-dropdown-value');
+                if (sourceContent) {
+                    sourceContent.innerHTML = `
+                        <span class="source-dot" style="background: ${color};"></span>
+                        <span>${value}</span>
+                    `;
+                }
                 sourceMenu.querySelectorAll('.dropdown-menu-option').forEach(o => {
                     o.classList.remove('active');
                     o.querySelector('.fa-check')?.remove();
@@ -14183,10 +14204,13 @@ function resetLeadModalDropdowns() {
     const statusTrigger = document.getElementById('leadStatusTrigger');
     if (statusInput) statusInput.value = 'New';
     if (statusTrigger) {
-        statusTrigger.querySelector('.dropdown-trigger-content').innerHTML = `
-            <span class="status-dot" style="background: #007AFF;"></span>
-            <span>New</span>
-        `;
+        const statusContent = statusTrigger.querySelector('.dropdown-trigger-content') || statusTrigger.querySelector('.unified-dropdown-value');
+        if (statusContent) {
+            statusContent.innerHTML = `
+                <span class="status-dot" style="background: #007AFF;"></span>
+                <span>New</span>
+            `;
+        }
     }
     
     // Reset source
@@ -14194,10 +14218,13 @@ function resetLeadModalDropdowns() {
     const sourceTrigger = document.getElementById('leadSourceTrigger');
     if (sourceInput) sourceInput.value = 'Website';
     if (sourceTrigger) {
-        sourceTrigger.querySelector('.dropdown-trigger-content').innerHTML = `
-            <span class="source-dot" style="background: #007AFF;"></span>
-            <span>Website</span>
-        `;
+        const sourceContent = sourceTrigger.querySelector('.dropdown-trigger-content') || sourceTrigger.querySelector('.unified-dropdown-value');
+        if (sourceContent) {
+            sourceContent.innerHTML = `
+                <span class="source-dot" style="background: #007AFF;"></span>
+                <span>Website</span>
+            `;
+        }
     }
     
     // Reset spreadsheet label
