@@ -2129,26 +2129,32 @@ function initTasks() {
     // Tasks will be loaded via loadTasksFromFirestore() in loadTeamData()
     
     // Add task button
-    addTaskBtn.addEventListener('click', () => {
-        // Reset form for new task
-        document.getElementById('taskForm').reset();
-        delete document.getElementById('taskForm').dataset.editingTaskId;
-        document.querySelector('#taskModal .modal-header h2').textContent = 'Create New Task';
-        document.querySelector('#taskModal .btn-primary').textContent = 'Create Task';
-        
-        populateTaskAssigneeDropdown(); // Populate with current team members
-        populateTaskSpreadsheetDropdown(); // Populate with available spreadsheets
-        resetTaskModalDropdowns(); // Reset all custom dropdowns to defaults
-        
-        // Set minimum date to today
-        const taskDueDateInput = document.getElementById('taskDueDate');
-        if (taskDueDateInput) {
-            const today = new Date().toISOString().split('T')[0];
-            taskDueDateInput.setAttribute('min', today);
-        }
-        
-        openModal('taskModal');
-    });
+    if (addTaskBtn) {
+        addTaskBtn.addEventListener('click', () => {
+            // Reset form for new task
+            document.getElementById('taskForm').reset();
+            delete document.getElementById('taskForm').dataset.editingTaskId;
+            
+            // Update modal title and button for unified modal
+            const titleEl = document.querySelector('#taskModal .unified-modal-title h2');
+            const submitBtn = document.querySelector('#taskModal .unified-btn-primary');
+            if (titleEl) titleEl.innerHTML = '<i class="fas fa-plus-circle"></i> New Task';
+            if (submitBtn) submitBtn.innerHTML = '<i class="fas fa-check"></i> Create Task';
+            
+            populateTaskAssigneeDropdown(); // Populate with current team members
+            populateTaskSpreadsheetDropdown(); // Populate with available spreadsheets
+            resetTaskModalDropdowns(); // Reset all custom dropdowns to defaults
+            
+            // Set minimum date to today
+            const taskDueDateInput = document.getElementById('taskDueDate');
+            if (taskDueDateInput) {
+                const today = new Date().toISOString().split('T')[0];
+                taskDueDateInput.setAttribute('min', today);
+            }
+            
+            openModal('taskModal');
+        });
+    }
 
     // Create spreadsheet card handler
     const createSpreadsheetBtn = document.getElementById('createSpreadsheetCard');
@@ -2434,13 +2440,27 @@ function initTasks() {
     }
     
     function promptRenameSpreadsheet(spreadsheet) {
-        const newName = prompt('Enter new name:', spreadsheet.name);
-        if (newName && newName.trim() && newName !== spreadsheet.name) {
-            spreadsheet.name = newName.trim();
-            saveSpreadsheetToFirestore(spreadsheet);
-            renderSpreadsheetCards();
-            showToast('Spreadsheet renamed', 'success');
+        // If the spreadsheet panel is open and it's the same spreadsheet, focus the title input
+        if (appState.currentSpreadsheet?.id === spreadsheet.id) {
+            const titleInput = document.querySelector('.spreadsheet-title-input');
+            if (titleInput) {
+                titleInput.focus();
+                titleInput.select();
+                return;
+            }
         }
+        
+        // Otherwise, open the spreadsheet panel first and then focus the title
+        openSpreadsheetPanel(spreadsheet);
+        
+        // Wait for panel to open, then focus and select the title input
+        setTimeout(() => {
+            const titleInput = document.querySelector('.spreadsheet-title-input');
+            if (titleInput) {
+                titleInput.focus();
+                titleInput.select();
+            }
+        }, 100);
     }
     
     async function confirmDeleteSpreadsheet(spreadsheet) {
@@ -2975,14 +2995,14 @@ function initTasks() {
         if (closeBtn) closeBtn.addEventListener('click', () => closeModal('customColumnModal'));
         if (cancelBtn) cancelBtn.addEventListener('click', () => closeModal('customColumnModal'));
 
-        // Type selector
+        // Type selector - supports both old and new class names
         if (typeSelector) {
-            typeSelector.querySelectorAll('.type-option').forEach(btn => {
+            typeSelector.querySelectorAll('.type-option, .unified-segmented-option').forEach(btn => {
                 btn.addEventListener('click', () => {
                     // Don't allow type change for assignee column (its options are teammates)
                     if (editingColumnIsBuiltIn && editingColumnId === 'assignee') return;
                     
-                    typeSelector.querySelectorAll('.type-option').forEach(b => b.classList.remove('active'));
+                    typeSelector.querySelectorAll('.type-option, .unified-segmented-option').forEach(b => b.classList.remove('active'));
                     btn.classList.add('active');
                     selectedType = btn.dataset.type;
 
@@ -2995,12 +3015,13 @@ function initTasks() {
             });
         }
 
-        // Icon picker
+        // Icon picker - supports both old and new class names
         if (iconPicker) {
-            iconPicker.querySelectorAll('.icon-option').forEach(btn => {
+            iconPicker.querySelectorAll('.icon-option, .unified-icon-option').forEach(btn => {
                 btn.addEventListener('click', () => {
-                    iconPicker.querySelectorAll('.icon-option').forEach(b => b.classList.remove('active'));
+                    iconPicker.querySelectorAll('.icon-option, .unified-icon-option').forEach(b => b.classList.remove('active', 'selected'));
                     btn.classList.add('active');
+                    btn.classList.add('selected');
                     selectedIcon = btn.dataset.icon;
                 });
             });
@@ -3209,7 +3230,7 @@ function initTasks() {
         
         // Update modal title
         function updateModalTitle(title) {
-            const headerH2 = modal?.querySelector('.modal-header h2');
+            const headerH2 = modal?.querySelector('.modal-header h2') || modal?.querySelector('.unified-modal-title h2');
             if (headerH2) {
                 headerH2.innerHTML = `<i class="fas fa-columns"></i> ${title}`;
             }
@@ -3232,10 +3253,10 @@ function initTasks() {
                 typeSelector.style.pointerEvents = 'auto';
             }
             
-            // Reset type selector
+            // Reset type selector - supports both old and new class names
             selectedType = 'dropdown';
             if (typeSelector) {
-                typeSelector.querySelectorAll('.type-option').forEach(b => b.classList.remove('active'));
+                typeSelector.querySelectorAll('.type-option, .unified-segmented-option').forEach(b => b.classList.remove('active'));
                 typeSelector.querySelector('[data-type="dropdown"]')?.classList.add('active');
             }
             if (dropdownGroup) dropdownGroup.style.display = 'flex';
@@ -3261,11 +3282,15 @@ function initTasks() {
             if (sliderMinInput) sliderMinInput.value = '0';
             if (sliderMaxInput) sliderMaxInput.value = '100';
 
-            // Reset icon picker
+            // Reset icon picker - supports both old and new class names
             selectedIcon = 'fa-tag';
             if (iconPicker) {
-                iconPicker.querySelectorAll('.icon-option').forEach(b => b.classList.remove('active'));
-                iconPicker.querySelector('[data-icon="fa-tag"]')?.classList.add('active');
+                iconPicker.querySelectorAll('.icon-option, .unified-icon-option').forEach(b => b.classList.remove('active', 'selected'));
+                const tagIcon = iconPicker.querySelector('[data-icon="fa-tag"]');
+                if (tagIcon) {
+                    tagIcon.classList.add('active');
+                    tagIcon.classList.add('selected');
+                }
             }
         }
         
@@ -5509,8 +5534,10 @@ function initTasks() {
 
         // Store task ID for editing
         document.getElementById('taskForm').dataset.editingTaskId = task.id;
-        document.querySelector('#taskModal .modal-header h2').textContent = 'Edit Task';
-        document.querySelector('#taskModal .btn-primary').textContent = 'Save Changes';
+        const titleEl = document.querySelector('#taskModal .unified-modal-title h2');
+        const submitBtn = document.querySelector('#taskModal .unified-btn-primary');
+        if (titleEl) titleEl.innerHTML = '<i class="fas fa-edit"></i> Edit Task';
+        if (submitBtn) submitBtn.innerHTML = '<i class="fas fa-check"></i> Save Changes';
         
         openModal('taskModal');
     };
@@ -5951,8 +5978,10 @@ function initTasks() {
                 // Reset form for new task
                 document.getElementById('taskForm').reset();
                 delete document.getElementById('taskForm').dataset.editingTaskId;
-                document.querySelector('#taskModal .modal-header h2').textContent = 'Create New Task';
-                document.querySelector('#taskModal .btn-primary').textContent = 'Create Task';
+                const titleEl = document.querySelector('#taskModal .unified-modal-title h2');
+                const submitBtn = document.querySelector('#taskModal .unified-btn-primary');
+                if (titleEl) titleEl.innerHTML = '<i class="fas fa-plus-circle"></i> New Task';
+                if (submitBtn) submitBtn.innerHTML = '<i class="fas fa-check"></i> Create Task';
                 
                 populateTaskAssigneeDropdown();
                 // Default to current spreadsheet when adding from panel
@@ -10817,8 +10846,10 @@ function initModals() {
     function resetEventModal() {
         eventForm.reset();
         delete eventForm.dataset.editingEventId;
-        document.querySelector('#eventModal .modal-header h2').textContent = 'Add New Event';
-        document.querySelector('#eventModal .btn-primary').textContent = 'Add Event';
+        const titleEl = document.querySelector('#eventModal .unified-modal-title h2');
+        const submitBtn = document.querySelector('#eventModal .unified-btn-primary');
+        if (titleEl) titleEl.innerHTML = '<i class="fas fa-calendar-plus"></i> New Event';
+        if (submitBtn) submitBtn.innerHTML = '<i class="fas fa-check"></i> Add Event';
         // Reset textarea height
         const descTextarea = document.getElementById('eventDescription');
         if (descTextarea) {
@@ -11014,8 +11045,10 @@ function initModals() {
             // Reset form and modal state
             eventForm.reset();
             delete eventForm.dataset.editingEventId;
-            document.querySelector('#eventModal .modal-header h2').textContent = 'Add New Event';
-            document.querySelector('#eventModal .btn-primary').textContent = 'Add Event';
+            const titleEl = document.querySelector('#eventModal .unified-modal-title h2');
+            const submitBtn = document.querySelector('#eventModal .unified-btn-primary');
+            if (titleEl) titleEl.innerHTML = '<i class="fas fa-calendar-plus"></i> New Event';
+            if (submitBtn) submitBtn.innerHTML = '<i class="fas fa-check"></i> Add Event';
             
             closeModal('eventModal');
         } catch (error) {
@@ -11228,8 +11261,10 @@ function initModals() {
         delete taskForm.dataset.editingTaskId;
         
         // Reset modal title and button
-        document.querySelector('#taskModal .modal-header h2').textContent = 'Create New Task';
-        document.querySelector('#taskModal .btn-primary').textContent = 'Create Task';
+        const titleEl = document.querySelector('#taskModal .unified-modal-title h2');
+        const submitBtn = document.querySelector('#taskModal .unified-btn-primary');
+        if (titleEl) titleEl.innerHTML = '<i class="fas fa-plus-circle"></i> New Task';
+        if (submitBtn) submitBtn.innerHTML = '<i class="fas fa-check"></i> Create Task';
         
         // Reset status dropdown to default
         const taskStatus = document.getElementById('taskStatus');
@@ -12861,10 +12896,31 @@ window.closePendingRequestsModal = function() {
     }
 }
 
-// Approve join request (admin/owner only)
+// Show approve join modal
+window.showApproveJoinModal = function(userId, userName, userEmail) {
+    const nameEl = document.getElementById('approveJoinName');
+    const emailEl = document.getElementById('approveJoinEmail');
+    const confirmBtn = document.getElementById('confirmApproveJoin');
+    
+    if (nameEl) nameEl.textContent = userName || 'this user';
+    if (emailEl) emailEl.textContent = userEmail || '';
+    
+    // Store the userId for the confirm action
+    if (confirmBtn) {
+        confirmBtn.onclick = () => executeApproveJoinRequest(userId);
+    }
+    
+    document.getElementById('approveJoinModal')?.classList.add('active');
+};
+
+window.closeApproveJoinModal = function() {
+    document.getElementById('approveJoinModal')?.classList.remove('active');
+};
+
+// Approve join request (admin/owner only) - shows modal
 window.approveJoinRequest = async function(userId) {
     try {
-        const { doc, getDoc, updateDoc, serverTimestamp, deleteField } = 
+        const { doc, getDoc } = 
             await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
 
         // Check if user has admin permissions
@@ -12873,33 +12929,59 @@ window.approveJoinRequest = async function(userId) {
         const teamData = teamDoc.data();
         
         if (!isAdmin(teamData)) {
-            alert('Only admins and owners can approve join requests.');
+            showToast('Only admins and owners can approve join requests.', 'error');
             return;
         }
         
-        if (!confirm('Approve this user to join your team?')) {
+        const request = teamData.pendingRequests?.[userId];
+        if (!request) {
+            showToast('Join request not found.', 'error');
             return;
         }
+        
+        // Show the approval modal
+        showApproveJoinModal(userId, request.name, request.email);
+        
+    } catch (error) {
+        console.error('Error checking join request:', error);
+        showToast('Failed to load request details.', 'error');
+    }
+};
+
+// Execute the actual approval after modal confirmation
+async function executeApproveJoinRequest(userId) {
+    try {
+        const { doc, getDoc, updateDoc, serverTimestamp, deleteField } = 
+            await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+
+        const teamRef = doc(db, 'teams', appState.currentTeamId);
+        const teamDoc = await getDoc(teamRef);
+        const teamData = teamDoc.data();
 
         const request = teamData.pendingRequests[userId];
 
-        // Check for duplicate usernames in the team
-        const requestedUsername = request.name.trim().toLowerCase();
+        // Check for duplicate usernames and generate unique name if needed
+        let finalName = request.name;
         const existingMembers = teamData.members || {};
+        const existingNames = Object.values(existingMembers).map(m => (m.name || '').trim().toLowerCase());
         
-        for (const [memberId, memberData] of Object.entries(existingMembers)) {
-            const existingUsername = (memberData.name || '').trim().toLowerCase();
-            if (existingUsername === requestedUsername) {
-                alert(`Cannot approve: A user with the username "${request.name}" already exists in this team. Please ask the user to change their display name before joining.`);
-                return;
+        // If name already exists, append (1), (2), etc.
+        if (existingNames.includes(finalName.trim().toLowerCase())) {
+            let counter = 1;
+            let newName = `${request.name} (${counter})`;
+            while (existingNames.includes(newName.trim().toLowerCase())) {
+                counter++;
+                newName = `${request.name} (${counter})`;
             }
+            finalName = newName;
+            debugLog(`📝 Duplicate name detected - renamed "${request.name}" to "${finalName}"`);
         }
 
         // Add user to members
         await updateDoc(teamRef, {
             [`members.${userId}`]: {
                 role: 'member',
-                name: request.name,
+                name: finalName,
                 email: request.email,
                 photoURL: request.photoURL || null,
                 occupation: 'Team Member',
@@ -12917,30 +12999,80 @@ window.approveJoinRequest = async function(userId) {
         // Add activity log for approval
         await addActivity({
             type: 'team',
-            description: `approved ${request.name} to join the team`
+            description: `approved ${finalName} to join the team`
         });
         
         // Reload team data
         await loadTeammatesFromFirestore();
         await initTeamSection();
         
-        // Close and reopen modal to refresh
+        // Close modals
+        closeApproveJoinModal();
         closePendingRequestsModal();
-        showToast(`${request.name} has been added to your team!`, 'success', 4000, 'Member Added');
+        
+        // Show success message - mention if name was changed
+        if (finalName !== request.name) {
+            showToast(`${finalName} has been added to your team! (Name adjusted to avoid duplicate)`, 'success', 5000, 'Member Added');
+        } else {
+            showToast(`${finalName} has been added to your team!`, 'success', 4000, 'Member Added');
+        }
 
     } catch (error) {
         console.error('Error approving request:', error.code || error.message);
         debugError('Full error:', error);
+        closeApproveJoinModal();
         showToast('Failed to approve request. Please try again.', 'error', 5000, 'Approval Failed');
     }
 }
 
-// Reject join request
-window.rejectJoinRequest = async function(userId) {
-    if (!confirm('Reject this join request?')) {
-        return;
+// Show reject join modal
+window.showRejectJoinModal = function(userId, userName, userEmail) {
+    const nameEl = document.getElementById('rejectJoinName');
+    const emailEl = document.getElementById('rejectJoinEmail');
+    const confirmBtn = document.getElementById('confirmRejectJoin');
+    
+    if (nameEl) nameEl.textContent = userName || 'this user';
+    if (emailEl) emailEl.textContent = userEmail || '';
+    
+    // Store the userId for the confirm action
+    if (confirmBtn) {
+        confirmBtn.onclick = () => executeRejectJoinRequest(userId);
     }
+    
+    document.getElementById('rejectJoinModal')?.classList.add('active');
+};
 
+window.closeRejectJoinModal = function() {
+    document.getElementById('rejectJoinModal')?.classList.remove('active');
+};
+
+// Reject join request (shows modal)
+window.rejectJoinRequest = async function(userId) {
+    try {
+        const { doc, getDoc } = 
+            await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+
+        const teamRef = doc(db, 'teams', appState.currentTeamId);
+        const teamDoc = await getDoc(teamRef);
+        const teamData = teamDoc.data();
+        
+        const request = teamData.pendingRequests?.[userId];
+        if (!request) {
+            showToast('Join request not found.', 'error');
+            return;
+        }
+        
+        // Show the reject modal
+        showRejectJoinModal(userId, request.name, request.email);
+        
+    } catch (error) {
+        console.error('Error checking join request:', error);
+        showToast('Failed to load request details.', 'error');
+    }
+};
+
+// Execute the actual rejection after modal confirmation
+async function executeRejectJoinRequest(userId) {
     try {
         const { doc, getDoc, updateDoc, deleteField } = 
             await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
@@ -12962,14 +13094,16 @@ window.rejectJoinRequest = async function(userId) {
             description: `rejected join request from ${request?.name || 'a user'}`
         });
         
-        // Close and reopen modal to refresh
+        // Close modals
+        closeRejectJoinModal();
         closePendingRequestsModal();
-        alert('Join request rejected.');
+        showToast('Join request rejected.', 'info');
 
     } catch (error) {
         console.error('Error rejecting request:', error.code || error.message);
         debugError('Full error:', error);
-        alert('Failed to reject request. Please try again.');
+        closeRejectJoinModal();
+        showToast('Failed to reject request. Please try again.', 'error');
     }
 }
 
@@ -13983,10 +14117,10 @@ function openAddTaskModal() {
     }
     
     // Set modal title for create mode
-    const modalHeader = document.querySelector('#taskModal .modal-header h2');
-    const submitBtn = document.querySelector('#taskModal .btn-primary');
-    if (modalHeader) modalHeader.textContent = 'Create New Task';
-    if (submitBtn) submitBtn.textContent = 'Create Task';
+    const modalHeader = document.querySelector('#taskModal .unified-modal-title h2');
+    const submitBtn = document.querySelector('#taskModal .unified-btn-primary');
+    if (modalHeader) modalHeader.innerHTML = '<i class="fas fa-plus-circle"></i> New Task';
+    if (submitBtn) submitBtn.innerHTML = '<i class="fas fa-check"></i> Create Task';
     
     // Set default due date to today
     const dueDateInput = document.getElementById('taskDueDate');

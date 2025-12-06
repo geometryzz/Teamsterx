@@ -16866,6 +16866,38 @@ body.dark-mode .unified-confirm-content p {
     color: rgba(255, 255, 255, 0.5);
 }
 
+/* Confirm text utilities */
+.unified-confirm-text {
+    font-size: 13px;
+    color: rgba(0, 0, 0, 0.5);
+    margin: 0;
+    line-height: 1.4;
+}
+
+body.dark-mode .unified-confirm-text {
+    color: rgba(255, 255, 255, 0.5);
+}
+
+.unified-confirm-text.mt-sm {
+    margin-top: 8px;
+}
+
+.unified-confirm-text.danger {
+    font-weight: 600;
+    color: #ff3b30;
+}
+
+.unified-confirm-title {
+    font-size: 15px;
+    font-weight: 500;
+    color: #000000;
+    margin: 0 0 4px 0;
+}
+
+body.dark-mode .unified-confirm-title {
+    color: #ffffff;
+}
+
 /* Warning Box */
 .unified-warning-box {
     display: flex;

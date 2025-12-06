@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Teamster - Internal Collaboration Platform</title>
-    <link rel="stylesheet" href="styles.css?v=18">
+    <link rel="stylesheet" href="styles.css?v=21">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
 </head>
 <body>
@@ -1117,7 +1117,7 @@
                         <p class="unified-confirm-text">
                             You will be signed out from all devices and browsers where you're currently logged in, including this one.
                         </p>
-                        <p class="unified-confirm-text" style="margin-top: 8px;">
+                        <p class="unified-confirm-text mt-sm">
                             You'll need to sign in again on each device you want to use.
                         </p>
                     </div>
@@ -1149,11 +1149,11 @@
                         <i class="fas fa-exclamation-triangle"></i>
                     </div>
                     <div class="unified-confirm-content">
-                        <p class="unified-confirm-title" style="color: #ff3b30;">⚠️ PERMANENT ACTION</p>
+                        <p class="unified-confirm-title danger">⚠️ PERMANENT ACTION</p>
                         <p class="unified-confirm-text">
                             This will permanently delete all team messages.
                         </p>
-                        <p class="unified-confirm-text" style="font-weight: 600; color: #ff3b30; margin-top: 8px;">
+                        <p class="unified-confirm-text danger mt-sm">
                             This action cannot be undone.
                         </p>
                     </div>
@@ -1263,7 +1263,7 @@
                         <p class="unified-confirm-text">
                             This will immediately remove them from the team and revoke all access.
                         </p>
-                        <p class="unified-confirm-text" style="font-weight: 600; color: #ff3b30; margin-top: 8px;">
+                        <p class="unified-confirm-text danger mt-sm">
                             This action cannot be undone.
                         </p>
                     </div>
@@ -1273,6 +1273,74 @@
                 <button class="unified-btn unified-btn-secondary" onclick="closeKickModal()">Cancel</button>
                 <button class="unified-btn unified-btn-danger" id="confirmKick">
                     <i class="fas fa-user-times"></i> Kick Member
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for Approving Join Request - Unified Style -->
+    <div class="unified-modal" id="approveJoinModal">
+        <div class="unified-modal-container modal-sm">
+            <div class="unified-modal-header">
+                <div class="unified-modal-title">
+                    <h2>Approve Join Request</h2>
+                </div>
+                <button class="unified-modal-close" onclick="closeApproveJoinModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="unified-modal-body">
+                <div class="unified-confirm-box info">
+                    <div class="unified-confirm-icon">
+                        <i class="fas fa-user-plus"></i>
+                    </div>
+                    <div class="unified-confirm-content">
+                        <p class="unified-confirm-title">Add <strong id="approveJoinName"></strong> to your team?</p>
+                        <p class="unified-confirm-text" id="approveJoinEmail"></p>
+                        <p class="unified-confirm-text mt-sm">
+                            They will be added as a regular team member with standard permissions.
+                        </p>
+                    </div>
+                </div>
+            </div>
+            <div class="unified-modal-footer">
+                <button class="unified-btn unified-btn-secondary" onclick="closeApproveJoinModal()">Cancel</button>
+                <button class="unified-btn unified-btn-primary" id="confirmApproveJoin">
+                    <i class="fas fa-check"></i> Approve
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal for Rejecting Join Request - Unified Style -->
+    <div class="unified-modal" id="rejectJoinModal">
+        <div class="unified-modal-container modal-sm">
+            <div class="unified-modal-header">
+                <div class="unified-modal-title">
+                    <h2>Reject Join Request</h2>
+                </div>
+                <button class="unified-modal-close" onclick="closeRejectJoinModal()">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="unified-modal-body">
+                <div class="unified-confirm-box warning">
+                    <div class="unified-confirm-icon">
+                        <i class="fas fa-user-xmark"></i>
+                    </div>
+                    <div class="unified-confirm-content">
+                        <p class="unified-confirm-title">Reject <strong id="rejectJoinName"></strong>'s request?</p>
+                        <p class="unified-confirm-text" id="rejectJoinEmail"></p>
+                        <p class="unified-confirm-text mt-sm">
+                            They will not be notified and can request to join again later.
+                        </p>
+                    </div>
+                </div>
+            </div>
+            <div class="unified-modal-footer">
+                <button class="unified-btn unified-btn-secondary" onclick="closeRejectJoinModal()">Cancel</button>
+                <button class="unified-btn unified-btn-danger" id="confirmRejectJoin">
+                    <i class="fas fa-times"></i> Reject
                 </button>
             </div>
         </div>
@@ -1382,20 +1450,20 @@
     </div>
 
     <!-- Modal for Event Details -->
-    <div class="modal" id="eventDetailsModal">
-        <div class="modal-content modal-content-wide">
-            <div class="modal-header">
+    <div class="unified-modal" id="eventDetailsModal">
+        <div class="unified-modal-container">
+            <div class="unified-modal-header">
                 <h2 id="eventDetailsTitle">Event Details</h2>
-                <div class="modal-header-actions">
+                <div class="unified-modal-header-actions">
                     <button class="btn-edit-grey" id="editEventBtnHeader" style="display: none;">
                         <i class="fas fa-pen"></i> Edit
                     </button>
-                    <button class="modal-close" id="closeEventDetailsModal">
+                    <button type="button" class="unified-modal-close" id="closeEventDetailsModal">
                         <i class="fas fa-times"></i>
                     </button>
                 </div>
             </div>
-            <div class="modal-body" style="padding: var(--spacing-xl);">
+            <div class="unified-modal-body">
                 <div class="event-details-layout">
                     <div class="event-details-main">
                         <div class="event-detail-row">
@@ -1449,13 +1517,12 @@
                         <div class="event-description-box" id="detailDescription"></div>
                     </div>
                 </div>
-                <div class="modal-actions" id="eventDetailsActions" style="margin-top: var(--spacing-lg); display: none;">
-                    <button type="button" class="btn-danger" id="deleteEventBtn">
-                        <i class="fas fa-trash"></i> Delete Event
-                    </button>
-                </div>
-                    </button>
-                </div>
+            </div>
+            <div class="unified-modal-footer" id="eventDetailsActions" style="display: none;">
+                <button type="button" class="unified-btn unified-btn-danger" id="deleteEventBtn">
+                    <i class="fas fa-trash"></i> Delete Event
+                </button>
+                <button type="button" class="unified-btn unified-btn-secondary" onclick="closeModal('eventDetailsModal')">Close</button>
             </div>
         </div>
     </div>
@@ -1910,223 +1977,225 @@
         </div>
     </div>
 
-    <!-- Create Custom Column Modal -->
-    <div class="modal" id="customColumnModal">
-        <div class="modal-content custom-column-modal">
-            <div class="modal-header">
-                <h2><i class="fas fa-columns"></i> Create Column</h2>
-                <button class="modal-close" id="closeCustomColumnModal">
+    <!-- Create Custom Column Modal - Unified Style -->
+    <div class="unified-modal" id="customColumnModal">
+        <div class="unified-modal-container">
+            <div class="unified-modal-header">
+                <div class="unified-modal-title">
+                    <h2>Create Column</h2>
+                </div>
+                <button class="unified-modal-close" id="closeCustomColumnModal">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
-            <div class="custom-column-form">
+            <div class="unified-modal-body">
                 <!-- Column Name -->
-                <div class="form-group">
-                    <label>Column Name</label>
-                    <input type="text" id="customColumnName" placeholder="e.g. Status, Difficulty, Client" maxlength="30">
-                    <span class="field-error" id="columnNameError"></span>
-                </div>
-
-                <!-- Input Type Selector -->
-                <div class="form-group">
-                    <label>Input Type</label>
-                    <div class="input-type-selector" id="inputTypeSelector">
-                        <button type="button" class="type-option active" data-type="dropdown">
-                            <i class="fas fa-caret-square-down"></i>
-                            <span>Dropdown</span>
-                        </button>
-                        <button type="button" class="type-option" data-type="slider">
-                            <i class="fas fa-sliders-h"></i>
-                            <span>Slider</span>
-                        </button>
-                        <button type="button" class="type-option" data-type="number">
-                            <i class="fas fa-hashtag"></i>
-                            <span>Number</span>
-                        </button>
-                        <button type="button" class="type-option" data-type="text">
-                            <i class="fas fa-font"></i>
-                            <span>Text</span>
-                        </button>
-                        <button type="button" class="type-option" data-type="link">
-                            <i class="fas fa-link"></i>
-                            <span>Link</span>
-                        </button>
+                <div class="unified-form-grid single-col">
+                    <div class="unified-form-field">
+                        <label class="unified-form-label">Column Name <span class="required">*</span></label>
+                        <input type="text" class="unified-input" id="customColumnName" placeholder="e.g. Status, Difficulty, Client" maxlength="30">
+                        <span class="field-error" id="columnNameError"></span>
                     </div>
-                </div>
 
-                <!-- Dropdown Options (only visible when type = dropdown) -->
-                <div class="form-group dropdown-options-group" id="dropdownOptionsGroup">
-                    <label>Dropdown Options</label>
-                    <div class="dropdown-options-list" id="dropdownOptionsList">
-                        <div class="dropdown-option-item">
-                            <input type="text" class="dropdown-option-input" placeholder="Option 1" maxlength="25">
-                            <div class="option-color-picker">
-                                <button type="button" class="color-swatch active" data-color="#9CA3AF" style="background: #9CA3AF" title="Grey"></button>
-                                <button type="button" class="color-swatch" data-color="#3B82F6" style="background: #3B82F6" title="Blue"></button>
-                                <button type="button" class="color-swatch" data-color="#22C55E" style="background: #22C55E" title="Green"></button>
-                                <button type="button" class="color-swatch" data-color="#EAB308" style="background: #EAB308" title="Yellow"></button>
-                                <button type="button" class="color-swatch" data-color="#F97316" style="background: #F97316" title="Orange"></button>
-                                <button type="button" class="color-swatch" data-color="#EF4444" style="background: #EF4444" title="Red"></button>
-                                <button type="button" class="color-swatch" data-color="#A855F7" style="background: #A855F7" title="Purple"></button>
-                            </div>
-                            <button type="button" class="remove-option-btn" title="Remove">
-                                <i class="fas fa-times"></i>
+                    <!-- Input Type Selector -->
+                    <div class="unified-form-field">
+                        <label class="unified-form-label">Input Type</label>
+                        <div class="unified-segmented" id="inputTypeSelector">
+                            <button type="button" class="unified-segmented-option active" data-type="dropdown">
+                                <i class="fas fa-caret-square-down"></i>
+                                <span>Dropdown</span>
                             </button>
-                        </div>
-                        <div class="dropdown-option-item">
-                            <input type="text" class="dropdown-option-input" placeholder="Option 2" maxlength="25">
-                            <div class="option-color-picker">
-                                <button type="button" class="color-swatch active" data-color="#9CA3AF" style="background: #9CA3AF" title="Grey"></button>
-                                <button type="button" class="color-swatch" data-color="#3B82F6" style="background: #3B82F6" title="Blue"></button>
-                                <button type="button" class="color-swatch" data-color="#22C55E" style="background: #22C55E" title="Green"></button>
-                                <button type="button" class="color-swatch" data-color="#EAB308" style="background: #EAB308" title="Yellow"></button>
-                                <button type="button" class="color-swatch" data-color="#F97316" style="background: #F97316" title="Orange"></button>
-                                <button type="button" class="color-swatch" data-color="#EF4444" style="background: #EF4444" title="Red"></button>
-                                <button type="button" class="color-swatch" data-color="#A855F7" style="background: #A855F7" title="Purple"></button>
-                            </div>
-                            <button type="button" class="remove-option-btn" title="Remove">
-                                <i class="fas fa-times"></i>
+                            <button type="button" class="unified-segmented-option" data-type="slider">
+                                <i class="fas fa-sliders-h"></i>
+                                <span>Slider</span>
+                            </button>
+                            <button type="button" class="unified-segmented-option" data-type="number">
+                                <i class="fas fa-hashtag"></i>
+                                <span>Number</span>
+                            </button>
+                            <button type="button" class="unified-segmented-option" data-type="text">
+                                <i class="fas fa-font"></i>
+                                <span>Text</span>
+                            </button>
+                            <button type="button" class="unified-segmented-option" data-type="link">
+                                <i class="fas fa-link"></i>
+                                <span>Link</span>
                             </button>
                         </div>
                     </div>
-                    <button type="button" class="add-option-btn" id="addDropdownOption">
-                        <i class="fas fa-plus"></i> Add option
-                    </button>
-                </div>
 
-                <!-- Slider Config (only visible when type = slider) -->
-                <div class="form-group slider-config-group" id="sliderConfigGroup" style="display: none;">
-                    <label>Slider Range</label>
-                    <div class="slider-range-inputs">
-                        <div class="range-input">
-                            <span>Min</span>
-                            <input type="number" id="sliderMin" value="0" min="0" max="999">
-                        </div>
-                        <div class="range-input">
-                            <span>Max</span>
-                            <input type="number" id="sliderMax" value="100" min="1" max="1000">
-                        </div>
-                    </div>
-                    
-                    <!-- Slider Color Ranges -->
-                    <label style="margin-top: 16px;">Color Ranges</label>
-                    <div class="slider-color-ranges" id="sliderColorRanges">
-                        <div class="color-range-item">
-                            <input type="number" class="range-min-input" value="0" min="0" placeholder="Min">
-                            <span class="range-separator">–</span>
-                            <input type="number" class="range-max-input" value="33" placeholder="Max">
-                            <div class="range-color-picker">
-                                <button type="button" class="color-swatch active" data-color="#9CA3AF" style="background: #9CA3AF" title="Grey"></button>
-                                <button type="button" class="color-swatch" data-color="#3B82F6" style="background: #3B82F6" title="Blue"></button>
-                                <button type="button" class="color-swatch" data-color="#22C55E" style="background: #22C55E" title="Green"></button>
-                                <button type="button" class="color-swatch" data-color="#EAB308" style="background: #EAB308" title="Yellow"></button>
-                                <button type="button" class="color-swatch" data-color="#F97316" style="background: #F97316" title="Orange"></button>
-                                <button type="button" class="color-swatch" data-color="#EF4444" style="background: #EF4444" title="Red"></button>
-                                <button type="button" class="color-swatch" data-color="#A855F7" style="background: #A855F7" title="Purple"></button>
+                    <!-- Dropdown Options (only visible when type = dropdown) -->
+                    <div class="unified-form-field dropdown-options-group" id="dropdownOptionsGroup">
+                        <label class="unified-form-label">Dropdown Options</label>
+                        <div class="dropdown-options-list" id="dropdownOptionsList">
+                            <div class="dropdown-option-item">
+                                <input type="text" class="unified-input dropdown-option-input" placeholder="Option 1" maxlength="25">
+                                <div class="option-color-picker">
+                                    <button type="button" class="color-swatch active" data-color="#9CA3AF" style="background: #9CA3AF" title="Grey"></button>
+                                    <button type="button" class="color-swatch" data-color="#3B82F6" style="background: #3B82F6" title="Blue"></button>
+                                    <button type="button" class="color-swatch" data-color="#22C55E" style="background: #22C55E" title="Green"></button>
+                                    <button type="button" class="color-swatch" data-color="#EAB308" style="background: #EAB308" title="Yellow"></button>
+                                    <button type="button" class="color-swatch" data-color="#F97316" style="background: #F97316" title="Orange"></button>
+                                    <button type="button" class="color-swatch" data-color="#EF4444" style="background: #EF4444" title="Red"></button>
+                                    <button type="button" class="color-swatch" data-color="#A855F7" style="background: #A855F7" title="Purple"></button>
+                                </div>
+                                <button type="button" class="remove-option-btn" title="Remove">
+                                    <i class="fas fa-times"></i>
+                                </button>
                             </div>
-                            <button type="button" class="remove-range-btn" title="Remove range">
-                                <i class="fas fa-times"></i>
-                            </button>
-                        </div>
-                        <div class="color-range-item">
-                            <input type="number" class="range-min-input" value="34" min="0" placeholder="Min">
-                            <span class="range-separator">–</span>
-                            <input type="number" class="range-max-input" value="66" placeholder="Max">
-                            <div class="range-color-picker">
-                                <button type="button" class="color-swatch" data-color="#9CA3AF" style="background: #9CA3AF" title="Grey"></button>
-                                <button type="button" class="color-swatch" data-color="#3B82F6" style="background: #3B82F6" title="Blue"></button>
-                                <button type="button" class="color-swatch" data-color="#22C55E" style="background: #22C55E" title="Green"></button>
-                                <button type="button" class="color-swatch active" data-color="#EAB308" style="background: #EAB308" title="Yellow"></button>
-                                <button type="button" class="color-swatch" data-color="#F97316" style="background: #F97316" title="Orange"></button>
-                                <button type="button" class="color-swatch" data-color="#EF4444" style="background: #EF4444" title="Red"></button>
-                                <button type="button" class="color-swatch" data-color="#A855F7" style="background: #A855F7" title="Purple"></button>
+                            <div class="dropdown-option-item">
+                                <input type="text" class="unified-input dropdown-option-input" placeholder="Option 2" maxlength="25">
+                                <div class="option-color-picker">
+                                    <button type="button" class="color-swatch active" data-color="#9CA3AF" style="background: #9CA3AF" title="Grey"></button>
+                                    <button type="button" class="color-swatch" data-color="#3B82F6" style="background: #3B82F6" title="Blue"></button>
+                                    <button type="button" class="color-swatch" data-color="#22C55E" style="background: #22C55E" title="Green"></button>
+                                    <button type="button" class="color-swatch" data-color="#EAB308" style="background: #EAB308" title="Yellow"></button>
+                                    <button type="button" class="color-swatch" data-color="#F97316" style="background: #F97316" title="Orange"></button>
+                                    <button type="button" class="color-swatch" data-color="#EF4444" style="background: #EF4444" title="Red"></button>
+                                    <button type="button" class="color-swatch" data-color="#A855F7" style="background: #A855F7" title="Purple"></button>
+                                </div>
+                                <button type="button" class="remove-option-btn" title="Remove">
+                                    <i class="fas fa-times"></i>
+                                </button>
                             </div>
-                            <button type="button" class="remove-range-btn" title="Remove range">
-                                <i class="fas fa-times"></i>
-                            </button>
                         </div>
-                        <div class="color-range-item">
-                            <input type="number" class="range-min-input" value="67" min="0" placeholder="Min">
-                            <span class="range-separator">–</span>
-                            <input type="number" class="range-max-input" value="100" placeholder="Max">
-                            <div class="range-color-picker">
-                                <button type="button" class="color-swatch" data-color="#9CA3AF" style="background: #9CA3AF" title="Grey"></button>
-                                <button type="button" class="color-swatch" data-color="#3B82F6" style="background: #3B82F6" title="Blue"></button>
-                                <button type="button" class="color-swatch active" data-color="#22C55E" style="background: #22C55E" title="Green"></button>
-                                <button type="button" class="color-swatch" data-color="#EAB308" style="background: #EAB308" title="Yellow"></button>
-                                <button type="button" class="color-swatch" data-color="#F97316" style="background: #F97316" title="Orange"></button>
-                                <button type="button" class="color-swatch" data-color="#EF4444" style="background: #EF4444" title="Red"></button>
-                                <button type="button" class="color-swatch" data-color="#A855F7" style="background: #A855F7" title="Purple"></button>
-                            </div>
-                            <button type="button" class="remove-range-btn" title="Remove range">
-                                <i class="fas fa-times"></i>
-                            </button>
-                        </div>
-                    </div>
-                    <button type="button" class="add-range-btn" id="addColorRange">
-                        <i class="fas fa-plus"></i> Add range
-                    </button>
-                </div>
-
-                <!-- Icon Selector -->
-                <div class="form-group">
-                    <label>Column Icon</label>
-                    <div class="icon-picker" id="iconPicker">
-                        <button type="button" class="icon-option active" data-icon="fa-tag" title="Tag">
-                            <i class="fas fa-tag"></i>
-                        </button>
-                        <button type="button" class="icon-option" data-icon="fa-flag" title="Flag">
-                            <i class="fas fa-flag"></i>
-                        </button>
-                        <button type="button" class="icon-option" data-icon="fa-star" title="Star">
-                            <i class="fas fa-star"></i>
-                        </button>
-                        <button type="button" class="icon-option" data-icon="fa-check-circle" title="Check">
-                            <i class="fas fa-check-circle"></i>
-                        </button>
-                        <button type="button" class="icon-option" data-icon="fa-clock" title="Clock">
-                            <i class="fas fa-clock"></i>
-                        </button>
-                        <button type="button" class="icon-option" data-icon="fa-bolt" title="Bolt">
-                            <i class="fas fa-bolt"></i>
-                        </button>
-                        <button type="button" class="icon-option" data-icon="fa-fire" title="Fire">
-                            <i class="fas fa-fire"></i>
-                        </button>
-                        <button type="button" class="icon-option" data-icon="fa-heart" title="Heart">
-                            <i class="fas fa-heart"></i>
-                        </button>
-                        <button type="button" class="icon-option" data-icon="fa-thumbs-up" title="Thumbs Up">
-                            <i class="fas fa-thumbs-up"></i>
-                        </button>
-                        <button type="button" class="icon-option" data-icon="fa-gem" title="Gem">
-                            <i class="fas fa-gem"></i>
-                        </button>
-                        <button type="button" class="icon-option" data-icon="fa-users" title="Users">
-                            <i class="fas fa-users"></i>
-                        </button>
-                        <button type="button" class="icon-option" data-icon="fa-briefcase" title="Briefcase">
-                            <i class="fas fa-briefcase"></i>
-                        </button>
-                        <button type="button" class="icon-option" data-icon="fa-chart-bar" title="Chart">
-                            <i class="fas fa-chart-bar"></i>
-                        </button>
-                        <button type="button" class="icon-option" data-icon="fa-link" title="Link">
-                            <i class="fas fa-link"></i>
-                        </button>
-                        <button type="button" class="icon-option" data-icon="fa-bookmark" title="Bookmark">
-                            <i class="fas fa-bookmark"></i>
+                        <button type="button" class="unified-btn unified-btn-secondary" id="addDropdownOption" style="margin-top: 8px;">
+                            <i class="fas fa-plus"></i> Add option
                         </button>
                     </div>
-                </div>
 
-                <!-- Actions -->
-                <div class="custom-column-actions">
-                    <button type="button" class="btn-secondary" id="cancelCustomColumn">Cancel</button>
-                    <button type="button" class="btn-primary" id="createCustomColumn">
-                        <i class="fas fa-plus"></i> Create
-                    </button>
+                    <!-- Slider Config (only visible when type = slider) -->
+                    <div class="unified-form-field slider-config-group" id="sliderConfigGroup" style="display: none;">
+                        <label class="unified-form-label">Slider Range</label>
+                        <div class="slider-range-inputs">
+                            <div class="range-input">
+                                <span>Min</span>
+                                <input type="number" class="unified-input" id="sliderMin" value="0" min="0" max="999">
+                            </div>
+                            <div class="range-input">
+                                <span>Max</span>
+                                <input type="number" class="unified-input" id="sliderMax" value="100" min="1" max="1000">
+                            </div>
+                        </div>
+                        
+                        <!-- Slider Color Ranges -->
+                        <label class="unified-form-label" style="margin-top: 16px;">Color Ranges</label>
+                        <div class="slider-color-ranges" id="sliderColorRanges">
+                            <div class="color-range-item">
+                                <input type="number" class="unified-input range-min-input" value="0" min="0" placeholder="Min">
+                                <span class="range-separator">–</span>
+                                <input type="number" class="unified-input range-max-input" value="33" placeholder="Max">
+                                <div class="range-color-picker">
+                                    <button type="button" class="color-swatch active" data-color="#9CA3AF" style="background: #9CA3AF" title="Grey"></button>
+                                    <button type="button" class="color-swatch" data-color="#3B82F6" style="background: #3B82F6" title="Blue"></button>
+                                    <button type="button" class="color-swatch" data-color="#22C55E" style="background: #22C55E" title="Green"></button>
+                                    <button type="button" class="color-swatch" data-color="#EAB308" style="background: #EAB308" title="Yellow"></button>
+                                    <button type="button" class="color-swatch" data-color="#F97316" style="background: #F97316" title="Orange"></button>
+                                    <button type="button" class="color-swatch" data-color="#EF4444" style="background: #EF4444" title="Red"></button>
+                                    <button type="button" class="color-swatch" data-color="#A855F7" style="background: #A855F7" title="Purple"></button>
+                                </div>
+                                <button type="button" class="remove-range-btn" title="Remove range">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                            <div class="color-range-item">
+                                <input type="number" class="unified-input range-min-input" value="34" min="0" placeholder="Min">
+                                <span class="range-separator">–</span>
+                                <input type="number" class="unified-input range-max-input" value="66" placeholder="Max">
+                                <div class="range-color-picker">
+                                    <button type="button" class="color-swatch" data-color="#9CA3AF" style="background: #9CA3AF" title="Grey"></button>
+                                    <button type="button" class="color-swatch" data-color="#3B82F6" style="background: #3B82F6" title="Blue"></button>
+                                    <button type="button" class="color-swatch" data-color="#22C55E" style="background: #22C55E" title="Green"></button>
+                                    <button type="button" class="color-swatch active" data-color="#EAB308" style="background: #EAB308" title="Yellow"></button>
+                                    <button type="button" class="color-swatch" data-color="#F97316" style="background: #F97316" title="Orange"></button>
+                                    <button type="button" class="color-swatch" data-color="#EF4444" style="background: #EF4444" title="Red"></button>
+                                    <button type="button" class="color-swatch" data-color="#A855F7" style="background: #A855F7" title="Purple"></button>
+                                </div>
+                                <button type="button" class="remove-range-btn" title="Remove range">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                            <div class="color-range-item">
+                                <input type="number" class="unified-input range-min-input" value="67" min="0" placeholder="Min">
+                                <span class="range-separator">–</span>
+                                <input type="number" class="unified-input range-max-input" value="100" placeholder="Max">
+                                <div class="range-color-picker">
+                                    <button type="button" class="color-swatch" data-color="#9CA3AF" style="background: #9CA3AF" title="Grey"></button>
+                                    <button type="button" class="color-swatch" data-color="#3B82F6" style="background: #3B82F6" title="Blue"></button>
+                                    <button type="button" class="color-swatch active" data-color="#22C55E" style="background: #22C55E" title="Green"></button>
+                                    <button type="button" class="color-swatch" data-color="#EAB308" style="background: #EAB308" title="Yellow"></button>
+                                    <button type="button" class="color-swatch" data-color="#F97316" style="background: #F97316" title="Orange"></button>
+                                    <button type="button" class="color-swatch" data-color="#EF4444" style="background: #EF4444" title="Red"></button>
+                                    <button type="button" class="color-swatch" data-color="#A855F7" style="background: #A855F7" title="Purple"></button>
+                                </div>
+                                <button type="button" class="remove-range-btn" title="Remove range">
+                                    <i class="fas fa-times"></i>
+                                </button>
+                            </div>
+                        </div>
+                        <button type="button" class="unified-btn unified-btn-secondary" id="addColorRange" style="margin-top: 8px;">
+                            <i class="fas fa-plus"></i> Add range
+                        </button>
+                    </div>
+
+                    <!-- Icon Selector -->
+                    <div class="unified-form-field">
+                        <label class="unified-form-label">Column Icon</label>
+                        <div class="unified-icon-grid" id="iconPicker">
+                            <button type="button" class="unified-icon-option selected" data-icon="fa-tag" title="Tag">
+                                <i class="fas fa-tag"></i>
+                            </button>
+                            <button type="button" class="unified-icon-option" data-icon="fa-flag" title="Flag">
+                                <i class="fas fa-flag"></i>
+                            </button>
+                            <button type="button" class="unified-icon-option" data-icon="fa-star" title="Star">
+                                <i class="fas fa-star"></i>
+                            </button>
+                            <button type="button" class="unified-icon-option" data-icon="fa-check-circle" title="Check">
+                                <i class="fas fa-check-circle"></i>
+                            </button>
+                            <button type="button" class="unified-icon-option" data-icon="fa-clock" title="Clock">
+                                <i class="fas fa-clock"></i>
+                            </button>
+                            <button type="button" class="unified-icon-option" data-icon="fa-bolt" title="Bolt">
+                                <i class="fas fa-bolt"></i>
+                            </button>
+                            <button type="button" class="unified-icon-option" data-icon="fa-fire" title="Fire">
+                                <i class="fas fa-fire"></i>
+                            </button>
+                            <button type="button" class="unified-icon-option" data-icon="fa-heart" title="Heart">
+                                <i class="fas fa-heart"></i>
+                            </button>
+                            <button type="button" class="unified-icon-option" data-icon="fa-thumbs-up" title="Thumbs Up">
+                                <i class="fas fa-thumbs-up"></i>
+                            </button>
+                            <button type="button" class="unified-icon-option" data-icon="fa-gem" title="Gem">
+                                <i class="fas fa-gem"></i>
+                            </button>
+                            <button type="button" class="unified-icon-option" data-icon="fa-users" title="Users">
+                                <i class="fas fa-users"></i>
+                            </button>
+                            <button type="button" class="unified-icon-option" data-icon="fa-briefcase" title="Briefcase">
+                                <i class="fas fa-briefcase"></i>
+                            </button>
+                            <button type="button" class="unified-icon-option" data-icon="fa-chart-bar" title="Chart">
+                                <i class="fas fa-chart-bar"></i>
+                            </button>
+                            <button type="button" class="unified-icon-option" data-icon="fa-link" title="Link">
+                                <i class="fas fa-link"></i>
+                            </button>
+                            <button type="button" class="unified-icon-option" data-icon="fa-bookmark" title="Bookmark">
+                                <i class="fas fa-bookmark"></i>
+                            </button>
+                        </div>
+                    </div>
                 </div>
+            </div>
+            <div class="unified-modal-footer">
+                <button type="button" class="unified-btn unified-btn-secondary" id="cancelCustomColumn">Cancel</button>
+                <button type="button" class="unified-btn unified-btn-primary" id="createCustomColumn">
+                    <i class="fas fa-plus"></i> Create Column
+                </button>
             </div>
         </div>
     </div>
@@ -2273,6 +2342,6 @@
     <div id="toastContainer"></div>
 
     <!-- Main JavaScript -->
-    <script src="main.js?v=18"></script>
+    <script src="main.js?v=22"></script>
 </body>
 </html>
