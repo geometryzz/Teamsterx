@@ -20448,11 +20448,16 @@ function renderFinances() {
 
 /**
  * Render a single transaction row with expandable details
+ * Collapsed view: Amount (left) | From → To (middle) | Short date (right)
+ * Expanded view: Full details including notes, created-by, timestamps
  */
 function renderTransactionRow(transaction, canEdit = true) {
     const t = transaction;
     const transactionDate = t.date?.toDate?.() || new Date(t.date);
-    const dateStr = transactionDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    // Short date format: Dec 13
+    const shortDateStr = transactionDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    // Full date for expanded view
+    const fullDateStr = transactionDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
     const isIncome = t.type === 'income';
     
     // Get creator name from team members
@@ -20469,17 +20474,28 @@ function renderTransactionRow(transaction, canEdit = true) {
         ? createdAtDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
         : '';
     
+    // Build from/to display for collapsed view
+    // For income: party is "from" (customer paying)
+    // For expense: party is "to" (vendor being paid)
+    const fromToDisplay = t.party 
+        ? (isIncome ? `from ${escapeHtml(t.party)}` : `to ${escapeHtml(t.party)}`)
+        : escapeHtml(t.description);
+    
     return `
         <div class="transaction-row" data-id="${t.id}">
             <div class="transaction-row-main">
-                <div class="transaction-row-left">
-                    <span class="transaction-date">${dateStr}</span>
-                    <span class="transaction-description">${escapeHtml(t.description)}</span>
-                    ${t.party ? `<span class="transaction-party">${escapeHtml(t.party)}</span>` : ''}
-                </div>
-                <div class="transaction-row-right">
+                <div class="transaction-col-amount">
                     <span class="transaction-amount ${t.type}">${isIncome ? '+' : '-'}${formatCurrency(t.amount)}</span>
-                    ${t.isRecurring ? `<span class="transaction-recurring-badge" title="Recurring ${t.frequency}"><i class="fas fa-sync-alt"></i></span>` : ''}
+                    ${t.isRecurring ? `<span class="transaction-recurring-indicator" title="Recurring ${t.frequency}"><i class="fas fa-sync-alt"></i></span>` : ''}
+                </div>
+                <div class="transaction-col-from-to">
+                    <span class="transaction-from-to">${fromToDisplay}</span>
+                    ${t.party && t.description ? `<span class="transaction-desc-sub">${escapeHtml(t.description)}</span>` : ''}
+                </div>
+                <div class="transaction-col-date">
+                    <span class="transaction-date-short">${shortDateStr}</span>
+                </div>
+                <div class="transaction-col-actions">
                     ${canEdit ? `
                     <div class="transaction-actions">
                         <button class="transaction-action-btn edit" onclick="event.stopPropagation(); editTransaction('${t.id}')" title="Edit">
@@ -20495,6 +20511,10 @@ function renderTransactionRow(transaction, canEdit = true) {
             </div>
             <div class="transaction-row-details">
                 <div class="transaction-detail-grid">
+                    <div class="transaction-detail-item">
+                        <span class="detail-label">Date</span>
+                        <span class="detail-value">${fullDateStr}</span>
+                    </div>
                     ${t.description ? `
                     <div class="transaction-detail-item">
                         <span class="detail-label">Description</span>

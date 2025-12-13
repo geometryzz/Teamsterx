@@ -9,7 +9,7 @@
 }
 
 :root {
-    /* Colors matching TeamHub theme */
+    /* Colors matching Teamster theme */
     --primary-blue: #0078D4;
     --primary-dark: #005A9E;
     --primary-light: #50A0E8;
@@ -27,16 +27,59 @@
     --shadow-lg: 0 10px 15px rgba(0, 0, 0, 0.1);
     
     --font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+    --border-radius: 12px;
+    --card-border: 1px solid rgba(0, 0, 0, 0.08);
 }
 
 body {
     font-family: var(--font-family);
-    background: linear-gradient(135deg, var(--primary-blue) 0%, var(--primary-dark) 100%);
+    background: linear-gradient(to top, #004578 0%, #0078D4 50%, #50A0E8 100%);
     min-height: 100vh;
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 20px;
+    position: relative;
+    overflow: hidden;
+}
+
+/* SVG Wave Background */
+body::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 320' preserveAspectRatio='none'%3E%3Cpath fill='%23005A9E' fill-opacity='0.3' d='M0,96L48,112C96,128,192,160,288,176C384,192,480,192,576,181.3C672,171,768,149,864,154.7C960,160,1056,192,1152,197.3C1248,203,1344,181,1392,170.7L1440,160L1440,0L1392,0C1344,0,1248,0,1152,0C1056,0,960,0,864,0C768,0,672,0,576,0C480,0,384,0,288,0C192,0,96,0,48,0L0,0Z'%3E%3C/path%3E%3C/svg%3E");
+    background-size: 100% 40%;
+    background-position: top center;
+    background-repeat: no-repeat;
+    z-index: 0;
+    animation: waveMove 20s ease-in-out infinite;
+}
+
+body::after {
+    content: '';
+    position: absolute;
+    bottom: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 1440 320' preserveAspectRatio='none'%3E%3Cpath fill='%23003A5E' fill-opacity='0.4' d='M0,224L48,213.3C96,203,192,181,288,186.7C384,192,480,224,576,213.3C672,203,768,149,864,128C960,107,1056,117,1152,138.7C1248,160,1344,192,1392,208L1440,224L1440,320L1392,320C1344,320,1248,320,1152,320C1056,320,960,320,864,320C768,320,672,320,576,320C480,320,384,320,288,320C192,320,96,320,48,320L0,320Z'%3E%3C/path%3E%3C/svg%3E");
+    background-size: 100% 50%;
+    background-position: bottom center;
+    background-repeat: no-repeat;
+    z-index: 0;
+}
+
+@keyframes waveMove {
+    0%, 100% {
+        transform: translateX(0);
+    }
+    50% {
+        transform: translateX(20px);
+    }
 }
 
 /* ===================================
@@ -45,55 +88,222 @@ body {
 .auth-container {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    max-width: 1200px;
+    max-width: 1100px;
     width: 100%;
     background: var(--white);
-    border-radius: 16px;
+    border-radius: var(--border-radius);
     overflow: hidden;
-    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.3);
-    min-height: 600px;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
+    border: var(--card-border);
+    min-height: 580px;
+    position: relative;
+    z-index: 1;
 }
 
 /* ===================================
    LEFT SIDE - BRANDING
    =================================== */
 .auth-brand {
-    background: linear-gradient(135deg, var(--primary-blue) 0%, var(--primary-dark) 100%);
-    color: var(--white);
+    background: var(--white);
+    color: var(--dark-gray);
     padding: 60px 40px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-right: 1px solid rgba(0, 0, 0, 0.08);
+    position: relative;
+    overflow: hidden;
+}
+
+.brand-content {
+    max-width: 400px;
+    position: relative;
+    z-index: 1;
+    text-align: center;
+}
+
+/* Orbit Container */
+.orbit-container {
+    position: relative;
+    width: 280px;
+    height: 280px;
+    margin: 0 auto 40px;
     display: flex;
     align-items: center;
     justify-content: center;
 }
 
-.brand-content {
-    max-width: 400px;
+/* Center Logo - Large */
+.center-logo {
+    position: relative;
+    z-index: 10;
+    background: white;
+    border-radius: 50%;
+    width: 140px;
+    height: 140px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 8px 32px rgba(0, 0, 0, 0.2);
 }
 
+.brand-logo-img-large {
+    max-width: 100px;
+    max-height: 100px;
+    object-fit: contain;
+}
+
+.brand-logo-fallback-large {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.logo-t {
+    font-size: 5rem;
+    font-weight: 700;
+    color: var(--primary-blue);
+    font-family: var(--font-family);
+}
+
+/* Orbit Ring and Icons */
+.orbit-ring {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    /* No rotation on the ring itself */
+}
+
+.orbit-icon {
+    position: absolute;
+    width: 60px;
+    height: 60px;
+    background: rgba(255, 255, 255, 0.95);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 4px 16px rgba(0, 0, 0, 0.15);
+}
+
+.orbit-icon i {
+    font-size: 1.5rem;
+    color: var(--primary-blue);
+}
+
+/* Position each icon - they orbit but stay upright */
+.orbit-icon-1 {
+    top: 50%;
+    left: 50%;
+    margin: -30px 0 0 -30px;
+    animation: orbit1 30s linear infinite;
+}
+
+.orbit-icon-2 {
+    top: 50%;
+    left: 50%;
+    margin: -30px 0 0 -30px;
+    animation: orbit2 30s linear infinite;
+}
+
+.orbit-icon-3 {
+    top: 50%;
+    left: 50%;
+    margin: -30px 0 0 -30px;
+    animation: orbit3 30s linear infinite;
+}
+
+.orbit-icon-4 {
+    top: 50%;
+    left: 50%;
+    margin: -30px 0 0 -30px;
+    animation: orbit4 30s linear infinite;
+}
+
+/* Orbit animations - rotate position, counter-rotate icon to stay upright */
+@keyframes orbit1 {
+    from { transform: rotate(0deg) translateY(-140px) rotate(-0deg); }
+    to { transform: rotate(360deg) translateY(-140px) rotate(-360deg); }
+}
+
+@keyframes orbit2 {
+    from { transform: rotate(90deg) translateY(-140px) rotate(-90deg); }
+    to { transform: rotate(450deg) translateY(-140px) rotate(-450deg); }
+}
+
+@keyframes orbit3 {
+    from { transform: rotate(180deg) translateY(-140px) rotate(-180deg); }
+    to { transform: rotate(540deg) translateY(-140px) rotate(-540deg); }
+}
+
+@keyframes orbit4 {
+    from { transform: rotate(270deg) translateY(-140px) rotate(-270deg); }
+    to { transform: rotate(630deg) translateY(-140px) rotate(-630deg); }
+}
+
+/* Legacy logo styles for fallback */
 .logo {
     display: flex;
     align-items: center;
-    gap: 15px;
-    font-size: 2rem;
+    justify-content: flex-start;
+    gap: 12px;
+    font-size: 1.75rem;
     font-weight: 600;
-    margin-bottom: 30px;
+    margin-bottom: 28px;
+    padding: 12px;
+    background: var(--white);
+    border-radius: 8px;
 }
 
 .logo i {
-    font-size: 3rem;
+    font-size: 2.5rem;
+    color: var(--primary-blue);
+}
+
+/* Brand logo image styling */
+.brand-logo-img {
+    max-height: 48px;
+    width: auto;
+    object-fit: contain;
+    background: var(--white);
+    padding: 4px;
+    border-radius: 4px;
+}
+
+.brand-logo-fallback {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    color: var(--primary-blue);
+}
+
+.brand-logo-fallback i {
+    font-size: 2.5rem;
+    color: var(--primary-blue);
+}
+
+.brand-logo-fallback span {
+    font-size: 1.75rem;
+    font-weight: 600;
+    color: var(--dark-gray);
 }
 
 .auth-brand h1 {
-    font-size: 2rem;
-    margin-bottom: 20px;
+    font-size: 1.875rem;
+    margin-bottom: 16px;
     line-height: 1.3;
+    font-weight: 600;
+    color: var(--dark-gray);
 }
 
 .auth-brand p {
-    font-size: 1.1rem;
-    opacity: 0.9;
+    font-size: 1rem;
+    opacity: 0.7;
     line-height: 1.6;
-    margin-bottom: 40px;
+    margin-bottom: 36px;
+    color: var(--dark-gray);
 }
 
 .features {
@@ -107,18 +317,20 @@ body {
     align-items: center;
     gap: 10px;
     font-size: 0.95rem;
+    color: var(--dark-gray);
 }
 
 .feature-item i {
     font-size: 1.5rem;
-    opacity: 0.9;
+    color: var(--primary-blue);
+    opacity: 1;
 }
 
 /* ===================================
    RIGHT SIDE - FORMS
    =================================== */
 .auth-forms {
-    padding: 60px 40px;
+    padding: 48px 40px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -127,7 +339,44 @@ body {
 
 .form-container {
     width: 100%;
-    max-width: 400px;
+    max-width: 380px;
+}
+
+/* Mobile logo styling (shown when left panel hidden) */
+.auth-logo-mobile {
+    display: none;
+    justify-content: center;
+    margin-bottom: 24px;
+    padding: 12px;
+    background: var(--white);
+    border-radius: 8px;
+}
+
+.mobile-logo-img {
+    max-height: 40px;
+    width: auto;
+    object-fit: contain;
+    background: var(--white);
+    padding: 4px;
+    border-radius: 4px;
+}
+
+.mobile-logo-fallback {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: var(--primary-blue);
+    font-size: 1.5rem;
+    font-weight: 600;
+}
+
+.mobile-logo-fallback i {
+    font-size: 2rem;
+    color: var(--primary-blue);
+}
+
+.mobile-logo-fallback span {
+    color: var(--dark-gray);
 }
 
 .auth-form {
@@ -151,18 +400,19 @@ body {
 }
 
 .form-header {
-    margin-bottom: 30px;
+    margin-bottom: 28px;
 }
 
 .form-header h2 {
-    font-size: 1.8rem;
+    font-size: 1.625rem;
     color: var(--dark-gray);
-    margin-bottom: 10px;
+    margin-bottom: 6px;
+    font-weight: 600;
 }
 
 .form-header p {
     color: var(--gray);
-    font-size: 0.95rem;
+    font-size: 0.9rem;
 }
 
 /* ===================================
@@ -225,18 +475,23 @@ body {
 
 .form-group input {
     width: 100%;
-    padding: 12px 16px;
-    border: 2px solid #E1E1E1;
+    padding: 12px 14px;
+    border: 1px solid #E1E1E1;
     border-radius: 8px;
     font-size: 0.95rem;
     font-family: var(--font-family);
     transition: all 0.2s ease;
+    background: var(--white);
 }
 
 .form-group input:focus {
     outline: none;
     border-color: var(--primary-blue);
     box-shadow: 0 0 0 3px rgba(0, 120, 212, 0.1);
+}
+
+.form-group input::placeholder {
+    color: var(--gray);
 }
 
 .form-hint {
@@ -284,24 +539,24 @@ body {
    =================================== */
 .btn-primary {
     width: 100%;
-    background: linear-gradient(135deg, var(--primary-blue), var(--primary-dark));
+    background: var(--primary-blue);
     color: var(--white);
     border: none;
-    padding: 14px 24px;
+    padding: 12px 24px;
     border-radius: 8px;
-    font-size: 1rem;
+    font-size: 0.95rem;
     font-weight: 600;
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    gap: 10px;
+    gap: 8px;
     transition: all 0.2s ease;
 }
 
 .btn-primary:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 6px 20px rgba(0, 120, 212, 0.4);
+    background: var(--primary-dark);
+    transform: translateY(-1px);
 }
 
 .btn-primary:active {
@@ -312,10 +567,10 @@ body {
     width: 100%;
     background: var(--white);
     color: var(--dark-gray);
-    border: 2px solid #E1E1E1;
-    padding: 14px 24px;
+    border: 1px solid #E1E1E1;
+    padding: 12px 24px;
     border-radius: 8px;
-    font-size: 1rem;
+    font-size: 0.95rem;
     font-weight: 600;
     cursor: pointer;
     display: flex;
@@ -368,6 +623,11 @@ body {
     color: var(--gray);
 }
 
+.form-footer p {
+    margin-bottom: 12px;
+    font-size: 0.875rem;
+}
+
 .form-footer a {
     color: var(--primary-blue);
     text-decoration: none;
@@ -376,6 +636,85 @@ body {
 
 .form-footer a:hover {
     text-decoration: underline;
+}
+
+/* Footer links section */
+.form-footer-links {
+    margin-top: 16px;
+    padding-top: 16px;
+    border-top: 1px solid #E1E1E1;
+}
+
+/* Link button style for secondary actions like Google sign-in */
+.link-button {
+    background: none;
+    border: none;
+    color: var(--gray);
+    font-size: 0.875rem;
+    padding: 8px 12px;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    transition: all 0.2s ease;
+    font-family: var(--font-family);
+    border-radius: 6px;
+}
+
+.link-button:hover {
+    color: var(--primary-blue);
+    background: rgba(0, 120, 212, 0.05);
+}
+
+.link-button i {
+    font-size: 1rem;
+}
+
+/* Sign Up Button - more visible */
+.btn-signup-visible {
+    width: 100%;
+    background: transparent;
+    color: var(--primary-blue);
+    border: 2px solid var(--primary-blue);
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: all 0.2s ease;
+    margin-top: 12px;
+}
+
+.btn-signup-visible:hover {
+    background: var(--primary-blue);
+    color: var(--white);
+}
+
+.btn-signin-visible {
+    width: 100%;
+    background: transparent;
+    color: var(--gray);
+    border: 1px solid #E1E1E1;
+    padding: 12px 24px;
+    border-radius: 8px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 8px;
+    transition: all 0.2s ease;
+    margin-top: 12px;
+}
+
+.btn-signin-visible:hover {
+    background: var(--light-gray);
+    border-color: var(--gray);
 }
 
 .link {
@@ -529,6 +868,7 @@ body {
 @media (max-width: 968px) {
     .auth-container {
         grid-template-columns: 1fr;
+        max-width: 460px;
     }
 
     .auth-brand {
@@ -536,17 +876,83 @@ body {
     }
 
     .auth-forms {
-        padding: 40px 30px;
+        padding: 40px 32px;
+    }
+
+    .auth-logo-mobile {
+        display: flex;
+    }
+}
+
+@media (max-width: 1200px) {
+    .orbit-container {
+        width: 240px;
+        height: 240px;
+    }
+    
+    .center-logo {
+        width: 120px;
+        height: 120px;
+    }
+    
+    .brand-logo-img-large {
+        max-width: 80px;
+        max-height: 80px;
+    }
+    
+    .logo-t {
+        font-size: 4rem;
+    }
+    
+    .orbit-icon {
+        width: 50px;
+        height: 50px;
+    }
+    
+    .orbit-icon i {
+        font-size: 1.25rem;
+    }
+    
+    /* Adjust orbit radius for smaller screens */
+    .orbit-icon-1,
+    .orbit-icon-2,
+    .orbit-icon-3,
+    .orbit-icon-4 {
+        margin: -25px 0 0 -25px;
+    }
+    
+    @keyframes orbit1 {
+        from { transform: rotate(0deg) translateY(-120px) rotate(-0deg); }
+        to { transform: rotate(360deg) translateY(-120px) rotate(-360deg); }
+    }
+    
+    @keyframes orbit2 {
+        from { transform: rotate(90deg) translateY(-120px) rotate(-90deg); }
+        to { transform: rotate(450deg) translateY(-120px) rotate(-450deg); }
+    }
+    
+    @keyframes orbit3 {
+        from { transform: rotate(180deg) translateY(-120px) rotate(-180deg); }
+        to { transform: rotate(540deg) translateY(-120px) rotate(-540deg); }
+    }
+    
+    @keyframes orbit4 {
+        from { transform: rotate(270deg) translateY(-120px) rotate(-270deg); }
+        to { transform: rotate(630deg) translateY(-120px) rotate(-630deg); }
     }
 }
 
 @media (max-width: 480px) {
     body {
-        padding: 10px;
+        padding: 12px;
+    }
+
+    .auth-container {
+        border-radius: 10px;
     }
 
     .auth-forms {
-        padding: 30px 20px;
+        padding: 32px 24px;
     }
 
     .form-header h2 {
@@ -558,9 +964,21 @@ body {
     }
 
     .alert {
-        left: 10px;
-        right: 10px;
+        left: 12px;
+        right: 12px;
         max-width: none;
+    }
+
+    .form-group input {
+        padding: 14px 14px;
+        font-size: 16px; /* Prevents zoom on iOS */
+    }
+
+    .btn-primary,
+    .btn-google,
+    .btn-signup-visible,
+    .btn-signin-visible {
+        padding: 14px 24px;
     }
 }
 
@@ -569,6 +987,8 @@ body {
    =================================== */
 .btn-primary:focus,
 .btn-google:focus,
+.btn-signup-visible:focus,
+.btn-signin-visible:focus,
 input:focus {
     outline: 2px solid var(--primary-blue);
     outline-offset: 2px;
