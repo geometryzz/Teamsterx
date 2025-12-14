@@ -2541,9 +2541,11 @@ function renderWeekView(titleEl, daysEl) {
             return eventDate.toDateString() === date.toDateString();
         });
         
-        // Get tasks with due dates for this day
+        // Get tasks with due dates for this day (only if showOnCalendar is not false)
         const dayTasks = appState.tasks.filter(t => {
             if (!t.dueDate || t.status === 'done') return false;
+            // Default showOnCalendar to true for backward compatibility
+            if (t.showOnCalendar === false) return false;
             const taskDate = new Date(t.dueDate);
             return taskDate.toDateString() === date.toDateString();
         });
@@ -6161,6 +6163,12 @@ function initTasks() {
         
         document.getElementById('taskBudget').value = task.budget || '';
         document.getElementById('taskEstimatedTime').value = task.estimatedTime || '';
+        
+        // Set Show on Calendar toggle (default to true for backward compatibility)
+        const showOnCalendarCheckbox = document.getElementById('taskShowOnCalendar');
+        if (showOnCalendarCheckbox) {
+            showOnCalendarCheckbox.checked = task.showOnCalendar !== false;
+        }
         
         // Update progress bar (range slider + number input)
         const progressInput = document.getElementById('taskProgress');
@@ -12127,6 +12135,7 @@ function initModals() {
         const estimatedTimeInput = document.getElementById('taskEstimatedTime');
         const progressSlider = document.getElementById('taskProgress');
         const spreadsheetSelect = document.getElementById('taskSpreadsheet');
+        const showOnCalendarCheckbox = document.getElementById('taskShowOnCalendar');
         
         // Validate title - 20 word limit
         let taskTitle = document.getElementById('taskTitle').value.trim();
@@ -12149,6 +12158,7 @@ function initModals() {
             estimatedTime: estimatedTimeInput ? parseFloat(estimatedTimeInput.value) || null : null,
             progress: progressSlider ? parseInt(progressSlider.value) || 0 : 0,
             spreadsheetId: spreadsheetSelect ? spreadsheetSelect.value : 'default',
+            showOnCalendar: showOnCalendarCheckbox ? showOnCalendarCheckbox.checked : true,
             createdBy: currentAuthUser ? currentAuthUser.uid : null,
             createdAt: Date.now()
         };
@@ -15171,6 +15181,12 @@ function openAddTaskModal() {
         dueDateInput.value = new Date().toISOString().split('T')[0];
     }
     
+    // Reset show on calendar toggle to checked (default)
+    const showOnCalendarCheckbox = document.getElementById('taskShowOnCalendar');
+    if (showOnCalendarCheckbox) {
+        showOnCalendarCheckbox.checked = true;
+    }
+    
     // Open the modal
     openModal('taskModal');
 }
@@ -15729,6 +15745,9 @@ function initSettings() {
     
     // Initialize appearance settings (dark mode)
     initAppearanceForm();
+    
+    // Initialize accent color settings
+    initAccentColorPicker();
     
     // Initialize inline avatar upload button (UX Polish: moved from separate card)
     initInlineAvatarUpload();
@@ -16458,6 +16477,197 @@ async function saveDarkModePreference() {
         showToast('Error saving preferences. Please try again.', 'error', 5000, 'Save Failed');
     }
 }
+
+// ===================================
+// ACCENT COLOR SETTINGS
+// ===================================
+
+// Apply accent color theme
+function applyAccentColor(accentName, colorData) {
+    const isDark = document.body.classList.contains('dark-mode');
+    const root = document.documentElement;
+    
+    // Apply the appropriate colors based on light/dark mode
+    if (isDark) {
+        root.style.setProperty('--accent', colorData.dark);
+        root.style.setProperty('--accent-hover', colorData.darkHover);
+        root.style.setProperty('--accent-soft', colorData.darkSoft);
+    } else {
+        root.style.setProperty('--accent', colorData.color);
+        root.style.setProperty('--accent-hover', colorData.hover);
+        root.style.setProperty('--accent-soft', colorData.soft);
+    }
+    
+    // Also update the primary-blue alias for backward compatibility
+    root.style.setProperty('--primary-blue', isDark ? colorData.dark : colorData.color);
+    root.style.setProperty('--primary-dark', isDark ? colorData.darkHover : colorData.hover);
+}
+
+// Initialize accent color picker
+function initAccentColorPicker() {
+    const picker = document.getElementById('accentColorPicker');
+    if (!picker) return;
+    
+    // Load saved accent from localStorage first for instant load
+    const savedAccent = localStorage.getItem('accentColor') || 'blue';
+    
+    // Select the saved option and apply colors
+    picker.querySelectorAll('.accent-color-option').forEach(opt => {
+        opt.classList.remove('selected');
+        if (opt.dataset.accent === savedAccent) {
+            opt.classList.add('selected');
+            applyAccentColor(savedAccent, {
+                color: opt.dataset.color,
+                hover: opt.dataset.hover,
+                soft: opt.dataset.soft,
+                dark: opt.dataset.dark,
+                darkHover: opt.dataset.darkHover,
+                darkSoft: opt.dataset.darkSoft
+            });
+        }
+    });
+    
+    // Load from Firestore and override if set
+    loadAccentColorPreference().then(accentData => {
+        if (accentData && accentData.name) {
+            const option = picker.querySelector(`[data-accent="${accentData.name}"]`);
+            if (option) {
+                picker.querySelectorAll('.accent-color-option').forEach(opt => opt.classList.remove('selected'));
+                option.classList.add('selected');
+                applyAccentColor(accentData.name, accentData);
+                localStorage.setItem('accentColor', accentData.name);
+            }
+        }
+    });
+    
+    // Add click handlers for each color option
+    picker.querySelectorAll('.accent-color-option').forEach(option => {
+        option.addEventListener('click', async () => {
+            // Update selected state
+            picker.querySelectorAll('.accent-color-option').forEach(opt => opt.classList.remove('selected'));
+            option.classList.add('selected');
+            
+            // Get color data from data attributes
+            const accentName = option.dataset.accent;
+            const colorData = {
+                name: accentName,
+                color: option.dataset.color,
+                hover: option.dataset.hover,
+                soft: option.dataset.soft,
+                dark: option.dataset.dark,
+                darkHover: option.dataset.darkHover,
+                darkSoft: option.dataset.darkSoft
+            };
+            
+            // Apply instantly
+            applyAccentColor(accentName, colorData);
+            
+            // Save to localStorage for instant load next time
+            localStorage.setItem('accentColor', accentName);
+            
+            // Save to Firestore
+            await saveAccentColorPreference(colorData);
+            
+            showToast('Accent color updated', 'success');
+        });
+    });
+    
+    // Listen for dark mode changes to re-apply accent with correct dark/light variant
+    const darkModeObserver = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+            if (mutation.attributeName === 'class') {
+                const selectedOption = picker.querySelector('.accent-color-option.selected');
+                if (selectedOption) {
+                    applyAccentColor(selectedOption.dataset.accent, {
+                        color: selectedOption.dataset.color,
+                        hover: selectedOption.dataset.hover,
+                        soft: selectedOption.dataset.soft,
+                        dark: selectedOption.dataset.dark,
+                        darkHover: selectedOption.dataset.darkHover,
+                        darkSoft: selectedOption.dataset.darkSoft
+                    });
+                }
+            }
+        });
+    });
+    darkModeObserver.observe(document.body, { attributes: true });
+}
+
+// Load accent color preference from Firestore
+async function loadAccentColorPreference() {
+    if (!currentAuthUser || !db) {
+        return null;
+    }
+    
+    try {
+        const { doc, getDoc } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+        const userRef = doc(db, 'users', currentAuthUser.uid);
+        const userDoc = await getDoc(userRef);
+        
+        if (userDoc.exists()) {
+            return userDoc.data().preferences?.style?.accentColor || null;
+        }
+        
+        return null;
+    } catch (error) {
+        console.error('Error loading accent color preference:', error);
+        return null;
+    }
+}
+
+// Save accent color preference to Firestore
+async function saveAccentColorPreference(colorData) {
+    if (!currentAuthUser || !db) {
+        console.warn('Cannot save accent preference - not logged in');
+        return;
+    }
+    
+    try {
+        await updateUserPreferences({ 
+            style: { 
+                accentColor: colorData 
+            } 
+        });
+    } catch (error) {
+        console.error('Error saving accent color preference:', error);
+    }
+}
+
+// Apply accent color early (before page fully loads) from localStorage
+function applyAccentColorEarly() {
+    const savedAccent = localStorage.getItem('accentColor');
+    if (!savedAccent || savedAccent === 'blue') return; // Default blue, no need to change
+    
+    const accentPresets = {
+        blue: { color: '#0070F3', hover: '#0051CC', soft: 'rgba(0, 112, 243, 0.12)', dark: '#0A84FF', darkHover: '#0070F3', darkSoft: 'rgba(10, 132, 255, 0.15)' },
+        purple: { color: '#AF52DE', hover: '#9340C7', soft: 'rgba(175, 82, 222, 0.12)', dark: '#BF5AF2', darkHover: '#AF52DE', darkSoft: 'rgba(191, 90, 242, 0.15)' },
+        green: { color: '#34C759', hover: '#2DB04E', soft: 'rgba(52, 199, 89, 0.12)', dark: '#32D74B', darkHover: '#34C759', darkSoft: 'rgba(50, 215, 75, 0.15)' },
+        orange: { color: '#FF9500', hover: '#E68600', soft: 'rgba(255, 149, 0, 0.12)', dark: '#FF9F0A', darkHover: '#FF9500', darkSoft: 'rgba(255, 159, 10, 0.15)' },
+        pink: { color: '#FF2D55', hover: '#E6264D', soft: 'rgba(255, 45, 85, 0.12)', dark: '#FF375F', darkHover: '#FF2D55', darkSoft: 'rgba(255, 55, 95, 0.15)' },
+        teal: { color: '#00C7BE', hover: '#00ADA6', soft: 'rgba(0, 199, 190, 0.12)', dark: '#64D2FF', darkHover: '#00C7BE', darkSoft: 'rgba(100, 210, 255, 0.15)' }
+    };
+    
+    const preset = accentPresets[savedAccent];
+    if (preset) {
+        const isDark = localStorage.getItem('darkMode') === 'true';
+        const root = document.documentElement;
+        
+        if (isDark) {
+            root.style.setProperty('--accent', preset.dark);
+            root.style.setProperty('--accent-hover', preset.darkHover);
+            root.style.setProperty('--accent-soft', preset.darkSoft);
+        } else {
+            root.style.setProperty('--accent', preset.color);
+            root.style.setProperty('--accent-hover', preset.hover);
+            root.style.setProperty('--accent-soft', preset.soft);
+        }
+        root.style.setProperty('--primary-blue', isDark ? preset.dark : preset.color);
+        root.style.setProperty('--primary-dark', isDark ? preset.darkHover : preset.hover);
+    }
+}
+
+// Call early application
+applyAccentColorEarly();
 
 // ===================================
 // ANIMATION SETTINGS

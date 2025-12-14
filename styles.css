@@ -3111,9 +3111,9 @@ body.dark-mode .week-time-header {
 
 .week-time-slot {
     height: 48px;
-    padding: 4px 6px 0 6px;
-    border-bottom: 1px solid var(--border-light);
-    font-size: 9px;
+    padding: 8px 6px 0 6px;
+    border-bottom: 1px solid var(--border-medium);
+    font-size: 10px;
     color: var(--text-muted);
     text-align: right;
     font-weight: 500;
@@ -3123,20 +3123,20 @@ body.dark-mode .week-time-header {
 }
 
 body.dark-mode .week-time-slot {
-    border-bottom-color: var(--border-subtle);
+    border-bottom-color: var(--border-medium);
     color: var(--text-muted);
 }
 
 /* Day columns */
 .week-day-column {
-    border-right: 1px solid rgba(0, 0, 0, 0.08);
+    border-right: 1px solid rgba(0, 0, 0, 0.1);
     min-width: 85px;
     position: relative;
     background: var(--bg-surface);
 }
 
 body.dark-mode .week-day-column {
-    border-right-color: rgba(255, 255, 255, 0.08);
+    border-right-color: rgba(255, 255, 255, 0.1);
     background: var(--bg-body);
 }
 
@@ -3215,15 +3215,15 @@ body.dark-mode .week-day-header {
 /* Time cells - clean grid */
 .week-time-cell {
     height: 48px;
-    border-bottom: 1px solid var(--border-light);
-    border-right: 1px solid rgba(0, 0, 0, 0.04);
+    border-bottom: 1px solid var(--border-medium);
+    border-right: 1px solid rgba(0, 0, 0, 0.05);
     position: relative;
     transition: background-color 0.1s ease;
 }
 
 body.dark-mode .week-time-cell {
-    border-bottom-color: var(--border-subtle);
-    border-right-color: rgba(255, 255, 255, 0.06);
+    border-bottom-color: var(--border-medium);
+    border-right-color: rgba(255, 255, 255, 0.08);
 }
 
 .week-time-cell:hover {
@@ -19775,4 +19775,49 @@ body.dark-mode .toggle-slider {
     .placeholder-actions button {
         width: 100%;
     }
+}
+/* ===================================
+   ACCENT COLOR PICKER - Style Settings
+   =================================== */
+.accent-color-picker {
+    display: flex;
+    gap: 12px;
+    flex-wrap: wrap;
+    padding: 8px 0;
+}
+
+.accent-color-option {
+    width: 40px;
+    height: 40px;
+    border-radius: 50%;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    transition: all 0.15s ease;
+    background: transparent;
+    border: 2px solid transparent;
+}
+
+.accent-color-option:hover {
+    transform: scale(1.08);
+}
+
+.accent-color-option.selected {
+    border-color: var(--text-muted);
+}
+
+.accent-color-swatch {
+    width: 32px;
+    height: 32px;
+    border-radius: 50%;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.15);
+}
+
+body.dark-mode .accent-color-option.selected {
+    border-color: rgba(255, 255, 255, 0.4);
+}
+
+body.dark-mode .accent-color-swatch {
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.4);
 }
