@@ -2544,8 +2544,8 @@ function renderWeekView(titleEl, daysEl) {
         // Get tasks with due dates for this day (only if showOnCalendar is not false)
         const dayTasks = appState.tasks.filter(t => {
             if (!t.dueDate || t.status === 'done') return false;
-            // Default showOnCalendar to true for backward compatibility
-            if (t.showOnCalendar === false) return false;
+            // Show task unless explicitly set to false (undefined/null = show)
+            if (t.hasOwnProperty('showOnCalendar') && t.showOnCalendar === false) return false;
             const taskDate = new Date(t.dueDate);
             return taskDate.toDateString() === date.toDateString();
         });

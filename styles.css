@@ -8378,7 +8378,7 @@ body.dark-mode .dropdown-menu-option.active {
 
 /* Event Details Modal - Modern Card Design */
 .event-details-modal {
-    max-width: 480px;
+    max-width: 520px;
 }
 
 .event-header-colored {
@@ -8408,20 +8408,23 @@ body.dark-mode .dropdown-menu-option.active {
 }
 
 .event-header-text h2 {
-    font-size: 1.25rem;
+    font-size: 1.35rem;
     font-weight: 700;
     color: var(--text-main);
     margin: 0;
     line-height: 1.3;
-    white-space: nowrap;
     overflow: hidden;
     text-overflow: ellipsis;
+    display: -webkit-box;
+    -webkit-line-clamp: 2;
+    -webkit-box-orient: vertical;
 }
 
 .event-subtitle {
-    font-size: 0.85rem;
-    color: var(--text-secondary);
-    margin: 4px 0 0 0;
+    font-size: 0.875rem;
+    color: var(--text-muted);
+    margin: 6px 0 0 0;
+    font-weight: 500;
 }
 
 .btn-icon-subtle {
@@ -8457,18 +8460,19 @@ body.dark-mode .dropdown-menu-option.active {
 .event-info-grid {
     display: grid;
     grid-template-columns: 1fr 1fr;
-    gap: 12px;
-    margin-bottom: 20px;
+    gap: 10px;
+    margin-bottom: 24px;
 }
 
 .event-info-card {
     display: flex;
     align-items: center;
     gap: 12px;
-    padding: 14px 16px;
+    padding: 16px;
     background: var(--bg-body);
     border-radius: var(--radius-md);
-    transition: background var(--transition-fast);
+    transition: all var(--transition-fast);
+    border: 1px solid var(--border-subtle);
 }
 
 .event-info-card.full-width {
@@ -8476,27 +8480,29 @@ body.dark-mode .dropdown-menu-option.active {
 }
 
 .event-info-card:hover {
-    background: var(--light-gray);
+    border-color: var(--border-medium);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.04);
 }
 
 .event-info-icon {
-    width: 36px;
-    height: 36px;
+    width: 40px;
+    height: 40px;
     display: flex;
     align-items: center;
     justify-content: center;
-    background: linear-gradient(135deg, var(--accent-soft), rgba(0, 122, 255, 0.08));
-    border-radius: var(--radius-sm);
+    background: var(--accent-soft);
+    border-radius: var(--radius-md);
     color: var(--accent);
-    font-size: 14px;
+    font-size: 16px;
     flex-shrink: 0;
 }
 
 .event-info-data {
     display: flex;
     flex-direction: column;
-    gap: 2px;
+    gap: 4px;
     min-width: 0;
+    flex: 1;
 }
 
 .event-info-label {
@@ -8508,12 +8514,10 @@ body.dark-mode .dropdown-menu-option.active {
 }
 
 .event-info-value {
-    font-size: 0.9rem;
+    font-size: 0.95rem;
     color: var(--text-main);
     font-weight: 600;
-    white-space: nowrap;
-    overflow: hidden;
-    text-overflow: ellipsis;
+    line-height: 1.3;
 }
 
 .visibility-badge {
@@ -8540,35 +8544,37 @@ body.dark-mode .dropdown-menu-option.active {
 
 /* Description Section */
 .event-description-section {
-    border-top: 1px solid var(--border-light);
-    padding-top: 16px;
+    border-top: 1px solid var(--border-subtle);
+    padding-top: 20px;
+    margin-top: 4px;
 }
 
 .event-description-header {
     display: flex;
     align-items: center;
     gap: 8px;
-    font-size: 0.8rem;
+    font-size: 0.75rem;
     font-weight: 600;
     color: var(--text-muted);
     text-transform: uppercase;
     letter-spacing: 0.5px;
-    margin-bottom: 10px;
+    margin-bottom: 12px;
 }
 
 .event-description-header i {
-    font-size: 12px;
+    font-size: 13px;
 }
 
 .event-description-content {
-    padding: 16px;
+    padding: 18px;
     background: var(--bg-body);
     border-radius: var(--radius-md);
     color: var(--text-main);
     font-size: 0.95rem;
-    line-height: 1.6;
-    min-height: 60px;
+    line-height: 1.7;
+    min-height: 80px;
     white-space: pre-wrap;
+    border: 1px solid var(--border-subtle);
 }
 
 .event-description-content:empty::before {
@@ -8589,14 +8595,17 @@ body.dark-mode .dropdown-menu-option.active {
 /* Dark mode adjustments */
 body.dark-mode .event-info-card {
     background: var(--bg-body);
+    border-color: var(--border-subtle);
 }
 
 body.dark-mode .event-info-card:hover {
-    background: rgba(255, 255, 255, 0.05);
+    border-color: var(--border-medium);
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
 }
 
 body.dark-mode .event-description-content {
     background: var(--bg-body);
+    border-color: var(--border-subtle);
 }
 
 body.dark-mode .btn-icon-subtle {
