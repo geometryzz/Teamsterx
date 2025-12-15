@@ -3054,17 +3054,34 @@ body.dark-mode .event-item:hover {
 }
 
 /* ===================================
-   WEEK VIEW - Modern Apple-Style Planner
-   Clean grid, consistent event cards
+   WEEK VIEW - Modern Apple-Style Redesign
+   CSS Variables for consistent sizing
    =================================== */
+:root {
+    --week-header-h: 60px;
+    --week-allday-h: 40px;
+    --week-slot-h: 48px;
+    --week-time-col-w: 56px;
+}
+
+@media (max-width: 768px) {
+    :root {
+        --week-header-h: 52px;
+        --week-allday-h: 36px;
+        --week-slot-h: 44px;
+        --week-time-col-w: 48px;
+    }
+}
+
 .week-view {
     display: grid;
-    grid-template-columns: 52px repeat(7, 1fr);
-    border: 1px solid var(--border-subtle);
-    border-radius: 10px;
+    grid-template-columns: var(--week-time-col-w) repeat(7, 1fr);
+    border: 1px solid var(--border-medium);
+    border-radius: 12px;
     overflow: hidden;
     background: var(--bg-surface);
-    min-width: 680px;
+    min-width: 700px;
+    position: relative;
 }
 
 body.dark-mode .week-view {
@@ -3084,10 +3101,10 @@ body.dark-mode .week-view {
 /* Time column - Y axis */
 .week-time-column {
     background: var(--bg-surface);
-    border-right: 1px solid var(--border-light);
+    border-right: 1px solid var(--border-medium);
     position: sticky;
     left: 0;
-    z-index: 5;
+    z-index: 15;
 }
 
 body.dark-mode .week-time-column {
@@ -3096,13 +3113,37 @@ body.dark-mode .week-time-column {
 }
 
 .week-time-header {
-    height: 64px;
-    border-bottom: 1px solid var(--border-subtle);
+    height: var(--week-header-h);
+    border-bottom: 1px solid var(--border-medium);
     background: var(--bg-surface);
+    display: flex;
+    flex-direction: column;
 }
 
 body.dark-mode .week-time-header {
     background: var(--bg-body);
+    border-bottom-color: var(--border-subtle);
+}
+
+/* All-day row placeholder in time column */
+.week-time-allday {
+    height: var(--week-allday-h);
+    border-bottom: 1px solid var(--border-medium);
+    background: var(--bg-surface);
+    font-size: 9px;
+    color: var(--text-muted);
+    font-weight: 500;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 4px;
+    text-transform: uppercase;
+    letter-spacing: 0.3px;
+}
+
+body.dark-mode .week-time-allday {
+    background: var(--bg-body);
+    border-bottom-color: var(--border-subtle);
 }
 
 .week-time-header-label {
@@ -3110,33 +3151,34 @@ body.dark-mode .week-time-header {
 }
 
 .week-time-slot {
-    height: 48px;
-    padding: 8px 6px 0 6px;
-    border-bottom: 1px solid var(--border-medium);
-    font-size: 10px;
+    height: var(--week-slot-h);
+    padding: 4px 8px 0 0;
+    border-bottom: 1px solid var(--border-light);
+    font-size: 11px;
     color: var(--text-muted);
     text-align: right;
     font-weight: 500;
     display: flex;
     align-items: flex-start;
     justify-content: flex-end;
+    line-height: 1;
 }
 
 body.dark-mode .week-time-slot {
-    border-bottom-color: var(--border-medium);
+    border-bottom-color: var(--border-subtle);
     color: var(--text-muted);
 }
 
 /* Day columns */
 .week-day-column {
-    border-right: 1px solid rgba(0, 0, 0, 0.1);
-    min-width: 85px;
+    border-right: 1px solid var(--border-light);
+    min-width: 90px;
     position: relative;
     background: var(--bg-surface);
 }
 
 body.dark-mode .week-day-column {
-    border-right-color: rgba(255, 255, 255, 0.1);
+    border-right-color: var(--border-subtle);
     background: var(--bg-body);
 }
 
@@ -3146,7 +3188,7 @@ body.dark-mode .week-day-column {
 
 /* Today column - subtle highlight */
 .week-day-column.today-column {
-    background: rgba(0, 122, 255, 0.015);
+    background: rgba(0, 122, 255, 0.02);
 }
 
 body.dark-mode .week-day-column.today-column {
@@ -3159,19 +3201,19 @@ body.dark-mode .week-day-column.today-column {
 
 /* Day header - clean and consistent */
 .week-day-header {
-    height: 64px;
+    height: var(--week-header-h);
     padding: 8px 4px;
     text-align: center;
-    border-bottom: 1px solid var(--border-subtle);
+    border-bottom: 1px solid var(--border-medium);
     display: flex;
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    gap: 2px;
+    gap: 3px;
     background: var(--bg-surface);
     position: sticky;
     top: 0;
-    z-index: 4;
+    z-index: 12;
 }
 
 body.dark-mode .week-day-header {
@@ -3180,7 +3222,7 @@ body.dark-mode .week-day-header {
 }
 
 .week-day-name {
-    font-size: 10px;
+    font-size: 11px;
     color: var(--text-muted);
     font-weight: 600;
     text-transform: uppercase;
@@ -3192,12 +3234,12 @@ body.dark-mode .week-day-header {
 }
 
 .week-day-number {
-    font-size: 18px;
+    font-size: 20px;
     font-weight: 600;
     color: var(--text-main);
     line-height: 1;
-    width: 28px;
-    height: 28px;
+    width: 32px;
+    height: 32px;
     display: flex;
     align-items: center;
     justify-content: center;
@@ -3208,84 +3250,176 @@ body.dark-mode .week-day-header {
 .week-day-header.today .week-day-number {
     background: var(--accent);
     color: white;
-    font-size: 14px;
+    font-size: 16px;
+    font-weight: 700;
+}
+
+/* All-day / Tasks strip */
+.week-allday-strip {
+    height: var(--week-allday-h);
+    border-bottom: 1px solid var(--border-medium);
+    background: rgba(0, 0, 0, 0.01);
+    display: flex;
+    align-items: center;
+    padding: 4px 3px;
+    gap: 3px;
+    overflow: hidden;
+    position: relative;
+}
+
+body.dark-mode .week-allday-strip {
+    background: rgba(255, 255, 255, 0.015);
+    border-bottom-color: var(--border-subtle);
+}
+
+.week-allday-task {
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+    padding: 3px 8px;
+    background: rgba(255, 149, 0, 0.1);
+    border-left: 2px solid var(--warning);
+    border-radius: 4px;
+    font-size: 10px;
+    font-weight: 500;
+    color: var(--text-main);
+    cursor: pointer;
+    white-space: nowrap;
+    max-width: calc(100% - 8px);
+    overflow: hidden;
+    text-overflow: ellipsis;
+    transition: all 0.12s ease;
+    flex-shrink: 0;
+}
+
+.week-allday-task:hover {
+    background: rgba(255, 149, 0, 0.18);
+    transform: translateY(-1px);
+}
+
+body.dark-mode .week-allday-task {
+    background: rgba(255, 149, 0, 0.15);
+}
+
+body.dark-mode .week-allday-task:hover {
+    background: rgba(255, 149, 0, 0.22);
+}
+
+.week-allday-task i {
+    font-size: 8px;
+    color: var(--warning);
+    flex-shrink: 0;
+}
+
+.week-allday-overflow {
+    font-size: 9px;
     font-weight: 600;
+    color: var(--text-muted);
+    padding: 2px 6px;
+    background: var(--bg-tertiary);
+    border-radius: 8px;
+    cursor: pointer;
+    flex-shrink: 0;
 }
 
 /* Time cells - clean grid */
 .week-time-cell {
-    height: 48px;
-    border-bottom: 1px solid var(--border-medium);
-    border-right: 1px solid rgba(0, 0, 0, 0.05);
+    height: var(--week-slot-h);
+    border-bottom: 1px solid var(--border-light);
     position: relative;
     transition: background-color 0.1s ease;
 }
 
 body.dark-mode .week-time-cell {
-    border-bottom-color: var(--border-medium);
-    border-right-color: rgba(255, 255, 255, 0.08);
+    border-bottom-color: var(--border-subtle);
 }
 
 .week-time-cell:hover {
-    background: rgba(0, 122, 255, 0.02);
+    background: rgba(0, 122, 255, 0.03);
 }
 
 body.dark-mode .week-time-cell:hover {
-    background: rgba(255, 255, 255, 0.02);
+    background: rgba(255, 255, 255, 0.025);
 }
 
 .week-time-cell.current-hour {
-    background: rgba(0, 122, 255, 0.025);
+    background: rgba(0, 122, 255, 0.04);
 }
 
 body.dark-mode .week-time-cell.current-hour {
-    background: rgba(10, 132, 255, 0.06);
+    background: rgba(10, 132, 255, 0.08);
 }
 
-/* Remove the half-hour line for cleaner look */
-.week-time-cell::before {
-    display: none;
+/* Drag over highlight */
+.week-time-cell.drag-over {
+    background: rgba(0, 122, 255, 0.12) !important;
+    box-shadow: inset 0 0 0 2px var(--accent);
 }
 
 /* Current time indicator line */
 .week-current-time-indicator {
-    display: none;
+    position: absolute;
+    left: 0;
+    right: 0;
+    height: 2px;
+    background: #FF3B30;
+    z-index: 8;
+    pointer-events: none;
 }
 
 .week-current-time-indicator::before {
-    display: none;
+    content: '';
+    position: absolute;
+    left: -4px;
+    top: -3px;
+    width: 8px;
+    height: 8px;
+    background: #FF3B30;
+    border-radius: 50%;
+}
+
+body.dark-mode .week-current-time-indicator {
+    background: #FF453A;
+}
+
+body.dark-mode .week-current-time-indicator::before {
+    background: #FF453A;
 }
 
 /* ===================================
-   EVENT CARDS - Unified Modern Style
-   Consistent rounded cards with subtle shadow
+   EVENT CARDS - Premium Modern Style
    =================================== */
 .week-event-block {
     position: absolute;
-    left: 2px;
-    right: 2px;
     background: var(--bg-surface);
-    border: none;
+    border: 1px solid var(--border-subtle);
     border-left: 3px solid var(--accent);
     color: var(--text-main);
     padding: 4px 6px;
-    border-radius: 5px;
+    border-radius: 6px;
     font-size: 10px;
     cursor: pointer;
     z-index: 10;
     transition: all 0.12s ease;
     overflow: hidden;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.08);
+    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
 }
 
 .week-event-block:hover {
-    box-shadow: 0 3px 10px rgba(0, 0, 0, 0.12);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
     transform: translateY(-1px);
     z-index: 20;
+    border-color: var(--border-medium);
+}
+
+.week-event-block:focus {
+    outline: 2px solid var(--accent);
+    outline-offset: 1px;
 }
 
 body.dark-mode .week-event-block {
-    background: rgba(255, 255, 255, 0.08);
+    background: rgba(255, 255, 255, 0.06);
+    border-color: rgba(255, 255, 255, 0.08);
     box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
 }
 
@@ -3294,8 +3428,16 @@ body.dark-mode .week-event-block:hover {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
 }
 
+.week-event-block.dragging {
+    opacity: 0.75;
+    cursor: grabbing;
+    transform: scale(1.02);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.2);
+    z-index: 100;
+}
+
 .week-event-block.short-event {
-    padding: 2px 4px;
+    padding: 2px 5px;
 }
 
 .week-event-block.short-event .week-event-title {
@@ -3311,7 +3453,7 @@ body.dark-mode .week-event-block:hover {
 
 .week-event-title {
     font-weight: 600;
-    margin-bottom: 1px;
+    margin-bottom: 2px;
     overflow: hidden;
     text-overflow: ellipsis;
     display: -webkit-box;
@@ -3319,17 +3461,17 @@ body.dark-mode .week-event-block:hover {
     line-clamp: 2;
     -webkit-box-orient: vertical;
     color: var(--text-main);
-    font-size: 10px;
-    line-height: 1.25;
+    font-size: 11px;
+    line-height: 1.3;
 }
 
 .week-event-time {
-    font-size: 8px;
+    font-size: 9px;
     color: var(--text-muted);
     font-weight: 500;
     display: flex;
     align-items: center;
-    gap: 3px;
+    gap: 4px;
 }
 
 .week-event-time i {
@@ -3364,57 +3506,11 @@ body.dark-mode .week-event-block:hover {
 }
 
 /* ===================================
-   TASK BLOCKS - Distinct but Consistent
-   Same card style, different accent color
+   TASK BLOCKS - Removed from grid
+   Tasks now render in all-day strip only
    =================================== */
 .week-task-block {
-    position: absolute;
-    left: 2px;
-    right: 2px;
-    background: rgba(255, 149, 0, 0.08);
-    border: none;
-    border-left: 3px solid var(--warning);
-    color: var(--text-main);
-    padding: 4px 6px;
-    border-radius: 5px;
-    font-size: 10px;
-    cursor: pointer;
-    z-index: 10;
-    transition: all 0.12s ease;
-    overflow: hidden;
-    box-shadow: 0 1px 3px rgba(0, 0, 0, 0.06);
-}
-
-.week-task-block:hover {
-    background: rgba(255, 149, 0, 0.12);
-    box-shadow: 0 3px 10px rgba(255, 149, 0, 0.15);
-    transform: translateY(-1px);
-    z-index: 20;
-}
-
-body.dark-mode .week-task-block {
-    background: rgba(255, 149, 0, 0.12);
-    box-shadow: 0 1px 4px rgba(0, 0, 0, 0.2);
-}
-
-body.dark-mode .week-task-block:hover {
-    background: rgba(255, 149, 0, 0.18);
-    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.3);
-}
-
-.week-task-block .week-event-title {
-    display: flex;
-    align-items: center;
-    gap: 4px;
-}
-
-.week-task-block .week-event-title::before {
-    content: '\f00c';
-    font-family: 'Font Awesome 6 Free';
-    font-weight: 900;
-    font-size: 7px;
-    opacity: 0.8;
-    color: var(--warning);
+    display: none; /* Deprecated - use .week-allday-task instead */
 }
 
 /* Dragging state */
@@ -3428,12 +3524,17 @@ body.dark-mode .week-task-block:hover {
 }
 
 .week-day-column.drag-over {
-    background: rgba(0, 122, 255, 0.06) !important;
-    border-color: var(--accent) !important;
+    background: rgba(0, 122, 255, 0.08) !important;
 }
 
-.week-time-slot.drag-over {
-    background: rgba(0, 122, 255, 0.1) !important;
+.week-day-column.drag-over::after {
+    content: '';
+    position: absolute;
+    inset: 0;
+    border: 2px dashed var(--accent);
+    border-radius: 6px;
+    pointer-events: none;
+    z-index: 5;
 }
 
 /* ===================================
@@ -3508,17 +3609,21 @@ body.dark-mode .week-task-block:hover {
     
     /* Week view mobile */
     .week-view {
-        grid-template-columns: 42px repeat(7, 1fr);
-        min-width: 600px;
+        grid-template-columns: var(--week-time-col-w) repeat(7, 1fr);
+        min-width: 620px;
     }
     
     .week-time-slot {
+        font-size: 9px;
+        padding: 2px 4px 0 0;
+    }
+    
+    .week-time-allday {
         font-size: 8px;
-        padding: 0 4px;
     }
     
     .week-day-header {
-        height: 48px;
+        height: var(--week-header-h);
         padding: 6px 2px;
     }
     
@@ -3527,21 +3632,31 @@ body.dark-mode .week-task-block:hover {
     }
     
     .week-day-number {
-        font-size: 14px;
-        width: 24px;
-        height: 24px;
+        font-size: 16px;
+        width: 26px;
+        height: 26px;
     }
     
     .week-day-header.today .week-day-number {
-        font-size: 12px;
+        font-size: 13px;
     }
     
     .week-time-cell {
-        height: 40px;
+        height: var(--week-slot-h);
+    }
+    
+    .week-allday-strip {
+        height: var(--week-allday-h);
+        padding: 3px 2px;
+    }
+    
+    .week-allday-task {
+        font-size: 9px;
+        padding: 2px 6px;
     }
     
     .week-event-block {
-        padding: 2px 4px;
+        padding: 3px 4px;
         font-size: 9px;
     }
     
@@ -19935,40 +20050,63 @@ body.dark-mode .task-modal-progress-slider::-webkit-slider-thumb {
 }
 
 /* ===================================
-   DUE DATE COLOR CODING (Sheet Cells)
+   DUE DATE CHIPS (Sheet Cells)
    =================================== */
-.date-cell.due-today {
-    background: rgba(255, 59, 48, 0.15) !important;
-    color: #FF3B30 !important;
+.date-chip {
+    display: inline-flex;
+    align-items: center;
+    padding: 3px 10px;
+    border-radius: 12px;
+    font-size: 0.82rem;
     font-weight: 600;
-    border-radius: 4px;
+    white-space: nowrap;
+    transition: all 0.15s ease;
 }
 
-.date-cell.due-tomorrow {
-    background: rgba(255, 149, 0, 0.15) !important;
-    color: #FF9500 !important;
-    font-weight: 600;
-    border-radius: 4px;
+.date-chip-overdue {
+    background: rgba(255, 59, 48, 0.12);
+    color: #DC2626;
+    border: 1px solid rgba(255, 59, 48, 0.25);
 }
 
-.date-cell.due-soon {
-    background: rgba(255, 204, 0, 0.18) !important;
-    color: #B8860B !important;
-    font-weight: 600;
-    border-radius: 4px;
+.date-chip-today {
+    background: rgba(255, 59, 48, 0.12);
+    color: #FF3B30;
+    border: 1px solid rgba(255, 59, 48, 0.3);
 }
 
-body.dark-mode .date-cell.due-today {
-    background: rgba(255, 69, 58, 0.2) !important;
-    color: #FF453A !important;
+.date-chip-tomorrow {
+    background: rgba(255, 149, 0, 0.12);
+    color: #D97706;
+    border: 1px solid rgba(255, 149, 0, 0.3);
 }
 
-body.dark-mode .date-cell.due-tomorrow {
-    background: rgba(255, 159, 10, 0.2) !important;
-    color: #FF9F0A !important;
+.date-chip-soon {
+    background: rgba(255, 204, 0, 0.15);
+    color: #A16207;
+    border: 1px solid rgba(255, 204, 0, 0.35);
 }
 
-body.dark-mode .date-cell.due-soon {
-    background: rgba(255, 214, 10, 0.2) !important;
-    color: #FFD60A !important;
+body.dark-mode .date-chip-overdue {
+    background: rgba(255, 69, 58, 0.18);
+    color: #FF6B6B;
+    border-color: rgba(255, 69, 58, 0.35);
+}
+
+body.dark-mode .date-chip-today {
+    background: rgba(255, 69, 58, 0.18);
+    color: #FF6B6B;
+    border-color: rgba(255, 69, 58, 0.35);
+}
+
+body.dark-mode .date-chip-tomorrow {
+    background: rgba(255, 159, 10, 0.18);
+    color: #FFB347;
+    border-color: rgba(255, 159, 10, 0.35);
+}
+
+body.dark-mode .date-chip-soon {
+    background: rgba(255, 214, 10, 0.18);
+    color: #FFD93D;
+    border-color: rgba(255, 214, 10, 0.35);
 }

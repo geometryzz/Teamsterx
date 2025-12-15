@@ -2502,17 +2502,23 @@ function renderWeekView(titleEl, daysEl) {
     
     titleEl.textContent = `${startOfWeek.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })} - ${endOfWeek.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`;
     
-    // Constants for positioning
-    const HEADER_HEIGHT = 64;
-    const SLOT_HEIGHT = 48;
+    // Read CSS variables for positioning (single source of truth)
+    const styles = getComputedStyle(document.documentElement);
+    const HEADER_HEIGHT = parseInt(styles.getPropertyValue('--week-header-h')) || 60;
+    const ALLDAY_HEIGHT = parseInt(styles.getPropertyValue('--week-allday-h')) || 40;
+    const SLOT_HEIGHT = parseInt(styles.getPropertyValue('--week-slot-h')) || 48;
     const START_HOUR = 8;
     const END_HOUR = 18;
     
+    // Total offset = header + all-day strip
+    const GRID_START = HEADER_HEIGHT + ALLDAY_HEIGHT;
+    
     let html = '<div class="week-view">';
     
-    // Time column with header
+    // Time column with header and all-day label
     html += '<div class="week-time-column">';
     html += '<div class="week-time-header"></div>';
+    html += '<div class="week-time-allday">Tasks</div>';
     for (let hour = START_HOUR; hour <= END_HOUR; hour++) {
         const hourFormatted = hour === 12 ? '12 PM' : hour > 12 ? `${hour - 12} PM` : `${hour} AM`;
         html += `<div class="week-time-slot">${hourFormatted}</div>`;
@@ -2530,24 +2536,43 @@ function renderWeekView(titleEl, daysEl) {
         const isToday = date.toDateString() === today.toDateString();
         
         html += `<div class="week-day-column ${isToday ? 'today-column' : ''}" data-date="${date.toISOString()}" style="position: relative;">`;
+        
+        // Day header
         html += `<div class="week-day-header ${isToday ? 'today' : ''}">
             <div class="week-day-name">${date.toLocaleDateString('en-US', { weekday: 'short' })}</div>
             <div class="week-day-number">${date.getDate()}</div>
         </div>`;
         
+        // Get tasks with due dates for this day (only if showOnCalendar is not false)
+        const dayTasks = appState.tasks.filter(t => {
+            if (!t.dueDate || t.status === 'done') return false;
+            if (t.hasOwnProperty('showOnCalendar') && t.showOnCalendar === false) return false;
+            const taskDate = new Date(t.dueDate);
+            return taskDate.toDateString() === date.toDateString();
+        });
+        
+        // All-day strip for tasks
+        html += '<div class="week-allday-strip">';
+        const maxVisible = 2;
+        dayTasks.slice(0, maxVisible).forEach((task) => {
+            html += `
+                <div class="week-allday-task" 
+                     onclick="event.stopPropagation(); viewTaskDetails && viewTaskDetails('${escapeHtml(task.id)}')"
+                     title="${escapeHtml(task.title)}">
+                    <i class="fas fa-check-circle"></i>
+                    <span>${escapeHtml(task.title.length > 12 ? task.title.substring(0, 12) + '…' : task.title)}</span>
+                </div>
+            `;
+        });
+        if (dayTasks.length > maxVisible) {
+            html += `<div class="week-allday-overflow" title="${dayTasks.length - maxVisible} more tasks">+${dayTasks.length - maxVisible}</div>`;
+        }
+        html += '</div>';
+        
         // Get all events for this day
         const dayEvents = appState.events.filter(e => {
             const eventDate = new Date(e.date);
             return eventDate.toDateString() === date.toDateString();
-        });
-        
-        // Get tasks with due dates for this day (only if showOnCalendar is not false)
-        const dayTasks = appState.tasks.filter(t => {
-            if (!t.dueDate || t.status === 'done') return false;
-            // Show task unless explicitly set to false (undefined/null = show)
-            if (t.hasOwnProperty('showOnCalendar') && t.showOnCalendar === false) return false;
-            const taskDate = new Date(t.dueDate);
-            return taskDate.toDateString() === date.toDateString();
         });
         
         if (i === 0 || dayEvents.length > 0 || dayTasks.length > 0) {
@@ -2565,56 +2590,66 @@ function renderWeekView(titleEl, daysEl) {
         // Current time indicator for today's column
         if (isToday && currentHour >= START_HOUR && currentHour <= END_HOUR) {
             const minutesSinceStart = (currentHour - START_HOUR) * 60 + currentMinute;
-            const topPosition = HEADER_HEIGHT + (minutesSinceStart * SLOT_HEIGHT / 60);
+            const topPosition = GRID_START + (minutesSinceStart * SLOT_HEIGHT / 60);
             html += `<div class="week-current-time-indicator" style="top: ${topPosition}px;"></div>`;
         }
         
-        // Render events as absolutely positioned blocks
-        dayEvents.forEach(event => {
+        // Calculate overlapping events and assign lanes
+        const eventsWithTimes = dayEvents.map(event => {
             const eventStartDate = new Date(event.date);
             const eventEndDate = event.endDate ? new Date(event.endDate) : new Date(eventStartDate.getTime() + 60*60*1000);
-            
-            const startHour = eventStartDate.getHours();
-            const startMinute = eventStartDate.getMinutes();
-            const endHour = eventEndDate.getHours();
-            const endMinute = eventEndDate.getMinutes();
-            
-            // Only show events within our time range
-            if (startHour >= START_HOUR && startHour <= END_HOUR) {
-                const minutesSinceStart = (startHour - START_HOUR) * 60 + startMinute;
-                const topPosition = HEADER_HEIGHT + (minutesSinceStart * SLOT_HEIGHT / 60);
-                const durationMinutes = (endHour - startHour) * 60 + (endMinute - startMinute);
-                const height = Math.max((durationMinutes * SLOT_HEIGHT / 60), 24); // Minimum 24px height
-                
-                const eventColor = event.color || '#007AFF';
-                const shortEvent = height < 40;
-                
-                html += `
-                    <div class="week-event-block ${shortEvent ? 'short-event' : ''}" 
-                         draggable="true"
-                         data-event-id="${escapeHtml(event.id)}"
-                         onclick="event.stopPropagation(); viewEventDetails('${escapeHtml(event.id)}')" 
-                         style="top: ${topPosition}px; height: ${height}px; border-left-color: ${escapeHtml(eventColor)};">
-                        <div class="week-event-title">${escapeHtml(event.title)}</div>
-                        <div class="week-event-time">
-                            <i class="fas fa-clock"></i>
-                            ${eventStartDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} - ${eventEndDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
-                        </div>
-                    </div>
-                `;
-            }
-        });
+            return {
+                ...event,
+                startMinutes: eventStartDate.getHours() * 60 + eventStartDate.getMinutes(),
+                endMinutes: eventEndDate.getHours() * 60 + eventEndDate.getMinutes(),
+                startDate: eventStartDate,
+                endDate: eventEndDate
+            };
+        }).filter(e => {
+            const startHour = Math.floor(e.startMinutes / 60);
+            return startHour >= START_HOUR && startHour <= END_HOUR;
+        }).sort((a, b) => a.startMinutes - b.startMinutes);
         
-        // Render tasks with due dates as task blocks
-        dayTasks.forEach((task, idx) => {
-            // Stack tasks at the top of the day, below the header
-            const topPosition = HEADER_HEIGHT + 4 + (idx * 28);
+        // Assign lanes for overlapping events
+        const lanes = [];
+        eventsWithTimes.forEach(event => {
+            let laneIndex = 0;
+            while (lanes[laneIndex] && lanes[laneIndex].endMinutes > event.startMinutes) {
+                laneIndex++;
+            }
+            event.laneIndex = laneIndex;
+            lanes[laneIndex] = event;
+        });
+        const totalLanes = lanes.length || 1;
+        
+        // Render events as absolutely positioned blocks with lane support
+        eventsWithTimes.forEach(event => {
+            const startHour = event.startDate.getHours();
+            const startMinute = event.startDate.getMinutes();
+            
+            const minutesSinceStart = (startHour - START_HOUR) * 60 + startMinute;
+            const topPosition = GRID_START + (minutesSinceStart * SLOT_HEIGHT / 60);
+            const durationMinutes = event.endMinutes - event.startMinutes;
+            const height = Math.max((durationMinutes * SLOT_HEIGHT / 60), 24);
+            
+            const eventColor = event.color || '#007AFF';
+            const shortEvent = height < 40;
+            
+            // Calculate width and left position based on lanes
+            const laneWidth = (100 - 4) / totalLanes; // 4% for gaps
+            const leftPercent = 2 + (event.laneIndex * laneWidth);
+            const widthPercent = laneWidth - 1;
             
             html += `
-                <div class="week-task-block" 
-                     onclick="event.stopPropagation(); viewTaskDetails && viewTaskDetails('${escapeHtml(task.id)}')" 
-                     style="top: ${topPosition}px; height: 24px;">
-                    <div class="week-event-title">${escapeHtml(task.title)}</div>
+                <div class="week-event-block ${shortEvent ? 'short-event' : ''}" 
+                     draggable="true"
+                     data-event-id="${escapeHtml(event.id)}"
+                     onclick="event.stopPropagation(); viewEventDetails('${escapeHtml(event.id)}')" 
+                     style="top: ${topPosition}px; height: ${height}px; left: ${leftPercent}%; width: ${widthPercent}%; border-left-color: ${escapeHtml(eventColor)};">
+                    <div class="week-event-title">${escapeHtml(event.title)}</div>
+                    <div class="week-event-time">
+                        ${event.startDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} - ${event.endDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
+                    </div>
                 </div>
             `;
         });
@@ -5865,23 +5900,20 @@ function initTasks() {
                 const dueDate = new Date(date);
                 dueDate.setHours(0, 0, 0, 0);
                 const diff = Math.ceil((dueDate - today) / (1000 * 60 * 60 * 24));
-                let dateClass = '';
-                let dateStyle = '';
+                let chipClass = '';
                 if (task.status !== 'done') {
                     if (diff < 0) {
-                        dateClass = 'overdue';
+                        chipClass = 'date-chip-overdue';
                     } else if (diff === 0) {
-                        dateClass = 'due-today';
-                        dateStyle = 'background: rgba(255, 59, 48, 0.15); color: #FF3B30; font-weight: 600;';
+                        chipClass = 'date-chip-today';
                     } else if (diff === 1) {
-                        dateClass = 'due-tomorrow';
-                        dateStyle = 'background: rgba(255, 149, 0, 0.15); color: #FF9500; font-weight: 600;';
+                        chipClass = 'date-chip-tomorrow';
                     } else if (diff === 2) {
-                        dateClass = 'due-soon';
-                        dateStyle = 'background: rgba(255, 204, 0, 0.15); color: #CC9900; font-weight: 600;';
+                        chipClass = 'date-chip-soon';
                     }
                 }
-                return `<td class="cell-date-editable cell-editable date-cell ${dateClass}" data-task-id="${task.id}" style="${dateStyle}">${formatted}</td>`;
+                const chipHtml = chipClass ? `<span class="date-chip ${chipClass}">${formatted}</span>` : formatted;
+                return `<td class="cell-date-editable cell-editable date-cell" data-task-id="${task.id}">${chipHtml}</td>`;
             
             case 'progress':
                 // Check for custom settings with color ranges
