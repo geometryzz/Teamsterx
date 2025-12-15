@@ -2964,6 +2964,25 @@ body.dark-mode .month-event-item:hover {
     color: var(--text-main);
     font-weight: 500;
     font-size: 10px;
+    flex: 1;
+}
+
+/* Lock icon for private events */
+.month-event-lock,
+.month-event-repeat {
+    font-size: 7px;
+    color: var(--text-muted);
+    opacity: 0.7;
+    flex-shrink: 0;
+    margin-left: 2px;
+}
+
+.month-event-lock {
+    color: var(--warning);
+}
+
+.month-event-repeat {
+    color: var(--accent);
 }
 
 .month-event-more {
@@ -3059,7 +3078,7 @@ body.dark-mode .event-item:hover {
    =================================== */
 :root {
     --week-header-h: 60px;
-    --week-allday-h: 40px;
+    --week-allday-h: 44px;
     --week-slot-h: 48px;
     --week-time-col-w: 56px;
 }
@@ -3067,18 +3086,49 @@ body.dark-mode .event-item:hover {
 @media (max-width: 768px) {
     :root {
         --week-header-h: 52px;
-        --week-allday-h: 36px;
+        --week-allday-h: 40px;
         --week-slot-h: 44px;
         --week-time-col-w: 48px;
     }
 }
 
+/* Vertical scroll container for 24h week view */
+.week-view-scroll-container {
+    max-height: 600px;
+    overflow-y: auto;
+    overflow-x: hidden;
+    border-radius: 12px;
+    border: 1px solid var(--border-medium);
+    background: var(--bg-surface);
+    scrollbar-width: thin;
+    scrollbar-color: var(--border-medium) transparent;
+}
+
+.week-view-scroll-container::-webkit-scrollbar {
+    width: 8px;
+}
+
+.week-view-scroll-container::-webkit-scrollbar-track {
+    background: transparent;
+}
+
+.week-view-scroll-container::-webkit-scrollbar-thumb {
+    background: var(--border-medium);
+    border-radius: 4px;
+}
+
+.week-view-scroll-container::-webkit-scrollbar-thumb:hover {
+    background: var(--text-muted);
+}
+
+body.dark-mode .week-view-scroll-container {
+    background: var(--bg-body);
+    border-color: var(--border-subtle);
+}
+
 .week-view {
     display: grid;
     grid-template-columns: var(--week-time-col-w) repeat(7, 1fr);
-    border: 1px solid var(--border-medium);
-    border-radius: 12px;
-    overflow: hidden;
     background: var(--bg-surface);
     min-width: 700px;
     position: relative;
@@ -3086,10 +3136,9 @@ body.dark-mode .event-item:hover {
 
 body.dark-mode .week-view {
     background: var(--bg-body);
-    border-color: var(--border-subtle);
 }
 
-/* Week view scroll wrapper */
+/* Week view scroll wrapper (horizontal) */
 .calendar-scroll-wrapper {
     overflow-x: auto;
     overflow-y: visible;
@@ -3098,7 +3147,7 @@ body.dark-mode .week-view {
     -webkit-overflow-scrolling: touch;
 }
 
-/* Time column - Y axis */
+/* Time column - Y axis (sticky for horizontal scroll) */
 .week-time-column {
     background: var(--bg-surface);
     border-right: 1px solid var(--border-medium);
@@ -3112,12 +3161,16 @@ body.dark-mode .week-time-column {
     border-right-color: var(--border-subtle);
 }
 
+/* Sticky header row inside scroll container */
 .week-time-header {
     height: var(--week-header-h);
     border-bottom: 1px solid var(--border-medium);
     background: var(--bg-surface);
     display: flex;
     flex-direction: column;
+    position: sticky;
+    top: 0;
+    z-index: 20;
 }
 
 body.dark-mode .week-time-header {
@@ -3139,6 +3192,9 @@ body.dark-mode .week-time-header {
     padding: 4px;
     text-transform: uppercase;
     letter-spacing: 0.3px;
+    position: sticky;
+    top: var(--week-header-h);
+    z-index: 19;
 }
 
 body.dark-mode .week-time-allday {
@@ -3263,8 +3319,10 @@ body.dark-mode .week-day-header {
     align-items: center;
     padding: 4px 3px;
     gap: 3px;
-    overflow: hidden;
-    position: relative;
+    overflow: visible;
+    position: sticky;
+    top: var(--week-header-h);
+    z-index: 11;
 }
 
 body.dark-mode .week-allday-strip {
@@ -3285,7 +3343,7 @@ body.dark-mode .week-allday-strip {
     color: var(--text-main);
     cursor: pointer;
     white-space: nowrap;
-    max-width: calc(100% - 8px);
+    max-width: calc(50% - 8px);
     overflow: hidden;
     text-overflow: ellipsis;
     transition: all 0.12s ease;
@@ -3314,11 +3372,80 @@ body.dark-mode .week-allday-task:hover {
 .week-allday-overflow {
     font-size: 9px;
     font-weight: 600;
-    color: var(--text-muted);
-    padding: 2px 6px;
-    background: var(--bg-tertiary);
-    border-radius: 8px;
+    color: var(--accent);
+    padding: 3px 8px;
+    background: var(--accent-soft);
+    border-radius: 10px;
     cursor: pointer;
+    flex-shrink: 0;
+    position: relative;
+    transition: all 0.15s ease;
+}
+
+.week-allday-overflow:hover {
+    background: var(--accent);
+    color: white;
+}
+
+/* Task overflow popover */
+.week-overflow-popover {
+    display: none;
+    position: absolute;
+    top: calc(100% + 4px);
+    left: 50%;
+    transform: translateX(-50%);
+    background: var(--bg-surface);
+    border: 1px solid var(--border-medium);
+    border-radius: 10px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.15);
+    min-width: 180px;
+    max-width: 250px;
+    z-index: 100;
+    padding: 8px 0;
+}
+
+.week-overflow-popover.show {
+    display: block;
+}
+
+body.dark-mode .week-overflow-popover {
+    background: var(--bg-body);
+    border-color: var(--border-subtle);
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.week-overflow-header {
+    font-size: 10px;
+    font-weight: 600;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    padding: 4px 12px 8px;
+    border-bottom: 1px solid var(--border-subtle);
+    margin-bottom: 4px;
+}
+
+.week-overflow-task-item {
+    padding: 8px 12px;
+    font-size: 12px;
+    color: var(--text-main);
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    transition: background 0.12s ease;
+}
+
+.week-overflow-task-item:hover {
+    background: var(--bg-tertiary);
+}
+
+.week-overflow-task-item::before {
+    content: '';
+    width: 6px;
+    height: 6px;
+    background: var(--warning);
+    border-radius: 50%;
     flex-shrink: 0;
 }
 
@@ -3463,6 +3590,26 @@ body.dark-mode .week-event-block:hover {
     color: var(--text-main);
     font-size: 11px;
     line-height: 1.3;
+}
+
+/* Lock and repeat icons in week event */
+.week-event-lock,
+.week-event-repeat {
+    font-size: 8px;
+    margin-left: 4px;
+    opacity: 0.8;
+}
+
+.week-event-lock {
+    color: var(--warning);
+}
+
+.week-event-repeat {
+    color: var(--accent);
+}
+
+.week-event-block.private-event {
+    border-left-style: dashed;
 }
 
 .week-event-time {
@@ -8664,6 +8811,23 @@ body.dark-mode .dropdown-menu-option.active {
     margin-top: 4px;
 }
 
+/* Repeat edit notice */
+.repeat-edit-notice {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 14px;
+    background: var(--accent-soft);
+    border-radius: var(--radius-md);
+    color: var(--accent);
+    font-size: 0.8rem;
+    margin-bottom: 16px;
+}
+
+.repeat-edit-notice i {
+    flex-shrink: 0;
+}
+
 .event-description-header {
     display: flex;
     align-items: center;
@@ -10842,7 +11006,54 @@ body.dark-mode .notification-prefs-toggles .toggle-label:hover {
     opacity: 0.7;
 }
 
-/* Priority badge styling */
+/* Priority chip styling */
+.overview-task-meta .priority-chip {
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-weight: 500;
+    font-size: 0.75rem;
+    text-transform: capitalize;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.overview-task-meta .priority-chip.high {
+    background: rgba(239, 68, 68, 0.1);
+    color: var(--danger);
+}
+
+.overview-task-meta .priority-chip.medium {
+    background: rgba(245, 158, 11, 0.1);
+    color: var(--warning);
+}
+
+.overview-task-meta .priority-chip.low {
+    background: rgba(34, 197, 94, 0.1);
+    color: var(--success);
+}
+
+/* Due chip styling */
+.overview-task-meta .due-chip {
+    padding: 3px 10px;
+    border-radius: 20px;
+    font-weight: 500;
+    font-size: 0.75rem;
+    background: var(--bg-tertiary);
+    color: var(--text-muted);
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.overview-task-meta .due-chip::before {
+    content: '\f017';
+    font-family: 'Font Awesome 6 Free';
+    font-weight: 400;
+    font-size: 0.7rem;
+}
+
+/* Priority badge styling - legacy */
 .overview-task-meta span:first-child {
     padding: 3px 8px;
     border-radius: 20px;
@@ -11083,6 +11294,22 @@ body.dark-mode .notification-prefs-toggles .toggle-label:hover {
     border-radius: 99px;
     text-transform: uppercase;
     letter-spacing: 0.3px;
+}
+
+.link-group-title .group-private-badge {
+    font-size: 0.65rem;
+    font-weight: 600;
+    color: var(--text-muted);
+    background: var(--bg-tertiary);
+    padding: 3px 8px;
+    border-radius: 99px;
+    display: inline-flex;
+    align-items: center;
+    gap: 4px;
+}
+
+.link-group-title .group-private-badge i {
+    font-size: 0.6rem;
 }
 
 .link-group-actions {
@@ -18187,6 +18414,86 @@ body.dark-mode .visibility-option.selected {
 @media (max-width: 600px) {
     .visibility-selector {
         flex-direction: column;
+
+/* ===== REPEAT SELECTOR ===== */
+.repeat-selector {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 8px;
+}
+
+.repeat-option {
+    display: flex;
+    align-items: center;
+    padding: 8px 14px;
+    background: var(--bg-body);
+    border: 2px solid transparent;
+    border-radius: var(--radius-md);
+    cursor: pointer;
+    transition: all var(--transition-fast);
+}
+
+.repeat-option input[type="radio"] {
+    display: none;
+}
+
+.repeat-option:hover {
+    background: var(--light-gray);
+}
+
+.repeat-option.selected {
+    background: var(--accent-soft);
+    border-color: var(--accent);
+}
+
+.repeat-label {
+    font-size: 0.85rem;
+    font-weight: 500;
+    color: var(--text-main);
+}
+
+.repeat-helper {
+    margin-top: 10px;
+    padding: 10px 14px;
+    background: var(--accent-soft);
+    border-radius: var(--radius-md);
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.8rem;
+    color: var(--accent);
+}
+
+.repeat-helper i {
+    flex-shrink: 0;
+}
+
+body.dark-mode .repeat-option {
+    background: var(--bg-body);
+}
+
+body.dark-mode .repeat-option:hover {
+    background: rgba(255, 255, 255, 0.05);
+}
+
+body.dark-mode .repeat-option.selected {
+    background: rgba(10, 132, 255, 0.15);
+}
+
+@media (max-width: 600px) {
+    .repeat-selector {
+        flex-wrap: wrap;
+    }
+    
+    .repeat-option {
+        flex: 1 1 calc(50% - 4px);
+        min-width: calc(50% - 4px);
+    }
+    
+    .repeat-option:first-child {
+        flex: 1 1 100%;
+    }
+}
     }
     
     .visibility-option {

@@ -8,7 +8,7 @@
     <link rel="icon" type="image/png" sizes="16x16" href="img/favicon-circle.png">
     <link rel="shortcut icon" href="img/favicon-circle.png">
     <link rel="apple-touch-icon" href="img/favicon-circle.png">
-    <link rel="stylesheet" href="styles.css?v=35">
+    <link rel="stylesheet" href="styles.css?v=37">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <!-- Apply dark mode immediately to prevent flash -->
     <script>
@@ -1637,6 +1637,39 @@
                             </div>
                         </div>
                         
+                        <!-- Repeat Selector -->
+                        <div class="unified-form-field full-width">
+                            <label class="unified-form-label">
+                                <i class="fas fa-redo"></i> Repeat
+                            </label>
+                            <div class="repeat-selector">
+                                <label class="repeat-option selected" data-repeat="none">
+                                    <input type="radio" name="eventRepeat" value="none" checked>
+                                    <span class="repeat-label">Does not repeat</span>
+                                </label>
+                                <label class="repeat-option" data-repeat="daily">
+                                    <input type="radio" name="eventRepeat" value="daily">
+                                    <span class="repeat-label">Daily</span>
+                                </label>
+                                <label class="repeat-option" data-repeat="weekly">
+                                    <input type="radio" name="eventRepeat" value="weekly">
+                                    <span class="repeat-label">Weekly</span>
+                                </label>
+                                <label class="repeat-option" data-repeat="monthly">
+                                    <input type="radio" name="eventRepeat" value="monthly">
+                                    <span class="repeat-label">Monthly</span>
+                                </label>
+                                <label class="repeat-option" data-repeat="yearly">
+                                    <input type="radio" name="eventRepeat" value="yearly">
+                                    <span class="repeat-label">Yearly</span>
+                                </label>
+                            </div>
+                            <div class="repeat-helper" id="repeatHelper" style="display: none;">
+                                <i class="fas fa-info-circle"></i>
+                                <span id="repeatHelperText"></span>
+                            </div>
+                        </div>
+                        
                         <!-- Visibility Selector -->
                         <div class="unified-form-field full-width">
                             <label class="unified-form-label">
@@ -2792,6 +2825,6 @@
     <div id="toastContainer"></div>
 
     <!-- Main JavaScript -->
-    <script src="main.js?v=35"></script>
+    <script src="main.js?v=37"></script>
 </body>
 </html>

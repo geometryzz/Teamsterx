@@ -2437,28 +2437,34 @@ function renderMonthView(titleEl, daysEl) {
     let html = '';
     const today = new Date();
     
-    // No previous month days - start directly with day 1
+    // Generate occurrences for the entire month
+    const rangeStart = new Date(year, month, 1, 0, 0, 0);
+    const rangeEnd = new Date(year, month + 1, 0, 23, 59, 59);
+    const allOccurrences = getAllEventOccurrences(appState.events, rangeStart, rangeEnd);
     
     // Current month days
     for (let day = 1; day <= daysInMonth; day++) {
         const date = new Date(year, month, day);
         const isToday = date.toDateString() === today.toDateString();
-        const dayEvents = appState.events.filter(e => {
-            const eventDate = new Date(e.date);
-            const matches = eventDate.toDateString() === date.toDateString();
-            if (day === 1 && appState.events.length > 0) {
-                if (DEBUG) console.log(`Checking day ${day}: event date ${eventDate.toDateString()} vs ${date.toDateString()} = ${matches}`);
-            }
-            return matches;
+        
+        // Filter occurrences for this day
+        const dayEvents = allOccurrences.filter(e => {
+            const eventDate = e.date instanceof Date ? e.date : new Date(e.date);
+            return eventDate.toDateString() === date.toDateString();
         });
         
         const eventItemsHtml = dayEvents.slice(0, 2).map(evt => {
             const color = evt.color || '#0078d4';
-            const startTime = new Date(evt.date);
-            const timeStr = startTime.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit', hour12: true }).replace(' ', '');
-            return `<div class="month-event-item" onclick="viewEventDetails('${escapeHtml(evt.id)}'); event.stopPropagation();" style="background: ${escapeHtml(color)}15; border-left: 3px solid ${escapeHtml(color)};">
+            const startTime = evt.date instanceof Date ? evt.date : new Date(evt.date);
+            const timeStr = formatTime24(startTime.getHours(), startTime.getMinutes());
+            const isPrivate = evt.visibility === 'private' || evt.visibility === 'admins';
+            const lockIcon = isPrivate ? '<i class="fas fa-lock month-event-lock"></i>' : '';
+            const repeatIcon = evt.isRecurrence ? '<i class="fas fa-redo month-event-repeat"></i>' : '';
+            const eventId = evt.masterId || evt.id;
+            return `<div class="month-event-item" onclick="viewEventDetails('${escapeHtml(eventId)}', '${evt.occurrenceDate ? evt.occurrenceDate.toISOString() : ''}'); event.stopPropagation();" style="background: ${escapeHtml(color)}15; border-left: 3px solid ${escapeHtml(color)};">
                 <span class="month-event-time" style="color: ${escapeHtml(color)};">${timeStr}</span>
                 <span class="month-event-title">${escapeHtml(evt.title)}</span>
+                ${lockIcon}${repeatIcon}
             </div>`;
         }).join('');
         
@@ -2507,20 +2513,32 @@ function renderWeekView(titleEl, daysEl) {
     const HEADER_HEIGHT = parseInt(styles.getPropertyValue('--week-header-h')) || 60;
     const ALLDAY_HEIGHT = parseInt(styles.getPropertyValue('--week-allday-h')) || 40;
     const SLOT_HEIGHT = parseInt(styles.getPropertyValue('--week-slot-h')) || 48;
-    const START_HOUR = 8;
-    const END_HOUR = 18;
+    
+    // Full 24-hour range with default focus on 08:00-18:00
+    const START_HOUR = 0;
+    const END_HOUR = 23;
+    const DEFAULT_SCROLL_HOUR = 8;
     
     // Total offset = header + all-day strip
     const GRID_START = HEADER_HEIGHT + ALLDAY_HEIGHT;
     
-    let html = '<div class="week-view">';
+    // Generate occurrences for the week range
+    const rangeStart = new Date(startOfWeek);
+    rangeStart.setHours(0, 0, 0, 0);
+    const rangeEnd = new Date(endOfWeek);
+    rangeEnd.setHours(23, 59, 59, 999);
+    const allOccurrences = getAllEventOccurrences(appState.events, rangeStart, rangeEnd);
+    
+    // Wrap in scrollable container
+    let html = '<div class="week-view-scroll-container">';
+    html += '<div class="week-view">';
     
     // Time column with header and all-day label
     html += '<div class="week-time-column">';
     html += '<div class="week-time-header"></div>';
     html += '<div class="week-time-allday">Tasks</div>';
     for (let hour = START_HOUR; hour <= END_HOUR; hour++) {
-        const hourFormatted = hour === 12 ? '12 PM' : hour > 12 ? `${hour - 12} PM` : `${hour} AM`;
+        const hourFormatted = formatTime24(hour, 0);
         html += `<div class="week-time-slot">${hourFormatted}</div>`;
     }
     html += '</div>';
@@ -2551,7 +2569,7 @@ function renderWeekView(titleEl, daysEl) {
             return taskDate.toDateString() === date.toDateString();
         });
         
-        // All-day strip for tasks
+        // All-day strip for tasks with improved overflow
         html += '<div class="week-allday-strip">';
         const maxVisible = 2;
         dayTasks.slice(0, maxVisible).forEach((task) => {
@@ -2560,18 +2578,30 @@ function renderWeekView(titleEl, daysEl) {
                      onclick="event.stopPropagation(); viewTaskDetails && viewTaskDetails('${escapeHtml(task.id)}')"
                      title="${escapeHtml(task.title)}">
                     <i class="fas fa-check-circle"></i>
-                    <span>${escapeHtml(task.title.length > 12 ? task.title.substring(0, 12) + '…' : task.title)}</span>
+                    <span>${escapeHtml(task.title.length > 10 ? task.title.substring(0, 10) + '…' : task.title)}</span>
                 </div>
             `;
         });
         if (dayTasks.length > maxVisible) {
-            html += `<div class="week-allday-overflow" title="${dayTasks.length - maxVisible} more tasks">+${dayTasks.length - maxVisible}</div>`;
+            const overflowTasks = dayTasks.slice(maxVisible);
+            const taskListHtml = overflowTasks.map(t => 
+                `<div class="week-overflow-task-item" onclick="event.stopPropagation(); viewTaskDetails && viewTaskDetails('${escapeHtml(t.id)}')">${escapeHtml(t.title)}</div>`
+            ).join('');
+            html += `
+                <div class="week-allday-overflow" onclick="event.stopPropagation(); toggleTaskOverflowPopover(this)">
+                    +${dayTasks.length - maxVisible}
+                    <div class="week-overflow-popover">
+                        <div class="week-overflow-header">${dayTasks.length - maxVisible} more tasks</div>
+                        ${taskListHtml}
+                    </div>
+                </div>
+            `;
         }
         html += '</div>';
         
-        // Get all events for this day
-        const dayEvents = appState.events.filter(e => {
-            const eventDate = new Date(e.date);
+        // Get all event occurrences for this day
+        const dayEvents = allOccurrences.filter(e => {
+            const eventDate = e.date instanceof Date ? e.date : new Date(e.date);
             return eventDate.toDateString() === date.toDateString();
         });
         
@@ -2587,8 +2617,8 @@ function renderWeekView(titleEl, daysEl) {
             html += `<div class="week-time-cell ${isCurrent ? 'current-hour' : ''}" data-hour="${hour}" data-date="${date.toISOString()}"></div>`;
         }
         
-        // Current time indicator for today's column
-        if (isToday && currentHour >= START_HOUR && currentHour <= END_HOUR) {
+        // Current time indicator for today's column (always visible in 24h range)
+        if (isToday) {
             const minutesSinceStart = (currentHour - START_HOUR) * 60 + currentMinute;
             const topPosition = GRID_START + (minutesSinceStart * SLOT_HEIGHT / 60);
             html += `<div class="week-current-time-indicator" style="top: ${topPosition}px;"></div>`;
@@ -2605,9 +2635,6 @@ function renderWeekView(titleEl, daysEl) {
                 startDate: eventStartDate,
                 endDate: eventEndDate
             };
-        }).filter(e => {
-            const startHour = Math.floor(e.startMinutes / 60);
-            return startHour >= START_HOUR && startHour <= END_HOUR;
         }).sort((a, b) => a.startMinutes - b.startMinutes);
         
         // Assign lanes for overlapping events
@@ -2640,16 +2667,25 @@ function renderWeekView(titleEl, daysEl) {
             const leftPercent = 2 + (event.laneIndex * laneWidth);
             const widthPercent = laneWidth - 1;
             
+            // Format times in 24h format
+            const startTimeStr = formatTime24(event.startDate.getHours(), event.startDate.getMinutes());
+            const endTimeStr = formatTime24(event.endDate.getHours(), event.endDate.getMinutes());
+            
+            // Check for privacy indicators
+            const isPrivate = event.visibility === 'private' || event.visibility === 'admins';
+            const lockIcon = isPrivate ? '<i class="fas fa-lock week-event-lock"></i>' : '';
+            const repeatIcon = event.isRecurrence ? '<i class="fas fa-redo week-event-repeat"></i>' : '';
+            const eventId = event.masterId || event.id;
+            const occurrenceDateStr = event.occurrenceDate ? event.occurrenceDate.toISOString() : '';
+            
             html += `
-                <div class="week-event-block ${shortEvent ? 'short-event' : ''}" 
+                <div class="week-event-block ${shortEvent ? 'short-event' : ''} ${isPrivate ? 'private-event' : ''}" 
                      draggable="true"
-                     data-event-id="${escapeHtml(event.id)}"
-                     onclick="event.stopPropagation(); viewEventDetails('${escapeHtml(event.id)}')" 
+                     data-event-id="${escapeHtml(eventId)}"
+                     onclick="event.stopPropagation(); viewEventDetails('${escapeHtml(eventId)}', '${occurrenceDateStr}')" 
                      style="top: ${topPosition}px; height: ${height}px; left: ${leftPercent}%; width: ${widthPercent}%; border-left-color: ${escapeHtml(eventColor)};">
-                    <div class="week-event-title">${escapeHtml(event.title)}</div>
-                    <div class="week-event-time">
-                        ${event.startDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} - ${event.endDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}
-                    </div>
+                    <div class="week-event-title">${escapeHtml(event.title)}${lockIcon}${repeatIcon}</div>
+                    <div class="week-event-time">${startTimeStr}–${endTimeStr}</div>
                 </div>
             `;
         });
@@ -2657,12 +2693,215 @@ function renderWeekView(titleEl, daysEl) {
         html += '</div>';
     }
     
-    html += '</div>';
+    html += '</div>'; // Close .week-view
+    html += '</div>'; // Close .week-view-scroll-container
     daysEl.innerHTML = html;
+    
+    // Auto-scroll to default hour (08:00) after render
+    requestAnimationFrame(() => {
+        const scrollContainer = daysEl.querySelector('.week-view-scroll-container');
+        if (scrollContainer) {
+            const scrollTo = (DEFAULT_SCROLL_HOUR - START_HOUR) * SLOT_HEIGHT;
+            scrollContainer.scrollTop = scrollTo;
+        }
+    });
     
     // Initialize drag-and-drop for events
     initCalendarDragDrop();
 }
+
+// Format time in 24-hour format (HH:MM)
+function formatTime24(hours, minutes) {
+    return `${String(hours).padStart(2, '0')}:${String(minutes).padStart(2, '0')}`;
+}
+
+/**
+ * Generate event occurrences for repeating events within a date range
+ * @param {Object} event - The master event object
+ * @param {Date} rangeStart - Start of the visible range
+ * @param {Date} rangeEnd - End of the visible range
+ * @returns {Array} Array of occurrence objects
+ */
+function getEventOccurrences(event, rangeStart, rangeEnd) {
+    const occurrences = [];
+    const repeat = event.repeat || 'none';
+    
+    // Non-repeating events: return single occurrence if in range
+    if (repeat === 'none') {
+        const eventDate = event.date instanceof Date ? event.date : new Date(event.date);
+        if (eventDate >= rangeStart && eventDate <= rangeEnd) {
+            occurrences.push({
+                ...event,
+                occurrenceId: event.id,
+                occurrenceDate: eventDate,
+                masterId: event.id
+            });
+        }
+        return occurrences;
+    }
+    
+    // Get the repeat start date (defaults to event date)
+    const repeatStart = event.repeatStart 
+        ? (event.repeatStart instanceof Date ? event.repeatStart : new Date(event.repeatStart))
+        : (event.date instanceof Date ? event.date : new Date(event.date));
+    
+    // Calculate event duration in milliseconds
+    const eventStartDate = event.date instanceof Date ? event.date : new Date(event.date);
+    const eventEndDate = event.endDate 
+        ? (event.endDate instanceof Date ? event.endDate : new Date(event.endDate))
+        : new Date(eventStartDate.getTime() + 60 * 60 * 1000); // Default 1 hour
+    const durationMs = eventEndDate.getTime() - eventStartDate.getTime();
+    
+    // Start time components from original event
+    const startHour = eventStartDate.getHours();
+    const startMinute = eventStartDate.getMinutes();
+    
+    // Generate occurrences based on repeat type
+    let currentDate = new Date(repeatStart);
+    
+    // Don't generate occurrences before the repeat start
+    if (currentDate < rangeStart) {
+        // Fast-forward to rangeStart
+        switch (repeat) {
+            case 'daily':
+                const daysDiff = Math.floor((rangeStart - currentDate) / (24 * 60 * 60 * 1000));
+                currentDate.setDate(currentDate.getDate() + daysDiff);
+                break;
+            case 'weekly':
+                const weeksDiff = Math.floor((rangeStart - currentDate) / (7 * 24 * 60 * 60 * 1000));
+                currentDate.setDate(currentDate.getDate() + (weeksDiff * 7));
+                break;
+            case 'monthly':
+                currentDate.setFullYear(rangeStart.getFullYear());
+                currentDate.setMonth(rangeStart.getMonth() - 1);
+                break;
+            case 'yearly':
+                currentDate.setFullYear(rangeStart.getFullYear() - 1);
+                break;
+        }
+    }
+    
+    // Limit iterations to prevent infinite loops
+    const maxIterations = 400; // ~1 year of daily events
+    let iterations = 0;
+    
+    while (currentDate <= rangeEnd && iterations < maxIterations) {
+        iterations++;
+        
+        // Check if this occurrence is valid and in range
+        const occurrenceDate = new Date(currentDate);
+        occurrenceDate.setHours(startHour, startMinute, 0, 0);
+        
+        if (occurrenceDate >= rangeStart && occurrenceDate <= rangeEnd && occurrenceDate >= repeatStart) {
+            // For monthly: check if day exists in this month
+            if (repeat === 'monthly') {
+                const targetDay = repeatStart.getDate();
+                const daysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate();
+                if (targetDay > daysInMonth) {
+                    // Skip this month if day doesn't exist (e.g., 31st in February)
+                    currentDate.setMonth(currentDate.getMonth() + 1);
+                    continue;
+                }
+            }
+            
+            // For yearly: check for Feb 29 on non-leap years
+            if (repeat === 'yearly') {
+                const targetMonth = repeatStart.getMonth();
+                const targetDay = repeatStart.getDate();
+                if (targetMonth === 1 && targetDay === 29) {
+                    const year = currentDate.getFullYear();
+                    const isLeapYear = (year % 4 === 0 && year % 100 !== 0) || (year % 400 === 0);
+                    if (!isLeapYear) {
+                        currentDate.setFullYear(currentDate.getFullYear() + 1);
+                        continue;
+                    }
+                }
+            }
+            
+            const occurrenceEndDate = new Date(occurrenceDate.getTime() + durationMs);
+            const dateKey = `${occurrenceDate.getFullYear()}${String(occurrenceDate.getMonth() + 1).padStart(2, '0')}${String(occurrenceDate.getDate()).padStart(2, '0')}`;
+            
+            occurrences.push({
+                ...event,
+                date: occurrenceDate,
+                endDate: occurrenceEndDate,
+                occurrenceId: `${event.id}_${dateKey}`,
+                occurrenceDate: occurrenceDate,
+                masterId: event.id,
+                isRecurrence: true
+            });
+        }
+        
+        // Move to next occurrence
+        switch (repeat) {
+            case 'daily':
+                currentDate.setDate(currentDate.getDate() + 1);
+                break;
+            case 'weekly':
+                currentDate.setDate(currentDate.getDate() + 7);
+                break;
+            case 'monthly':
+                currentDate.setMonth(currentDate.getMonth() + 1);
+                // Ensure we're on the right day of month
+                const targetDay = repeatStart.getDate();
+                const daysInMonth = new Date(currentDate.getFullYear(), currentDate.getMonth() + 1, 0).getDate();
+                currentDate.setDate(Math.min(targetDay, daysInMonth));
+                break;
+            case 'yearly':
+                currentDate.setFullYear(currentDate.getFullYear() + 1);
+                break;
+        }
+    }
+    
+    return occurrences;
+}
+
+/**
+ * Get ordinal suffix for a number (1st, 2nd, 3rd, etc.)
+ */
+function getOrdinalSuffix(n) {
+    const s = ['th', 'st', 'nd', 'rd'];
+    const v = n % 100;
+    return s[(v - 20) % 10] || s[v] || s[0];
+}
+
+/**
+ * Get all event occurrences for a date range, expanding repeating events
+ * @param {Array} events - Array of master events
+ * @param {Date} rangeStart - Start of the visible range
+ * @param {Date} rangeEnd - End of the visible range
+ * @returns {Array} Array of all occurrences
+ */
+function getAllEventOccurrences(events, rangeStart, rangeEnd) {
+    let allOccurrences = [];
+    
+    for (const event of events) {
+        const occurrences = getEventOccurrences(event, rangeStart, rangeEnd);
+        allOccurrences = allOccurrences.concat(occurrences);
+    }
+    
+    return allOccurrences;
+}
+
+// Toggle task overflow popover
+window.toggleTaskOverflowPopover = function(element) {
+    const popover = element.querySelector('.week-overflow-popover');
+    if (popover) {
+        const isVisible = popover.classList.contains('show');
+        // Close all other popovers first
+        document.querySelectorAll('.week-overflow-popover.show').forEach(p => p.classList.remove('show'));
+        if (!isVisible) {
+            popover.classList.add('show');
+        }
+    }
+};
+
+// Close popovers when clicking outside
+document.addEventListener('click', (e) => {
+    if (!e.target.closest('.week-allday-overflow')) {
+        document.querySelectorAll('.week-overflow-popover.show').forEach(p => p.classList.remove('show'));
+    }
+});
 
 function getStartOfWeek(date) {
     const d = new Date(date);
@@ -7991,15 +8230,24 @@ function updateOverviewTasks() {
     sortedTasks.forEach(task => {
         const taskEl = document.createElement('div');
         taskEl.className = `overview-task-item priority-${task.priority}`;
+        taskEl.onclick = (e) => {
+            if (!e.target.closest('.overview-task-checkbox')) {
+                viewTaskDetails && viewTaskDetails(task.id);
+            }
+        };
+        
+        // Priority chip text
+        const priorityLabel = task.priority.charAt(0).toUpperCase() + task.priority.slice(1);
+        
         taskEl.innerHTML = `
-            <div class="overview-task-checkbox" onclick="toggleTaskFromOverview('${escapeHtml(task.id)}')">
+            <div class="overview-task-checkbox" onclick="event.stopPropagation(); toggleTaskFromOverview('${escapeHtml(task.id)}')">
                 ${task.status === 'done' ? '<i class="fas fa-check"></i>' : ''}
             </div>
             <div class="overview-task-content">
                 <div class="overview-task-title">${escapeHtml(task.title)}</div>
                 <div class="overview-task-meta">
-                    <span><i class="fas fa-flag"></i> ${task.priority}</span>
-                    ${task.dueDate ? `<span><i class="fas fa-calendar"></i> Due ${formatDueDate(task.dueDate)}</span>` : ''}
+                    <span class="priority-chip ${task.priority}">${priorityLabel}</span>
+                    ${task.dueDate ? `<span class="due-chip">${formatDueDate(task.dueDate)}</span>` : ''}
                 </div>
             </div>
         `;
@@ -8034,18 +8282,18 @@ function updateOverviewEvents() {
     container.innerHTML = '';
     upcomingEvents.forEach(event => {
         const eventDate = event.date instanceof Date ? event.date : new Date(event.date);
+        const timeStr = formatTime24(eventDate.getHours(), eventDate.getMinutes());
         const eventEl = document.createElement('div');
         eventEl.className = 'overview-event-item';
+        eventEl.onclick = () => viewEventDetails(event.id);
         eventEl.innerHTML = `
             <div class="overview-event-date">
                 <div class="overview-event-day">${eventDate.getDate()}</div>
-                <div class="overview-event-month">${eventDate.toLocaleString('en-US', { month: 'short' })}</div>
+                <div class="overview-event-month">${eventDate.toLocaleString('en-US', { month: 'short' }).toUpperCase()}</div>
             </div>
             <div class="overview-event-content">
                 <div class="overview-event-title">${escapeHtml(event.title)}</div>
-                <div class="overview-event-time">
-                    <i class="fas fa-clock"></i> ${event.time || 'All day'}
-                </div>
+                <div class="overview-event-time">${timeStr}</div>
             </div>
         `;
         container.appendChild(eventEl);
@@ -11941,6 +12189,68 @@ function initModals() {
         });
     });
     
+    // Event repeat option buttons
+    const repeatOptions = document.querySelectorAll('#eventModal .repeat-option');
+    const repeatHelper = document.getElementById('repeatHelper');
+    const repeatHelperText = document.getElementById('repeatHelperText');
+    
+    function updateRepeatHelper() {
+        const selectedRepeat = document.querySelector('input[name="eventRepeat"]:checked')?.value || 'none';
+        const dateInput = document.getElementById('eventDate');
+        const dateStr = dateInput?.value;
+        
+        if (selectedRepeat === 'none' || !dateStr) {
+            if (repeatHelper) repeatHelper.style.display = 'none';
+            return;
+        }
+        
+        const startDate = new Date(dateStr + 'T00:00:00');
+        const dayName = startDate.toLocaleDateString('en-US', { weekday: 'long' });
+        const dayOfMonth = startDate.getDate();
+        const monthName = startDate.toLocaleDateString('en-US', { month: 'long' });
+        
+        let helperText = '';
+        switch (selectedRepeat) {
+            case 'daily':
+                helperText = `This will repeat every day starting from ${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+                break;
+            case 'weekly':
+                helperText = `This will repeat every ${dayName} starting from ${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+                break;
+            case 'monthly':
+                helperText = `This will repeat on the ${dayOfMonth}${getOrdinalSuffix(dayOfMonth)} of every month`;
+                break;
+            case 'yearly':
+                helperText = `This will repeat every ${monthName} ${dayOfMonth}${getOrdinalSuffix(dayOfMonth)}`;
+                break;
+        }
+        
+        if (repeatHelper && repeatHelperText) {
+            repeatHelperText.textContent = helperText;
+            repeatHelper.style.display = 'flex';
+        }
+    }
+    
+    repeatOptions.forEach(option => {
+        option.addEventListener('click', () => {
+            // Update selected state
+            repeatOptions.forEach(o => o.classList.remove('selected'));
+            option.classList.add('selected');
+            
+            // Check the corresponding radio
+            const radio = option.querySelector('input[type="radio"]');
+            if (radio) radio.checked = true;
+            
+            updateRepeatHelper();
+        });
+    });
+    
+    // Update repeat helper when date changes
+    const eventDateInput = document.getElementById('eventDate');
+    if (eventDateInput) {
+        eventDateInput.addEventListener('change', updateRepeatHelper);
+    }
+    
     // Helper function to convert to total minutes from midnight
     function toMinutes(hour, minute) {
         const h = parseInt(hour);
@@ -12031,7 +12341,11 @@ function initModals() {
         const visibilityRadio = document.querySelector('input[name="eventVisibility"]:checked');
         const visibility = visibilityRadio ? visibilityRadio.value : 'team';
         
-        if (DEBUG) console.log('Form values:', { dateStr, startTimeStr, endTimeStr, visibility });
+        // Get repeat setting
+        const repeatRadio = document.querySelector('input[name="eventRepeat"]:checked');
+        const repeat = repeatRadio ? repeatRadio.value : 'none';
+        
+        if (DEBUG) console.log('Form values:', { dateStr, startTimeStr, endTimeStr, visibility, repeat });
         
         // Create full datetime objects
         const startDate = new Date(dateStr + 'T' + startTimeStr);
@@ -12056,6 +12370,8 @@ function initModals() {
             description: document.getElementById('eventDescription').value,
             color: eventColorInput.value,
             visibility: visibility,
+            repeat: repeat,
+            repeatStart: repeat !== 'none' ? startDate : null,
             teamId: appState.currentTeamId
         };
 
@@ -12094,8 +12410,9 @@ function initModals() {
             if (titleEl) titleEl.innerHTML = '<i class="fas fa-calendar-plus"></i> New Event';
             if (submitBtn) submitBtn.innerHTML = '<i class="fas fa-check"></i> Add Event';
             
-            // Reset visibility to default
+            // Reset visibility and repeat to default
             resetEventVisibility();
+            resetEventRepeat();
             
             closeModal('eventModal');
         } catch (error) {
@@ -12598,6 +12915,38 @@ function resetEventVisibility() {
     });
 }
 
+// Reset event repeat selector to default
+function resetEventRepeat() {
+    document.querySelectorAll('.repeat-option').forEach(opt => {
+        opt.classList.remove('selected');
+        if (opt.dataset.repeat === 'none') {
+            opt.classList.add('selected');
+            const radio = opt.querySelector('input[type="radio"]');
+            if (radio) radio.checked = true;
+        } else {
+            const radio = opt.querySelector('input[type="radio"]');
+            if (radio) radio.checked = false;
+        }
+    });
+    const repeatHelper = document.getElementById('repeatHelper');
+    if (repeatHelper) repeatHelper.style.display = 'none';
+}
+
+// Set event repeat selector to specific value
+function setEventRepeat(repeat) {
+    document.querySelectorAll('.repeat-option').forEach(opt => {
+        opt.classList.remove('selected');
+        if (opt.dataset.repeat === repeat) {
+            opt.classList.add('selected');
+            const radio = opt.querySelector('input[type="radio"]');
+            if (radio) radio.checked = true;
+        } else {
+            const radio = opt.querySelector('input[type="radio"]');
+            if (radio) radio.checked = false;
+        }
+    });
+}
+
 // Set event visibility selector to specific value
 function setEventVisibility(visibility) {
     document.querySelectorAll('.visibility-option').forEach(opt => {
@@ -12649,6 +12998,39 @@ function openEditEventModal(event) {
     // Set visibility
     setEventVisibility(event.visibility || 'team');
     
+    // Set repeat option
+    setEventRepeat(event.repeat || 'none');
+    
+    // Update repeat helper text if needed
+    if (event.repeat && event.repeat !== 'none') {
+        const repeatHelper = document.getElementById('repeatHelper');
+        const repeatHelperText = document.getElementById('repeatHelperText');
+        if (repeatHelper && repeatHelperText) {
+            const startDate = new Date(event.date);
+            const dayName = startDate.toLocaleDateString('en-US', { weekday: 'long' });
+            const dayOfMonth = startDate.getDate();
+            const monthName = startDate.toLocaleDateString('en-US', { month: 'long' });
+            
+            let helperText = '';
+            switch (event.repeat) {
+                case 'daily':
+                    helperText = `This event repeats every day`;
+                    break;
+                case 'weekly':
+                    helperText = `This event repeats every ${dayName}`;
+                    break;
+                case 'monthly':
+                    helperText = `This event repeats on the ${dayOfMonth}${getOrdinalSuffix(dayOfMonth)} of every month`;
+                    break;
+                case 'yearly':
+                    helperText = `This event repeats every ${monthName} ${dayOfMonth}${getOrdinalSuffix(dayOfMonth)}`;
+                    break;
+            }
+            repeatHelperText.textContent = helperText;
+            repeatHelper.style.display = 'flex';
+        }
+    }
+    
     // Change modal title and button text (unified style)
     const titleEl = document.querySelector('#eventModal .unified-modal-title h2');
     if (titleEl) {
@@ -12672,8 +13054,8 @@ function openEditEventModal(event) {
 }
 
 // View event details
-async function viewEventDetails(eventId) {
-    if (DEBUG) console.log('🔍 viewEventDetails called with:', eventId);
+async function viewEventDetails(eventId, occurrenceDateStr = '') {
+    if (DEBUG) console.log('🔍 viewEventDetails called with:', eventId, 'occurrence:', occurrenceDateStr);
     
     try {
         const event = appState.events.find(e => e.id === eventId);
@@ -12702,8 +13084,23 @@ async function viewEventDetails(eventId) {
         }
     
     // Populate modal - new modern design
-    const eventDate = new Date(event.date);
-    const endDate = event.endDate ? new Date(event.endDate) : new Date(eventDate.getTime() + 60*60*1000);
+    // Use occurrence date if provided, otherwise use event date
+    let eventDate;
+    if (occurrenceDateStr && event.repeat && event.repeat !== 'none') {
+        eventDate = new Date(occurrenceDateStr);
+        // Preserve the original time
+        const originalDate = new Date(event.date);
+        eventDate.setHours(originalDate.getHours(), originalDate.getMinutes(), 0, 0);
+    } else {
+        eventDate = new Date(event.date);
+    }
+    
+    // Calculate end date based on original event duration
+    const originalStart = new Date(event.date);
+    const originalEnd = event.endDate ? new Date(event.endDate) : new Date(originalStart.getTime() + 60*60*1000);
+    const durationMs = originalEnd.getTime() - originalStart.getTime();
+    const endDate = new Date(eventDate.getTime() + durationMs);
+    
     const eventColor = event.color || '#007AFF';
     
     // Title and subtitle
@@ -12722,9 +13119,10 @@ async function viewEventDetails(eventId) {
         year: 'numeric'
     });
     
-    // Time
-    document.getElementById('detailTime').textContent = 
-        `${eventDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })} - ${endDate.toLocaleTimeString('en-US', { hour: 'numeric', minute: '2-digit' })}`;
+    // Time - use 24h format
+    const startTime24 = formatTime24(eventDate.getHours(), eventDate.getMinutes());
+    const endTime24 = formatTime24(endDate.getHours(), endDate.getMinutes());
+    document.getElementById('detailTime').textContent = `${startTime24} – ${endTime24}`;
     
     // Duration
     const diffMs = endDate - eventDate;
@@ -12764,6 +13162,43 @@ async function viewEventDetails(eventId) {
         visibilityCard.style.display = 'none';
     }
     
+    // Recurrence info
+    const repeatCard = document.getElementById('repeatCard');
+    const repeatBadge = document.getElementById('detailRepeat');
+    if (event.repeat && event.repeat !== 'none') {
+        if (!repeatCard) {
+            // Create the repeat card if it doesn't exist (for backwards compatibility)
+            const infoGrid = document.querySelector('#eventDetailsModal .event-info-grid');
+            if (infoGrid) {
+                const newCard = document.createElement('div');
+                newCard.className = 'event-info-card';
+                newCard.id = 'repeatCard';
+                newCard.innerHTML = `
+                    <div class="event-info-icon"><i class="fas fa-redo"></i></div>
+                    <div class="event-info-content">
+                        <div class="event-info-label">Repeats</div>
+                        <div class="event-info-value" id="detailRepeat"></div>
+                    </div>
+                `;
+                infoGrid.appendChild(newCard);
+            }
+        }
+        const repeatCardEl = document.getElementById('repeatCard');
+        const repeatBadgeEl = document.getElementById('detailRepeat');
+        if (repeatCardEl && repeatBadgeEl) {
+            repeatCardEl.style.display = 'flex';
+            const repeatLabels = {
+                'daily': 'Every day',
+                'weekly': 'Every week',
+                'monthly': 'Every month',
+                'yearly': 'Every year'
+            };
+            repeatBadgeEl.textContent = repeatLabels[event.repeat] || event.repeat;
+        }
+    } else if (repeatCard) {
+        repeatCard.style.display = 'none';
+    }
+    
     // Description
     const descriptionEl = document.getElementById('detailDescription');
     const descriptionSection = document.getElementById('descriptionSection');
@@ -12773,6 +13208,25 @@ async function viewEventDetails(eventId) {
     } else {
         descriptionEl.textContent = '';
         descriptionSection.style.display = 'none';
+    }
+    
+    // Add editing notice for recurring events
+    const editNotice = document.getElementById('repeatEditNotice');
+    if (event.repeat && event.repeat !== 'none') {
+        if (!editNotice) {
+            const descSection = document.getElementById('descriptionSection');
+            if (descSection) {
+                const notice = document.createElement('div');
+                notice.id = 'repeatEditNotice';
+                notice.className = 'repeat-edit-notice';
+                notice.innerHTML = '<i class="fas fa-info-circle"></i> Editing this event updates all repeats.';
+                descSection.parentNode.insertBefore(notice, descSection);
+            }
+        } else {
+            editNotice.style.display = 'flex';
+        }
+    } else if (editNotice) {
+        editNotice.style.display = 'none';
     }
     
     // Hidden color field for backward compatibility
@@ -19326,7 +19780,18 @@ function renderLinkLobby() {
     
     if (!container) return;
     
-    if (linkLobbyGroups.length === 0) {
+    // Filter groups based on visibility
+    const currentUserId = currentAuthUser?.uid;
+    const visibleGroups = linkLobbyGroups.filter(group => {
+        // If visibility is 'private', only show to creator
+        if (group.visibility === 'private') {
+            return group.createdBy === currentUserId;
+        }
+        // Otherwise (team or undefined), show to all team members
+        return true;
+    });
+    
+    if (visibleGroups.length === 0) {
         if (emptyState) emptyState.style.display = 'block';
         // Remove any rendered groups
         container.querySelectorAll('.link-group').forEach(el => el.remove());
@@ -19338,8 +19803,8 @@ function renderLinkLobby() {
     // Clear existing groups
     container.querySelectorAll('.link-group').forEach(el => el.remove());
     
-    // Render each group
-    linkLobbyGroups.forEach((group, index) => {
+    // Render each visible group
+    visibleGroups.forEach((group, index) => {
         const groupEl = createGroupElement(group, index);
         container.appendChild(groupEl);
     });
@@ -19351,11 +19816,30 @@ function renderLinkLobby() {
 // Create group element
 function createGroupElement(group, index) {
     const totalLinks = group.links.length + Object.values(group.domainGroups).reduce((sum, arr) => sum + arr.length, 0);
+    const isPrivate = group.visibility === 'private';
+    const isCreator = group.createdBy === currentAuthUser?.uid;
     
     const groupEl = document.createElement('div');
     groupEl.className = 'link-group';
     groupEl.dataset.groupId = group.id;
     groupEl.dataset.sortOrder = group.sortOrder;
+    
+    // Build badges HTML
+    let badgesHtml = `<span class="group-count">${totalLinks}</span>`;
+    if (isPrivate) {
+        badgesHtml += '<span class="group-private-badge"><i class="fas fa-lock"></i> Private</span>';
+    }
+    if (group.autoGroupDomain) {
+        badgesHtml += '<span class="auto-domain-badge">Auto-group</span>';
+    }
+    
+    // Only show visibility toggle to creator
+    const visibilityMenuItem = isCreator ? `
+        <button class="link-group-menu-item" onclick="toggleGroupVisibility('${group.id}', '${isPrivate ? 'team' : 'private'}')">
+            <i class="fas fa-${isPrivate ? 'users' : 'lock'}"></i> 
+            ${isPrivate ? 'Make public to team' : 'Make private'}
+        </button>
+    ` : '';
     
     groupEl.innerHTML = `
         <div class="link-group-header">
@@ -19364,8 +19848,7 @@ function createGroupElement(group, index) {
             </div>
             <div class="link-group-title">
                 ${escapeHtml(group.title)}
-                <span class="group-count">${totalLinks}</span>
-                ${group.autoGroupDomain ? '<span class="auto-domain-badge">Auto-group</span>' : ''}
+                ${badgesHtml}
             </div>
             <div class="link-group-actions">
                 <button class="link-group-btn add-link-btn" onclick="openAddLinkModal('${group.id}')" title="Add link">
@@ -19379,6 +19862,7 @@ function createGroupElement(group, index) {
                         <button class="link-group-menu-item" onclick="openEditGroupModal('${group.id}')">
                             <i class="fas fa-edit"></i> Rename group
                         </button>
+                        ${visibilityMenuItem}
                         <button class="link-group-menu-item" onclick="toggleAutoDomain('${group.id}', ${!group.autoGroupDomain})">
                             <i class="fas fa-${group.autoGroupDomain ? 'times-circle' : 'magic'}"></i> 
                             ${group.autoGroupDomain ? 'Disable' : 'Enable'} auto-grouping
@@ -19741,6 +20225,28 @@ async function toggleAutoDomain(groupId, enabled) {
         showToast('Error updating group', 'error');
     }
 }
+
+// Toggle group visibility (private/team)
+window.toggleGroupVisibility = async function(groupId, visibility) {
+    closeAllGroupMenus();
+    
+    if (!db || !appState.currentTeamId) return;
+    
+    try {
+        const { doc, updateDoc } = 
+            await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+        
+        const groupRef = doc(db, 'teams', appState.currentTeamId, 'linkLobbyGroups', groupId);
+        await updateDoc(groupRef, { visibility: visibility });
+        
+        const msg = visibility === 'private' ? 'Group is now private' : 'Group is now visible to team';
+        showToast(msg, 'success');
+        
+    } catch (error) {
+        console.error('Error toggling group visibility:', error);
+        showToast('Error updating group visibility', 'error');
+    }
+};
 
 // Open delete group modal
 function openDeleteGroupModal(groupId, groupTitle) {
