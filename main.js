@@ -2841,21 +2841,35 @@ function initTasks() {
     // Initialize spreadsheet context menu
     initSpreadsheetContextMenu();
 
-    // Progress bar update (range slider + number input sync)
+    // Progress bar update (range slider + number input + fill bar + badge sync)
     const progressSlider = document.getElementById('taskProgressSlider');
     const progressInput = document.getElementById('taskProgress');
+    const progressFill = document.getElementById('taskProgressFill');
+    const progressBadge = document.getElementById('taskProgressBadge');
+    
+    function updateProgressVisuals(value) {
+        if (progressFill) {
+            progressFill.style.width = value + '%';
+        }
+        if (progressBadge) {
+            progressBadge.textContent = value + '%';
+        }
+    }
     
     if (progressSlider && progressInput) {
-        // Sync slider to input
+        // Sync slider to input and visuals
         progressSlider.addEventListener('input', () => {
-            progressInput.value = progressSlider.value;
+            const value = progressSlider.value;
+            progressInput.value = value;
+            updateProgressVisuals(value);
         });
         
-        // Sync input to slider
+        // Sync input to slider and visuals
         progressInput.addEventListener('input', () => {
             let value = parseInt(progressInput.value) || 0;
             value = Math.max(0, Math.min(100, value));
             progressSlider.value = value;
+            updateProgressVisuals(value);
         });
         
         // On change (when user finishes typing), clamp and sync
@@ -2864,6 +2878,7 @@ function initTasks() {
             value = Math.max(0, Math.min(100, value));
             progressInput.value = value;
             progressSlider.value = value;
+            updateProgressVisuals(value);
         });
     }
 
@@ -5851,11 +5866,22 @@ function initTasks() {
                 dueDate.setHours(0, 0, 0, 0);
                 const diff = Math.ceil((dueDate - today) / (1000 * 60 * 60 * 24));
                 let dateClass = '';
+                let dateStyle = '';
                 if (task.status !== 'done') {
-                    if (diff < 0) dateClass = 'overdue';
-                    else if (diff === 0) dateClass = 'today';
+                    if (diff < 0) {
+                        dateClass = 'overdue';
+                    } else if (diff === 0) {
+                        dateClass = 'due-today';
+                        dateStyle = 'background: rgba(255, 59, 48, 0.15); color: #FF3B30; font-weight: 600;';
+                    } else if (diff === 1) {
+                        dateClass = 'due-tomorrow';
+                        dateStyle = 'background: rgba(255, 149, 0, 0.15); color: #FF9500; font-weight: 600;';
+                    } else if (diff === 2) {
+                        dateClass = 'due-soon';
+                        dateStyle = 'background: rgba(255, 204, 0, 0.15); color: #CC9900; font-weight: 600;';
+                    }
                 }
-                return `<td class="cell-date-editable cell-editable date-cell ${dateClass}" data-task-id="${task.id}">${formatted}</td>`;
+                return `<td class="cell-date-editable cell-editable date-cell ${dateClass}" data-task-id="${task.id}" style="${dateStyle}">${formatted}</td>`;
             
             case 'progress':
                 // Check for custom settings with color ranges
@@ -6170,14 +6196,22 @@ function initTasks() {
             showOnCalendarCheckbox.checked = task.showOnCalendar !== false;
         }
         
-        // Update progress bar (range slider + number input)
+        // Update progress bar (range slider + number input + fill + badge)
         const progressInput = document.getElementById('taskProgress');
         const progressSlider = document.getElementById('taskProgressSlider');
+        const progressFill = document.getElementById('taskProgressFill');
+        const progressBadge = document.getElementById('taskProgressBadge');
         if (progressInput) {
             const progress = task.progress || 0;
             progressInput.value = progress;
             if (progressSlider) {
                 progressSlider.value = progress;
+            }
+            if (progressFill) {
+                progressFill.style.width = progress + '%';
+            }
+            if (progressBadge) {
+                progressBadge.textContent = progress + '%';
             }
         }
 
@@ -6694,13 +6728,21 @@ function initTasks() {
                     taskDueDateInput.setAttribute('min', today);
                 }
                 
-                // Reset progress bar (range slider + number input)
+                // Reset progress bar (range slider + number input + fill + badge)
                 const progressInput = document.getElementById('taskProgress');
                 const progressSlider = document.getElementById('taskProgressSlider');
+                const progressFill = document.getElementById('taskProgressFill');
+                const progressBadge = document.getElementById('taskProgressBadge');
                 if (progressInput) {
                     progressInput.value = 0;
                     if (progressSlider) {
                         progressSlider.value = 0;
+                    }
+                    if (progressFill) {
+                        progressFill.style.width = '0%';
+                    }
+                    if (progressBadge) {
+                        progressBadge.textContent = '0%';
                     }
                 }
                 
@@ -7420,13 +7462,21 @@ function resetTaskModalDropdowns() {
         }
     }
     
-    // Reset Progress (range slider + number input)
+    // Reset Progress (range slider + number input + fill + badge)
     const progressInput = document.getElementById('taskProgress');
     const progressSlider = document.getElementById('taskProgressSlider');
+    const progressFill = document.getElementById('taskProgressFill');
+    const progressBadge = document.getElementById('taskProgressBadge');
     if (progressInput) {
         progressInput.value = 0;
         if (progressSlider) {
             progressSlider.value = 0;
+        }
+        if (progressFill) {
+            progressFill.style.width = '0%';
+        }
+        if (progressBadge) {
+            progressBadge.textContent = '0%';
         }
     }
     
@@ -12237,13 +12287,21 @@ function initModals() {
         const taskStatus = document.getElementById('taskStatus');
         if (taskStatus) taskStatus.value = 'todo';
 
-        // Reset progress bar (range slider + number input)
+        // Reset progress bar (range slider + number input + fill + badge)
         const resetProgressInput = document.getElementById('taskProgress');
         const resetProgressSlider = document.getElementById('taskProgressSlider');
+        const resetProgressFill = document.getElementById('taskProgressFill');
+        const resetProgressBadge = document.getElementById('taskProgressBadge');
         if (resetProgressInput) {
             resetProgressInput.value = 0;
             if (resetProgressSlider) {
                 resetProgressSlider.value = 0;
+            }
+            if (resetProgressFill) {
+                resetProgressFill.style.width = '0%';
+            }
+            if (resetProgressBadge) {
+                resetProgressBadge.textContent = '0%';
             }
         }
         
