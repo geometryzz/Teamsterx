@@ -15074,9 +15074,11 @@ function generateSecureToken(bytes = 32) {
  * This creates/updates the publicProfiles/{userId} document with limited fields
  * that other authenticated users can read (for teammate displays, assignees, etc.)
  * 
+ * SECURITY: Email is NOT stored in publicProfiles to prevent cross-team scraping.
+ * Email is available via team members map for users in the same team.
+ * 
  * @param {Object} profileData - Profile data to sync
  * @param {string} profileData.displayName - User's display name
- * @param {string} profileData.email - User's email
  * @param {string|null} profileData.photoURL - User's avatar URL
  * @param {string|null} profileData.occupation - User's job title/occupation
  */
@@ -15092,10 +15094,9 @@ async function syncPublicProfile(profileData) {
         
         const publicProfileRef = doc(db, 'publicProfiles', currentAuthUser.uid);
         
-        // Only include allowed fields
+        // SECURITY: Only include allowed fields (NO email - prevents cross-team scraping)
         const publicData = {
             displayName: profileData.displayName || currentAuthUser.displayName || 'Unknown',
-            email: profileData.email || currentAuthUser.email,
             updatedAt: serverTimestamp()
         };
         
