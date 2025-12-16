@@ -14254,12 +14254,29 @@ function generateAvatar(name) {
     }
 }
 
-// Generate unique team code
+/**
+ * Generate unique team code with high entropy
+ * 
+ * SECURITY: Team codes are used for the join flow and should be hard to guess.
+ * We use 12 characters from a 54-character alphabet (mixed case + digits, minus confusing chars)
+ * This provides approximately 70 bits of entropy (54^12 ≈ 2^70)
+ * 
+ * NOTE: Rate limiting for brute-force protection requires Cloud Functions or App Check.
+ * Firestore rules cannot enforce rate limits on teamJoinInfo reads.
+ * 
+ * @returns {string} Team code in format "TM-XXXXXXXXXXXX" (12 random chars)
+ */
 function generateTeamCode() {
-    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZ23456789'; // Removed confusing chars like 0, O, I, 1
-    let code = 'TEAM-';
-    for (let i = 0; i < 6; i++) {
-        code += chars.charAt(Math.floor(Math.random() * chars.length));
+    // Mixed case alphanumeric, removed confusing chars: 0, O, o, I, l, 1
+    const chars = 'ABCDEFGHJKLMNPQRSTUVWXYZabcdefghjkmnpqrstuvwxyz23456789';
+    let code = 'TM-';
+    
+    // Use crypto.getRandomValues for better randomness
+    const randomValues = new Uint8Array(12);
+    crypto.getRandomValues(randomValues);
+    
+    for (let i = 0; i < 12; i++) {
+        code += chars.charAt(randomValues[i] % chars.length);
     }
     return code;
 }
@@ -14539,17 +14556,17 @@ async function processJoinCode(teamCode) {
         
         if (!confirmJoin) return;
 
-        // Add join request to team document
-        // This uses the pendingRequests update rule which allows any auth user to add themselves
-        const teamRef = doc(db, 'teams', teamId);
-        await updateDoc(teamRef, {
-            [`pendingRequests.${currentAuthUser.uid}`]: {
-                name: currentAuthUser.displayName || currentAuthUser.email.split('@')[0],
-                email: currentAuthUser.email,
-                photoURL: currentAuthUser.photoURL || null,
-                requestedAt: serverTimestamp(),
-                status: 'pending'
-            }
+        // Add join request to subcollection (prevents DoS via map growth)
+        // Uses /teams/{teamId}/joinRequests/{userId} instead of deprecated pendingRequests map
+        const { setDoc } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+        const joinRequestRef = doc(db, 'teams', teamId, 'joinRequests', currentAuthUser.uid);
+        await setDoc(joinRequestRef, {
+            userId: currentAuthUser.uid,
+            name: currentAuthUser.displayName || currentAuthUser.email.split('@')[0],
+            email: currentAuthUser.email,
+            photoURL: currentAuthUser.photoURL || null,
+            requestedAt: serverTimestamp(),
+            status: 'pending'
         });
         
         showToast(`Join request sent to "${teamName}"! The owner will review it.`, 'success');
@@ -14597,7 +14614,7 @@ window.submitJoinRequest = async function() {
     submitBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Sending...';
 
     try {
-        const { doc, getDoc, updateDoc, serverTimestamp } = 
+        const { doc, getDoc, setDoc, serverTimestamp } = 
             await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
 
         // Look up team by code via teamJoinInfo (public collection)
@@ -14615,17 +14632,16 @@ window.submitJoinRequest = async function() {
         const teamId = joinInfo.teamId;
         const teamName = joinInfo.teamName;
 
-        // Add join request to team document
-        // The Firestore rules allow any auth user to add themselves to pendingRequests
-        const teamRef = doc(db, 'teams', teamId);
-        await updateDoc(teamRef, {
-            [`pendingRequests.${currentAuthUser.uid}`]: {
-                name: currentAuthUser.displayName || currentAuthUser.email.split('@')[0],
-                email: currentAuthUser.email,
-                photoURL: currentAuthUser.photoURL || null,
-                requestedAt: serverTimestamp(),
-                status: 'pending'
-            }
+        // Add join request to subcollection (prevents DoS via map growth)
+        // Uses /teams/{teamId}/joinRequests/{userId} instead of deprecated pendingRequests map
+        const joinRequestRef = doc(db, 'teams', teamId, 'joinRequests', currentAuthUser.uid);
+        await setDoc(joinRequestRef, {
+            userId: currentAuthUser.uid,
+            name: currentAuthUser.displayName || currentAuthUser.email.split('@')[0],
+            email: currentAuthUser.email,
+            photoURL: currentAuthUser.photoURL || null,
+            requestedAt: serverTimestamp(),
+            status: 'pending'
         });
 
         debugLog('✅ Join request sent');
@@ -14659,20 +14675,17 @@ async function showPendingRequests() {
     }
 
     try {
-        const { doc, getDoc } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+        const { collection, getDocs, query, where } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
         
-        const teamRef = doc(db, 'teams', appState.currentTeamId);
-        const teamDoc = await getDoc(teamRef);
+        // Read from joinRequests subcollection instead of deprecated pendingRequests map
+        const joinRequestsRef = collection(db, 'teams', appState.currentTeamId, 'joinRequests');
+        const pendingQuery = query(joinRequestsRef, where('status', '==', 'pending'));
+        const snapshot = await getDocs(pendingQuery);
         
-        if (!teamDoc.exists()) {
-            alert('Team not found.');
-            return;
-        }
-        
-        const teamData = teamDoc.data();
-        const pendingRequests = teamData.pendingRequests || {};
-        const requestsList = Object.entries(pendingRequests)
-            .filter(([_, request]) => request.status === 'pending');
+        const requestsList = [];
+        snapshot.forEach(doc => {
+            requestsList.push({ id: doc.id, ...doc.data() });
+        });
 
         if (requestsList.length === 0) {
             alert('No pending join requests.');
@@ -14690,7 +14703,8 @@ async function showPendingRequests() {
         modal.className = 'modal active';
         
         let requestsHTML = '';
-        requestsList.forEach(([userId, request]) => {
+        requestsList.forEach((request) => {
+            const userId = request.id;
             requestsHTML += `
                 <div style="background: #f8f9fa; padding: 15px; border-radius: 8px; margin-bottom: 10px; display: flex; justify-content: space-between; align-items: center;">
                     <div>
@@ -14785,11 +14799,16 @@ window.approveJoinRequest = async function(userId) {
             return;
         }
         
-        const request = teamData.pendingRequests?.[userId];
-        if (!request) {
+        // Read from joinRequests subcollection
+        const joinRequestRef = doc(db, 'teams', appState.currentTeamId, 'joinRequests', userId);
+        const requestDoc = await getDoc(joinRequestRef);
+        
+        if (!requestDoc.exists()) {
             showToast('Join request not found.', 'error');
             return;
         }
+        
+        const request = requestDoc.data();
         
         // Show the approval modal
         showApproveJoinModal(userId, request.name, request.email);
@@ -14803,14 +14822,24 @@ window.approveJoinRequest = async function(userId) {
 // Execute the actual approval after modal confirmation
 async function executeApproveJoinRequest(userId) {
     try {
-        const { doc, getDoc, updateDoc, serverTimestamp, deleteField } = 
+        const { doc, getDoc, updateDoc, deleteDoc, serverTimestamp } = 
             await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
 
         const teamRef = doc(db, 'teams', appState.currentTeamId);
         const teamDoc = await getDoc(teamRef);
         const teamData = teamDoc.data();
 
-        const request = teamData.pendingRequests[userId];
+        // Read from joinRequests subcollection
+        const joinRequestRef = doc(db, 'teams', appState.currentTeamId, 'joinRequests', userId);
+        const requestDoc = await getDoc(joinRequestRef);
+        
+        if (!requestDoc.exists()) {
+            showToast('Join request not found.', 'error');
+            closeApproveJoinModal();
+            return;
+        }
+        
+        const request = requestDoc.data();
 
         // Check for duplicate usernames and generate unique name if needed
         let finalName = request.name;
@@ -14838,9 +14867,11 @@ async function executeApproveJoinRequest(userId) {
                 photoURL: request.photoURL || null,
                 occupation: 'Team Member',
                 joinedAt: serverTimestamp()
-            },
-            [`pendingRequests.${userId}`]: deleteField()
+            }
         });
+        
+        // Delete the join request from subcollection
+        await deleteDoc(joinRequestRef);
 
         // NOTE: User's teams array will be updated automatically when they log in
         // via the team membership scan in initializeUserTeam()
@@ -14904,15 +14935,16 @@ window.rejectJoinRequest = async function(userId) {
         const { doc, getDoc } = 
             await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
 
-        const teamRef = doc(db, 'teams', appState.currentTeamId);
-        const teamDoc = await getDoc(teamRef);
-        const teamData = teamDoc.data();
+        // Read from joinRequests subcollection
+        const joinRequestRef = doc(db, 'teams', appState.currentTeamId, 'joinRequests', userId);
+        const requestDoc = await getDoc(joinRequestRef);
         
-        const request = teamData.pendingRequests?.[userId];
-        if (!request) {
+        if (!requestDoc.exists()) {
             showToast('Join request not found.', 'error');
             return;
         }
+        
+        const request = requestDoc.data();
         
         // Show the reject modal
         showRejectJoinModal(userId, request.name, request.email);
@@ -14926,17 +14958,15 @@ window.rejectJoinRequest = async function(userId) {
 // Execute the actual rejection after modal confirmation
 async function executeRejectJoinRequest(userId) {
     try {
-        const { doc, getDoc, updateDoc, deleteField } = 
+        const { doc, getDoc, deleteDoc } = 
             await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
 
-        const teamRef = doc(db, 'teams', appState.currentTeamId);
-        const teamDoc = await getDoc(teamRef);
-        const teamData = teamDoc.data();
-        const request = teamData.pendingRequests[userId];
+        // Read and delete from joinRequests subcollection
+        const joinRequestRef = doc(db, 'teams', appState.currentTeamId, 'joinRequests', userId);
+        const requestDoc = await getDoc(joinRequestRef);
+        const request = requestDoc.exists() ? requestDoc.data() : null;
         
-        await updateDoc(teamRef, {
-            [`pendingRequests.${userId}`]: deleteField()
-        });
+        await deleteDoc(joinRequestRef);
 
         debugLog('❌ Rejected join request');
         
@@ -14964,18 +14994,14 @@ async function getPendingRequestsCount() {
     if (!db || !currentAuthUser || !appState.currentTeamId) return 0;
 
     try {
-        const { doc, getDoc } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+        const { collection, getDocs, query, where } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
         
-        const teamRef = doc(db, 'teams', appState.currentTeamId);
-        const teamDoc = await getDoc(teamRef);
+        // Read from joinRequests subcollection
+        const joinRequestsRef = collection(db, 'teams', appState.currentTeamId, 'joinRequests');
+        const pendingQuery = query(joinRequestsRef, where('status', '==', 'pending'));
+        const snapshot = await getDocs(pendingQuery);
         
-        if (!teamDoc.exists()) return 0;
-        
-        const teamData = teamDoc.data();
-        const pendingRequests = teamData.pendingRequests || {};
-        
-        return Object.values(pendingRequests)
-            .filter(request => request.status === 'pending').length;
+        return snapshot.size;
     } catch (error) {
         console.error('Error getting pending requests count:', error.code || error.message);
         debugError('Full error:', error);
@@ -15118,6 +15144,32 @@ async function syncPublicProfile(profileData) {
 }
 
 // Check invitation rate limits to prevent spam
+/**
+ * ⚠️ SECURITY LIMITATION: CLIENT-SIDE RATE LIMITING ⚠️
+ * 
+ * These rate limits are enforced CLIENT-SIDE only and can be bypassed by:
+ * - Directly calling the Firestore API
+ * - Modifying this JavaScript code
+ * - Using multiple browser sessions/devices
+ * 
+ * The limits ARE enforced in Firestore rules for:
+ * - Token length (min 32 chars)
+ * - Schema validation (required fields)
+ * - Permission checks (admin/owner only)
+ * 
+ * For TRUE server-side rate limiting, you need:
+ * - Cloud Functions with rate limiting logic
+ * - Firebase App Check to verify legitimate clients
+ * - IP-based rate limiting at the infrastructure level
+ * 
+ * RECOMMENDATION: Implement Cloud Functions for invitation creation
+ * to enforce rate limits server-side before production launch.
+ * 
+ * Current client-side limits (easily bypassed):
+ * - 20 invitations per hour per user
+ * - 100 invitations per day per user
+ * - 15-minute cooldown per email address
+ */
 async function checkInvitationRateLimits(invitedEmail) {
     if (!db || !currentAuthUser) {
         throw new Error('Not authenticated');
@@ -15135,6 +15187,7 @@ async function checkInvitationRateLimits(invitedEmail) {
         const invitationsRef = collection(db, 'teamInvitations');
 
         // LIMIT 1: Check per-user hourly limit (max 20 invites per hour)
+        // WARNING: This is client-side only - see comment above
         const hourlyQuery = query(
             invitationsRef,
             where('invitedBy', '==', currentAuthUser.uid),
@@ -19142,36 +19195,37 @@ async function displayJoinRequests() {
     if (!db || !currentAuthUser || !appState.currentTeamId) return;
     
     try {
-        const { doc, getDoc } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+        const { collection, getDocs, query, where } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
         
-        const teamRef = doc(db, 'teams', appState.currentTeamId);
-        const teamDoc = await getDoc(teamRef);
+        // Read from joinRequests subcollection instead of deprecated pendingRequests map
+        const joinRequestsRef = collection(db, 'teams', appState.currentTeamId, 'joinRequests');
+        const pendingQuery = query(joinRequestsRef, where('status', '==', 'pending'));
+        const snapshot = await getDocs(pendingQuery);
         
-        if (!teamDoc.exists()) return;
-        
-        const teamData = teamDoc.data();
-        const pendingRequests = teamData.pendingRequests || {};
-        const requestIds = Object.keys(pendingRequests);
+        const requestsList = [];
+        snapshot.forEach(doc => {
+            requestsList.push({ id: doc.id, ...doc.data() });
+        });
         
         const joinRequestsSection = document.getElementById('joinRequestsSection');
         const joinRequestsList = document.getElementById('joinRequestsList');
         const requestCountBadge = document.getElementById('requestCountBadge');
         
-        if (requestIds.length === 0) {
+        if (requestsList.length === 0) {
             if (joinRequestsSection) joinRequestsSection.style.display = 'none';
             return;
         }
         
         // Show section
         if (joinRequestsSection) joinRequestsSection.style.display = 'block';
-        if (requestCountBadge) requestCountBadge.textContent = requestIds.length;
+        if (requestCountBadge) requestCountBadge.textContent = requestsList.length;
         
         // Display requests
         if (joinRequestsList) {
             joinRequestsList.innerHTML = '';
             
-            requestIds.forEach(userId => {
-                const request = pendingRequests[userId];
+            requestsList.forEach(request => {
+                const userId = request.id;
                 const requestItem = createJoinRequestItem(userId, request);
                 joinRequestsList.appendChild(requestItem);
             });
@@ -19403,18 +19457,16 @@ async function joinTeamByCode(teamCode) {
         
         debugLog('✅ Found team:', teamName);
         
-        // Create join request
-        // The Firestore rules allow any auth user to add themselves to pendingRequests
-        const teamRef = doc(db, 'teams', teamId);
-        const joinRequest = {
+        // Create join request in subcollection (prevents DoS via map growth)
+        // Uses /teams/{teamId}/joinRequests/{userId} instead of deprecated pendingRequests map
+        const { setDoc } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+        const joinRequestRef = doc(db, 'teams', teamId, 'joinRequests', currentAuthUser.uid);
+        await setDoc(joinRequestRef, {
+            userId: currentAuthUser.uid,
             name: currentAuthUser.displayName || currentAuthUser.email,
             email: currentAuthUser.email,
             requestedAt: serverTimestamp(),
             status: 'pending'
-        };
-        
-        await updateDoc(teamRef, {
-            [`pendingRequests.${currentAuthUser.uid}`]: joinRequest
         });
         
         debugLog('✅ Join request sent successfully');
@@ -19858,9 +19910,39 @@ async function loadMessagesFromFirestore() {
 // ===================================
 // ENCRYPTION UTILITIES
 // ===================================
+/**
+ * ⚠️ SECURITY WARNING: ENCRYPTION THEATER - NOT TRUE E2EE ⚠️
+ * 
+ * The encryption implemented here provides OBFUSCATION ONLY, not true security.
+ * 
+ * WHY THIS IS NOT SECURE:
+ * - The encryption key is derived from: teamId + hardcoded salt
+ * - Both values are known/accessible to anyone with Firestore access
+ * - If Firestore is compromised, messages can be trivially decrypted
+ * - Server-side (Firebase) can always decrypt messages
+ * 
+ * WHAT THIS PROTECTS AGAINST:
+ * - Casual viewing of raw database exports
+ * - Accidental data exposure in logs
+ * 
+ * WHAT THIS DOES NOT PROTECT AGAINST:
+ * - Determined attackers with database access
+ * - Firebase/Google employees
+ * - Legal/government data requests
+ * - Any breach of Firestore security rules
+ * 
+ * FOR TRUE END-TO-END ENCRYPTION (E2EE), YOU NEED:
+ * - User-generated secrets (passwords or passphrase)
+ * - Client-side key derivation that never touches the server
+ * - Key exchange protocols (e.g., Signal Protocol, ECDH)
+ * - Per-user or per-conversation keys
+ * 
+ * DO NOT claim "end-to-end encryption" or "E2EE" in any UI or documentation.
+ * This is transport-layer obfuscation, not cryptographic security.
+ */
 async function getTeamEncryptionKey(teamId) {
-    // Use team ID as the basis for encryption key
-    // In production, you'd want to use a more secure key management system
+    // WARNING: This key is derived from publicly-accessible teamId + hardcoded salt
+    // This provides obfuscation, NOT cryptographic security
     const encoder = new TextEncoder();
     const keyMaterial = encoder.encode(teamId + '_encryption_key_v1');
     
@@ -19874,6 +19956,7 @@ async function getTeamEncryptionKey(teamId) {
     );
     
     // Derive an AES-GCM key from the key material
+    // WARNING: The salt is hardcoded, reducing security further
     const salt = encoder.encode('teamhub_salt_v1');
     return await crypto.subtle.deriveKey(
         {
