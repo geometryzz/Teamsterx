@@ -9,13 +9,13 @@
  * See SECURITY.md for detailed documentation.
  */
 const firebaseConfig = {
-    apiKey: import.meta.env.VITE_FIREBASE_API_KEY || window.__ENV__?.VITE_FIREBASE_API_KEY || "AIzaSyBsV-g9DBRTCE9sk1bsYy4TRsohAETF7vg",
-    authDomain: import.meta.env.VITE_FIREBASE_AUTH_DOMAIN || window.__ENV__?.VITE_FIREBASE_AUTH_DOMAIN || "teamhub-bf61f.firebaseapp.com",
-    projectId: import.meta.env.VITE_FIREBASE_PROJECT_ID || window.__ENV__?.VITE_FIREBASE_PROJECT_ID || "teamhub-bf61f",
-    storageBucket: import.meta.env.VITE_FIREBASE_STORAGE_BUCKET || window.__ENV__?.VITE_FIREBASE_STORAGE_BUCKET || "teamhub-bf61f.firebasestorage.app",
-    messagingSenderId: import.meta.env.VITE_FIREBASE_MESSAGING_SENDER_ID || window.__ENV__?.VITE_FIREBASE_MESSAGING_SENDER_ID || "186552753103",
-    appId: import.meta.env.VITE_FIREBASE_APP_ID || window.__ENV__?.VITE_FIREBASE_APP_ID || "1:186552753103:web:4a102aa3b91aa71c4150ba",
-    measurementId: import.meta.env.VITE_FIREBASE_MEASUREMENT_ID || window.__ENV__?.VITE_FIREBASE_MEASUREMENT_ID || "G-1VH5ZLCH63"
+    apiKey: (typeof window !== 'undefined' && window.__ENV__?.VITE_FIREBASE_API_KEY) || "AIzaSyBsV-g9DBRTCE9sk1bsYy4TRsohAETF7vg",
+    authDomain: (typeof window !== 'undefined' && window.__ENV__?.VITE_FIREBASE_AUTH_DOMAIN) || "teamhub-bf61f.firebaseapp.com",
+    projectId: (typeof window !== 'undefined' && window.__ENV__?.VITE_FIREBASE_PROJECT_ID) || "teamhub-bf61f",
+    storageBucket: (typeof window !== 'undefined' && window.__ENV__?.VITE_FIREBASE_STORAGE_BUCKET) || "teamhub-bf61f.firebasestorage.app",
+    messagingSenderId: (typeof window !== 'undefined' && window.__ENV__?.VITE_FIREBASE_MESSAGING_SENDER_ID) || "186552753103",
+    appId: (typeof window !== 'undefined' && window.__ENV__?.VITE_FIREBASE_APP_ID) || "1:186552753103:web:4a102aa3b91aa71c4150ba",
+    measurementId: (typeof window !== 'undefined' && window.__ENV__?.VITE_FIREBASE_MEASUREMENT_ID) || "G-1VH5ZLCH63"
 };
 
 // Initialize Firebase
