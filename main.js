@@ -19,6 +19,134 @@ let currentAuthUser = null;
 const DEBUG = false;
 
 // ===================================
+// DEBUG_PERMS FLAG - Enable verbose permission debugging
+// Set to true to log Firestore write details (paths, keys, payloads)
+// ===================================
+const DEBUG_PERMS = true;  // ENABLED - check console for [DEBUG_PERMS] logs
+
+// ===================================
+// FIRESTORE ERROR LOGGER HELPER
+// Centralized logging for permission-denied and other Firestore errors
+// ===================================
+// ===================================
+// ENHANCED FIRESTORE ERROR LOGGER
+// ===================================
+// This comprehensive logger provides detailed diagnostics for permission-denied errors:
+// - Fetches and displays the ACTUAL Firestore document (resource.data)
+// - Shows the MERGED document after applying updates (request.resource.data)
+// - Field-by-field comparison showing what changed
+// - Auth context with permission checks (creator match, role validation)
+// - Color-coded output for quick visual scanning
+// - Helps diagnose EXACTLY which Firestore rule condition failed
+//
+// FIXES APPLIED (v=48):
+// - Added missing task fields: budget, spreadsheetId, showOnCalendar
+// - Made teamId validation conditional for legacy tasks (like title)
+// - Made teamId IMMUTABILITY checks conditional across ALL collections:
+//   * Tasks: (!('teamId' in resource.data) || fieldUnchanged('teamId'))
+//   * Events: Same conditional check
+//   * Spreadsheets: Same conditional check
+//   * LinkLobbyGroups: Same conditional check
+//   * Transactions: Same conditional check
+//   * TeamJoinInfo: Made createdAt check conditional too
+// - This allows updates to legacy docs created before teamId was added
+// - Enhanced diagnostics to show actual vs merged document state
+// ===================================
+
+async function logFirestoreError(op, path, payload, extraContext, error) {
+    const isPermDenied = error?.code === 'permission-denied';
+    const prefix = isPermDenied ? '🔒 [PERMISSION-DENIED]' : '❌ [FIRESTORE ERROR]';
+    
+    // Truncate large arrays in payload for readability
+    const truncateValue = (val) => {
+        if (Array.isArray(val) && val.length > 5) {
+            return `[Array(${val.length}): ${JSON.stringify(val.slice(0, 3))}... +${val.length - 3} more]`;
+        }
+        if (typeof val === 'object' && val !== null) {
+            const keys = Object.keys(val);
+            if (keys.length > 10) {
+                return `{Object with ${keys.length} keys: ${keys.slice(0, 5).join(', ')}...}`;
+            }
+        }
+        return val;
+    };
+    
+    const payloadPreview = {};
+    if (payload && typeof payload === 'object') {
+        for (const [k, v] of Object.entries(payload)) {
+            payloadPreview[k] = truncateValue(v);
+        }
+    }
+    
+    // For permission-denied on UPDATE, try to fetch the ACTUAL document to diagnose
+    let actualDocData = null;
+    let mergedDocData = null;
+    if (isPermDenied && path && !path.includes('<new>') && db) {
+        try {
+            const { doc, getDoc } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+            const docRef = doc(db, ...path.split('/'));
+            const docSnap = await getDoc(docRef);
+            if (docSnap.exists()) {
+                actualDocData = docSnap.data();
+                // Simulate what merged doc would look like
+                mergedDocData = { ...actualDocData, ...payload };
+            }
+        } catch (fetchErr) {
+            console.warn('⚠️ Could not fetch document for diagnosis:', fetchErr.message);
+        }
+    }
+    
+    console.group(`${prefix} ${op}`);
+    console.log('%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'color: #ff4444; font-weight: bold');
+    console.log('%c📍 OPERATION:', 'color: #ff8800; font-weight: bold', op);
+    console.log('%c📂 PATH:', 'color: #ff8800; font-weight: bold', path);
+    console.log('%c🚫 ERROR CODE:', 'color: #ff0000; font-weight: bold', error?.code || 'unknown');
+    console.log('%c💬 ERROR MESSAGE:', 'color: #ff0000; font-weight: bold', error?.message || String(error));
+    console.log('%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'color: #ff4444; font-weight: bold');
+    console.log('%c📦 PAYLOAD KEYS:', 'color: #00aaff; font-weight: bold', payload ? Object.keys(payload) : 'N/A');
+    console.log('%c📦 PAYLOAD DATA:', 'color: #00aaff; font-weight: bold', payloadPreview);
+    
+    if (actualDocData) {
+        console.log('%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'color: #ffaa00; font-weight: bold');
+        console.log('%c📄 ACTUAL FIRESTORE DOC (resource.data):', 'color: #ffaa00; font-weight: bold');
+        console.log('Keys:', Object.keys(actualDocData));
+        console.log('Data:', actualDocData);
+        console.log('%c🔀 MERGED DOC (request.resource.data):', 'color: #aa00ff; font-weight: bold');
+        console.log('Keys:', Object.keys(mergedDocData));
+        console.log('Data:', mergedDocData);
+        console.log('%c🔍 FIELD COMPARISON:', 'color: #00ff88; font-weight: bold');
+        console.log('• teamId:', { before: actualDocData.teamId, after: mergedDocData.teamId, hasField: 'teamId' in mergedDocData });
+        console.log('• title:', { before: actualDocData.title, after: mergedDocData.title, hasField: 'title' in mergedDocData });
+        console.log('• createdBy:', { before: actualDocData.createdBy, after: mergedDocData.createdBy, unchanged: actualDocData.createdBy === mergedDocData.createdBy });
+        console.log('• createdAt:', { before: actualDocData.createdAt, after: mergedDocData.createdAt, hasInOld: 'createdAt' in actualDocData });
+    }
+    
+    console.log('%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'color: #00ff00; font-weight: bold');
+    if (extraContext) {
+        console.log('%c🔐 AUTH CONTEXT:', 'color: #00ff00; font-weight: bold', extraContext);
+        if (isPermDenied && extraContext.taskCreatedBy && extraContext.uid) {
+            console.log('%c✅ Creator Match:', 'color: ' + (extraContext.taskCreatedBy === extraContext.uid ? '#00ff00' : '#ff0000') + '; font-weight: bold', 
+                extraContext.taskCreatedBy === extraContext.uid ? 'YES' : 'NO',
+                `(${extraContext.uid} ${extraContext.taskCreatedBy === extraContext.uid ? '===' : '!=='} ${extraContext.taskCreatedBy})`);
+        }
+        if (isPermDenied && extraContext.userRole) {
+            console.log('%c👑 User Role:', 'color: #ffaa00; font-weight: bold', extraContext.userRole,
+                '(Admin check:', ['admin', 'owner'].includes(extraContext.userRole) ? 'PASS' : 'FAIL' + ')');
+        }
+    }
+    console.log('%c━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━', 'color: #ff4444; font-weight: bold');
+    
+    if (error?.stack) {
+        console.log('%c📚 STACK TRACE:', 'color: #888; font-style: italic');
+        console.log(error.stack);
+    }
+    console.groupEnd();
+    
+    // Also log a one-liner for quick scanning
+    console.error(`${prefix} ${op} @ ${path} | keys=[${payload ? Object.keys(payload).join(',') : ''}] | ${error?.code}: ${error?.message}`);
+}
+
+// ===================================
 // EARLY GLOBAL FUNCTIONS (must be defined before DOM loads)
 // ===================================
 window.generateJoinLink = function() {
@@ -3399,22 +3527,34 @@ function initTasks() {
             appState.spreadsheets = [];
         }
 
-        // If no spreadsheets exist, create a default "All Tasks" spreadsheet
-        if (appState.spreadsheets.length === 0) {
+        // If no spreadsheets exist AND we've already loaded from Firestore, create a default "All Tasks" spreadsheet
+        // IMPORTANT: Check _spreadsheetsLoaded flag to avoid race condition where displayTasks() is called
+        // before loadSpreadsheetsFromFirestore() completes
+        if (appState.spreadsheets.length === 0 && appState._spreadsheetsLoaded) {
             const defaultSpreadsheet = {
                 id: 'default',
                 name: 'All Tasks',
                 color: '#0070f3',
                 icon: 'fa-list-check',
                 visibility: 'team',
+                type: 'tasks',
                 columns: ['title', 'status', 'assignee', 'priority', 'dueDate', 'progress'],
                 createdBy: currentAuthUser?.uid || null,
-                createdAt: Date.now()
+                _needsFirstSave: true  // Flag to save only once
             };
             appState.spreadsheets.push(defaultSpreadsheet);
-            // Save to Firestore (only if we have a valid user)
-            if (currentAuthUser?.uid) {
-                saveSpreadsheetToFirestore(defaultSpreadsheet);
+            // Save to Firestore ONCE (only if we have a valid user and it's truly new)
+            // NOTE: saveSpreadsheetToFirestore will check if doc exists and handle create vs update
+            if (currentAuthUser?.uid && defaultSpreadsheet._needsFirstSave) {
+                delete defaultSpreadsheet._needsFirstSave;  // Remove flag before save
+                // Only try to create if there's no existing 'default' spreadsheet in Firestore
+                // The saveSpreadsheetToFirestore function will check doc existence
+                saveSpreadsheetToFirestore(defaultSpreadsheet).catch(err => {
+                    // Silently ignore if it already exists - will be loaded on next refresh
+                    if (err.code !== 'permission-denied') {
+                        console.warn('Could not create default spreadsheet:', err.message);
+                    }
+                });
             }
         }
 
@@ -5057,9 +5197,12 @@ function initTasks() {
         // Save to Firestore
         if (db && currentAuthUser && appState.currentTeamId) {
             try {
-                const { doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+                const { doc, updateDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
                 const taskRef = doc(db, 'teams', appState.currentTeamId, 'tasks', String(task.id));
-                await updateDoc(taskRef, { [columnId]: newValue });
+                await updateDoc(taskRef, { 
+                    [columnId]: newValue,
+                    updatedAt: serverTimestamp()
+                });
                 debugLog(`✅ Task ${columnId} updated:`, task.id, newValue);
             } catch (error) {
                 console.error(`Error updating task ${columnId}:`, error);
@@ -5293,12 +5436,22 @@ function initTasks() {
         // Save to Firestore
         if (db && currentAuthUser && appState.currentTeamId) {
             try {
-                const { doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+                const { doc, updateDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
                 const taskRef = doc(db, 'teams', appState.currentTeamId, 'tasks', String(task.id));
-                await updateDoc(taskRef, { [field]: parsedValue });
+                await updateDoc(taskRef, { 
+                    [field]: parsedValue,
+                    updatedAt: serverTimestamp()
+                });
                 debugLog(`✅ Task ${field} updated:`, task.id, parsedValue);
             } catch (error) {
-                console.error(`Error updating task ${field}:`, error);
+                const path = `teams/${appState.currentTeamId}/tasks/${task.id}`;
+                logFirestoreError(`saveInlineEdit(${field})`, path, { [field]: parsedValue }, {
+                    uid: currentAuthUser?.uid,
+                    teamId: appState.currentTeamId,
+                    taskId: task.id,
+                    taskCreatedBy: task.createdBy,
+                    userRole: appState.currentTeamData?.members?.[currentAuthUser?.uid]?.role
+                }, error);
                 // Revert on error
                 task[field] = originalValue;
                 cell.innerHTML = originalHTML;
@@ -5408,12 +5561,22 @@ function initTasks() {
                 // Save to Firestore
                 if (db && currentAuthUser && appState.currentTeamId) {
                     try {
-                        const { doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+                        const { doc, updateDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
                         const taskRef = doc(db, 'teams', appState.currentTeamId, 'tasks', String(taskId));
-                        await updateDoc(taskRef, { progress: newProgress });
+                        const payload = { progress: newProgress, updatedAt: serverTimestamp() };
+                        await updateDoc(taskRef, payload);
                         debugLog('✅ Task progress updated:', taskId, newProgress);
                     } catch (error) {
-                        console.error('Error updating progress:', error);
+                        const path = `teams/${appState.currentTeamId}/tasks/${taskId}`;
+                        logFirestoreError('updateTaskProgress', path, { progress: newProgress }, {
+                            uid: currentAuthUser?.uid,
+                            teamId: appState.currentTeamId,
+                            taskId: taskId,
+                            taskCreatedBy: task.createdBy,
+                            taskAssignee: task.assignee,
+                            taskAssigneeId: task.assigneeId,
+                            userRole: appState.currentTeamData?.members?.[currentAuthUser?.uid]?.role
+                        }, error);
                     }
                 }
             });
@@ -5503,12 +5666,23 @@ function initTasks() {
         // Save to Firestore
         if (db && currentAuthUser && appState.currentTeamId) {
             try {
-                const { doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+                const { doc, updateDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
                 const taskRef = doc(db, 'teams', appState.currentTeamId, 'tasks', String(task.id));
-                await updateDoc(taskRef, { priority: newPriority });
+                await updateDoc(taskRef, { 
+                    priority: newPriority,
+                    updatedAt: serverTimestamp()
+                });
                 debugLog('✅ Task priority updated:', task.id, newPriority);
             } catch (error) {
-                console.error('Error updating task priority:', error);
+                const path = `teams/${appState.currentTeamId}/tasks/${task.id}`;
+                logFirestoreError('updateTaskPriority', path, { priority: newPriority }, {
+                    uid: currentAuthUser?.uid,
+                    teamId: appState.currentTeamId,
+                    taskId: task.id,
+                    taskCreatedBy: task.createdBy,
+                    taskAssignee: task.assignee,
+                    userRole: appState.currentTeamData?.members?.[currentAuthUser?.uid]?.role
+                }, error);
                 task.priority = oldPriority;
             }
         }
@@ -5614,15 +5788,23 @@ function initTasks() {
         // Save to Firestore
         if (db && currentAuthUser && appState.currentTeamId) {
             try {
-                const { doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+                const { doc, updateDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
                 const taskRef = doc(db, 'teams', appState.currentTeamId, 'tasks', String(task.id));
                 await updateDoc(taskRef, { 
                     assigneeId: newAssigneeId || null,
-                    assignee: newAssigneeName || 'Unassigned'
+                    assignee: newAssigneeName || 'Unassigned',
+                    updatedAt: serverTimestamp()
                 });
                 debugLog('✅ Task assignee updated:', task.id, newAssigneeName);
             } catch (error) {
-                console.error('Error updating task assignee:', error);
+                const path = `teams/${appState.currentTeamId}/tasks/${task.id}`;
+                logFirestoreError('updateTaskAssignee', path, { assigneeId: newAssigneeId, assignee: newAssigneeName }, {
+                    uid: currentAuthUser?.uid,
+                    teamId: appState.currentTeamId,
+                    taskId: task.id,
+                    taskCreatedBy: task.createdBy,
+                    userRole: appState.currentTeamData?.members?.[currentAuthUser?.uid]?.role
+                }, error);
                 task.assigneeId = oldAssigneeId;
             }
         }
@@ -7037,8 +7219,8 @@ function initTasks() {
                     visibility: visibility,
                     createdBy: currentAuthUser?.uid || null,
                     columns: [...preset.columns],
-                    columnSettings: JSON.parse(JSON.stringify(preset.columnSettings)), // Deep copy
-                    createdAt: Date.now()
+                    columnSettings: JSON.parse(JSON.stringify(preset.columnSettings))
+                    // Don't set createdAt here - let saveSpreadsheetToFirestore handle it with serverTimestamp()
                 };
 
                 appState.spreadsheets.push(newSpreadsheet);
@@ -7217,6 +7399,25 @@ function initTasks() {
         }
     }
 
+    // Helper: Check if current user can edit this spreadsheet based on visibility
+    function canEditSpreadsheet(spreadsheet) {
+        if (!currentAuthUser) return false;
+        
+        // Creator can always edit their own
+        if (spreadsheet.createdBy === currentAuthUser.uid) return true;
+        
+        // Get user role
+        const userRole = appState.currentTeamData?.members?.[currentAuthUser.uid]?.role || 'member';
+        
+        // Check visibility permissions
+        const vis = spreadsheet.visibility || 'team';
+        if (vis === 'team') return true;  // Any member can edit team sheets
+        if (vis === 'admins') return userRole === 'admin' || userRole === 'owner';
+        if (vis === 'private') return false;  // Already checked creator above
+        
+        return false;
+    }
+
     // Save spreadsheet to Firestore
     async function saveSpreadsheetToFirestore(spreadsheet) {
         if (!appState.currentTeamId || !db) {
@@ -7229,19 +7430,20 @@ function initTasks() {
             return;
         }
         
-        // Permission check: only owner/admin can modify spreadsheet structure in shared teams
-        if (appState.currentTeamData && !isAdmin(appState.currentTeamData)) {
-            // Allow saving if it's just task data changes, but block column structure changes
-            // For now, we'll let it through but log a warning
-            console.warn('Non-admin user saving spreadsheet - only task data should change');
+        // PERMISSION CHECK: Verify user can edit this spreadsheet
+        if (!canEditSpreadsheet(spreadsheet)) {
+            // Silent return to avoid console spam - user doesn't have permission
+            debugLog('⚠️ Skipping save - no edit permission for spreadsheet:', spreadsheet.id);
+            return;
         }
         
         try {
-            const { doc, setDoc } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+            const { doc, setDoc, updateDoc, getDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
             const spreadsheetRef = doc(db, 'teams', appState.currentTeamId, 'spreadsheets', spreadsheet.id);
             
-            // Ensure createdBy is set (required for permissions)
-            const createdBy = spreadsheet.createdBy || currentAuthUser.uid;
+            // Check if doc exists to determine create vs update
+            const docSnap = await getDoc(spreadsheetRef);
+            const isNewDoc = !docSnap.exists();
             
             // Determine default columns based on type
             const isLeadsType = spreadsheet.type === 'leads';
@@ -7249,30 +7451,76 @@ function initTasks() {
                 ? ['leadName', 'status', 'source', 'value', 'contact', 'createdAt', 'notes']
                 : ['title', 'status', 'assignee', 'priority', 'dueDate', 'progress'];
             
-            const dataToSave = {
-                name: spreadsheet.name,
-                type: spreadsheet.type || 'tasks', // IMPORTANT: Save the type!
-                icon: spreadsheet.icon || 'fa-table',
-                color: spreadsheet.color || '#0070f3',
-                columns: spreadsheet.columns || defaultColumns,
-                visibility: spreadsheet.visibility || 'team',
-                createdBy: createdBy,
-                createdAt: spreadsheet.createdAt || Date.now(),
-                updatedAt: Date.now(),
-                // Save custom columns with all their properties
-                customColumns: spreadsheet.customColumns || [],
-                // Save built-in column customizations (labels, icons, options, colorRanges)
-                columnSettings: spreadsheet.columnSettings || {}
-            };
-            
-            await setDoc(spreadsheetRef, dataToSave, { merge: true });
-            
-            // Update local spreadsheet with saved data
-            spreadsheet.createdBy = createdBy;
-            
-            console.log('Spreadsheet saved to Firestore:', spreadsheet.name, dataToSave);
+            if (isNewDoc) {
+                // CREATE: Full schema including immutable fields
+                const createData = {
+                    name: spreadsheet.name,
+                    type: spreadsheet.type || 'tasks',
+                    icon: spreadsheet.icon || 'fa-table',
+                    color: spreadsheet.color || '#0070f3',
+                    columns: spreadsheet.columns || defaultColumns,
+                    visibility: spreadsheet.visibility || 'team',
+                    createdBy: currentAuthUser.uid,  // IMMUTABLE: set only on create
+                    teamId: appState.currentTeamId,   // IMMUTABLE: set only on create
+                    createdAt: serverTimestamp(),     // IMMUTABLE: set only on create
+                    updatedAt: serverTimestamp(),
+                    customColumns: spreadsheet.customColumns || [],
+                    columnSettings: spreadsheet.columnSettings || {}
+                };
+                
+                // DEBUG_PERMS logging
+                if (DEBUG_PERMS) {
+                    console.log('[DEBUG_PERMS] CREATE spreadsheet:', {
+                        path: `teams/${appState.currentTeamId}/spreadsheets/${spreadsheet.id}`,
+                        keys: Object.keys(createData),
+                        uid: currentAuthUser.uid
+                    });
+                }
+                
+                await setDoc(spreadsheetRef, createData);
+                spreadsheet.createdBy = currentAuthUser.uid;
+                console.log('Spreadsheet CREATED in Firestore:', spreadsheet.name);
+            } else {
+                // UPDATE: Only mutable fields (rules use affectedKeys check)
+                const updateData = {
+                    name: spreadsheet.name,
+                    type: spreadsheet.type || 'tasks',
+                    icon: spreadsheet.icon || 'fa-table',
+                    color: spreadsheet.color || '#0070f3',
+                    columns: spreadsheet.columns || defaultColumns,
+                    visibility: spreadsheet.visibility || 'team',
+                    updatedAt: serverTimestamp(),
+                    customColumns: spreadsheet.customColumns || [],
+                    columnSettings: spreadsheet.columnSettings || {}
+                };
+                // NOTE: createdBy, teamId, createdAt are NOT included - they're immutable
+                
+                // DEBUG_PERMS logging
+                if (DEBUG_PERMS) {
+                    const existingData = docSnap.data();
+                    console.log('[DEBUG_PERMS] UPDATE spreadsheet:', {
+                        path: `teams/${appState.currentTeamId}/spreadsheets/${spreadsheet.id}`,
+                        keysBeingSent: Object.keys(updateData),
+                        existingDocKeys: Object.keys(existingData),
+                        uid: currentAuthUser.uid,
+                        existingCreatedBy: existingData.createdBy,
+                        existingTeamId: existingData.teamId,
+                        existingCreatedAt: existingData.createdAt ? 'exists' : 'MISSING'
+                    });
+                }
+                
+                await updateDoc(spreadsheetRef, updateData);
+                spreadsheet.createdBy = docSnap.data().createdBy;  // Preserve existing
+                console.log('Spreadsheet UPDATED in Firestore:', spreadsheet.name);
+            }
         } catch (error) {
-            console.error('Error saving spreadsheet:', error);
+            const path = `teams/${appState.currentTeamId}/spreadsheets/${spreadsheet.id}`;
+            logFirestoreError('saveSpreadsheetToFirestore', path, spreadsheet, {
+                uid: currentAuthUser?.uid,
+                teamId: appState.currentTeamId,
+                spreadsheetName: spreadsheet.name,
+                spreadsheetVisibility: spreadsheet.visibility
+            }, error);
             throw error;
         }
     }
@@ -7353,10 +7601,16 @@ function initTasks() {
                 appState.spreadsheets.push(spreadsheet);
             });
             
+            // Set flag to indicate spreadsheets have been loaded from Firestore
+            // This prevents race condition in renderSpreadsheetCards creating duplicate defaults
+            appState._spreadsheetsLoaded = true;
+            
             console.log('Loaded spreadsheets from Firestore:', appState.spreadsheets.length, 'with custom columns');
             renderSpreadsheetCards();
         } catch (error) {
             console.error('Error loading spreadsheets:', error);
+            // Still set flag even on error to avoid stuck state
+            appState._spreadsheetsLoaded = true;
         }
     }
 
@@ -7478,9 +7732,12 @@ async function updateTaskStatus(taskId, newStatus) {
     // Update in Firestore
     if (db && currentAuthUser && appState.currentTeamId) {
         try {
-            const { doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+            const { doc, updateDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
             const taskRef = doc(db, 'teams', appState.currentTeamId, 'tasks', String(taskId));
-            await updateDoc(taskRef, { status: newStatus });
+            await updateDoc(taskRef, { 
+                status: newStatus,
+                updatedAt: serverTimestamp()
+            });
             
             debugLog('✅ Task status updated:', taskId, newStatus);
             
@@ -8185,9 +8442,10 @@ async function addActivity(activity) {
         
         const activitiesRef = collection(db, 'teams', appState.currentTeamId, 'activities');
         
+        // SECURITY: Rules require createdBy == request.auth.uid
         const activityData = {
             type: activity.type,
-            userId: currentAuthUser.uid,
+            createdBy: currentAuthUser.uid, // Required by rules (was userId)
             userName: currentAuthUser.displayName || currentAuthUser.email,
             description: activity.description,
             createdAt: serverTimestamp()
@@ -13585,6 +13843,15 @@ async function initializeUserTeam() {
                     await loadTeamData();
                 }
             }
+        }, (error) => {
+            // Handle Firestore listener errors (permission-denied, network issues, etc.)
+            if (error.code === 'permission-denied') {
+                debugLog('⚠️ User document listener: permission denied (normal if logged out)');
+            } else if (error.code === 'unavailable' || error.code === 'deadline-exceeded') {
+                debugLog('⚠️ User document listener temporarily unavailable, will auto-retry');
+            } else {
+                console.error('Error in user document listener:', error.code || error.message);
+            }
         });
 
         // CLEANUP: Verify user is actually a member of their listed team(s)
@@ -15114,30 +15381,84 @@ async function syncPublicProfile(profileData) {
         return;
     }
     
+    const path = `publicProfiles/${currentAuthUser.uid}`;
+    
     try {
-        const { doc, setDoc, serverTimestamp } = 
+        const { doc, setDoc, updateDoc, getDoc, serverTimestamp, deleteField } = 
             await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
         
         const publicProfileRef = doc(db, 'publicProfiles', currentAuthUser.uid);
         
         // SECURITY: Only include allowed fields (NO email - prevents cross-team scraping)
+        // Ensure displayName is a string and within length limit
+        let displayName = profileData.displayName || currentAuthUser.displayName || 'Unknown';
+        if (typeof displayName !== 'string') displayName = String(displayName);
+        if (displayName.length > 100) displayName = displayName.substring(0, 100);
+        
+        // Check if doc exists FIRST to handle legacy null fields
+        const docSnap = await getDoc(publicProfileRef);
+        const existingData = docSnap.exists() ? docSnap.data() : null;
+        
+        // Build publicData for CREATE or UPDATE
         const publicData = {
-            displayName: profileData.displayName || currentAuthUser.displayName || 'Unknown',
+            displayName: displayName,
             updatedAt: serverTimestamp()
         };
         
-        // Add optional fields only if they exist
-        if (profileData.photoURL) {
+        // Add optional fields only if they exist and are valid strings
+        if (profileData.photoURL && typeof profileData.photoURL === 'string') {
             publicData.photoURL = profileData.photoURL;
         }
-        if (profileData.occupation) {
-            publicData.occupation = profileData.occupation;
+        if (profileData.occupation && typeof profileData.occupation === 'string') {
+            // Clamp occupation length to 200 chars (matches rule)
+            publicData.occupation = profileData.occupation.substring(0, 200);
         }
         
-        await setDoc(publicProfileRef, publicData, { merge: true });
+        // FIX FOR LEGACY NULL FIELDS:
+        // If existing doc has photoURL or occupation that is NOT a string (commonly null),
+        // we must delete those fields to pass the rule check:
+        //   (!('photoURL' in request.resource.data) || request.resource.data.photoURL is string)
+        // updateDoc merges, so we use deleteField() to explicitly remove bad fields
+        if (existingData) {
+            // If existing photoURL is not a valid string and we're not setting a new one, delete it
+            if (('photoURL' in existingData) && typeof existingData.photoURL !== 'string' && !publicData.photoURL) {
+                publicData.photoURL = deleteField();
+            }
+            // If existing occupation is not a valid string and we're not setting a new one, delete it
+            if (('occupation' in existingData) && typeof existingData.occupation !== 'string' && !publicData.occupation) {
+                publicData.occupation = deleteField();
+            }
+        }
+        
+        // DEBUG_PERMS logging
+        if (DEBUG_PERMS) {
+            console.log('[DEBUG_PERMS] syncPublicProfile:', {
+                path: path,
+                operation: existingData ? 'UPDATE' : 'CREATE',
+                keys: Object.keys(publicData),
+                uid: currentAuthUser.uid,
+                existingKeys: existingData ? Object.keys(existingData) : 'N/A',
+                existingPhotoURL: existingData?.photoURL === null ? 'null (LEGACY)' : typeof existingData?.photoURL,
+                existingOccupation: existingData?.occupation === null ? 'null (LEGACY)' : typeof existingData?.occupation
+            });
+        }
+        
+        if (existingData) {
+            // UPDATE: Only send mutable fields
+            await updateDoc(publicProfileRef, publicData);
+        } else {
+            // CREATE: Full doc
+            await setDoc(publicProfileRef, publicData);
+        }
         debugLog('✅ Public profile synced successfully');
         
     } catch (error) {
+        // Log detailed error info for permission-denied
+        logFirestoreError('syncPublicProfile', path, { displayName: profileData.displayName }, {
+            uid: currentAuthUser.uid,
+            hasPhotoURL: !!profileData.photoURL,
+            hasOccupation: !!profileData.occupation
+        }, error);
         // Non-critical error - log but don't throw
         console.warn('Failed to sync public profile:', error.code || error.message);
     }
@@ -18237,6 +18558,15 @@ async function startTeamMembersListener() {
             populateTaskAssigneeDropdown();
             
             debugLog('🔄 Team members updated in real-time');
+        }, (error) => {
+            // Handle Firestore listener errors (permission-denied, network issues, etc.)
+            if (error.code === 'permission-denied') {
+                debugLog('⚠️ Team members listener: permission denied');
+            } else if (error.code === 'unavailable' || error.code === 'deadline-exceeded') {
+                debugLog('⚠️ Team members listener temporarily unavailable, will auto-retry');
+            } else {
+                console.error('Error in team members listener:', error.code || error.message);
+            }
         });
         
         debugLog('👥 Team members listener started');
@@ -18272,6 +18602,15 @@ async function setupUserProfileListeners(memberUserIds) {
                 populateTaskAssigneeDropdown();
                 
                 debugLog(`🔄 User profile updated for ${userId}`);
+            }, (error) => {
+                // Handle Firestore listener errors (permission-denied, network issues, etc.)
+                if (error.code === 'permission-denied') {
+                    debugLog(`⚠️ User profile listener for ${userId}: permission denied`);
+                } else if (error.code === 'unavailable' || error.code === 'deadline-exceeded') {
+                    debugLog(`⚠️ User profile listener for ${userId} temporarily unavailable`);
+                } else {
+                    console.error(`Error in user profile listener for ${userId}:`, error.code || error.message);
+                }
             });
             
             userProfileUnsubscribes.push(unsubscribe);
@@ -18714,11 +19053,14 @@ function initTeamNameEditing(teamData) {
         }
         
         try {
-            const { doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+            const { doc, updateDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
             
             // Update Firestore
             const teamRef = doc(db, 'teams', appState.currentTeamId);
-            await updateDoc(teamRef, { name: newName });
+            await updateDoc(teamRef, { 
+                name: newName,
+                updatedAt: serverTimestamp()
+            });
             
             // Update UI immediately
             nameDisplay.textContent = newName;
@@ -19749,29 +20091,54 @@ async function loadTasksFromFirestore() {
 async function saveTaskToFirestore(task) {
     if (!db || !currentAuthUser || !appState.currentTeamId) return null;
     
+    const path = `teams/${appState.currentTeamId}/tasks/<new>`;
+    
     try {
         const { collection, addDoc, serverTimestamp } = 
             await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
         
         const tasksRef = collection(db, 'teams', appState.currentTeamId, 'tasks');
-        const docRef = await addDoc(tasksRef, {
-            ...task,
+        
+        // SECURITY: Only include fields allowed by rules whitelist
+        // Allowed: createdBy, teamId, title, description, status, assignee, assigneeId, priority, dueAt, dueDate,
+        //          createdAt, updatedAt, tags, completed, completedAt, completedBy, progress, estimatedTime
+        // NOTE: createdByName is NOT allowed - removed to fix permission-denied
+        const allowedFields = ['title', 'description', 'status', 'assignee', 'assigneeId', 'priority', 
+                               'dueAt', 'dueDate', 'tags', 'completed', 'completedAt', 'completedBy', 
+                               'progress', 'estimatedTime'];
+        const taskData = {
+            teamId: appState.currentTeamId,  // Required by rules
             createdBy: currentAuthUser.uid,
-            createdByName: currentAuthUser.displayName || currentAuthUser.email,
             createdAt: serverTimestamp()
-        });
+        };
+        for (const key of allowedFields) {
+            if (key in task && task[key] !== undefined) {
+                taskData[key] = task[key];
+            }
+        }
+        // Ensure title is set (required by rules)
+        if (!taskData.title) {
+            taskData.title = task.name || 'Untitled Task';
+        }
+        
+        const docRef = await addDoc(tasksRef, taskData);
         
         debugLog('Task saved to team collection with ID:', docRef.id);
         return docRef.id; // Return the Firestore document ID
     } catch (error) {
-        console.error('Error saving task:', error.code || error.message);
-        debugError('Full error:', error);
+        logFirestoreError('saveTaskToFirestore', path, task, {
+            uid: currentAuthUser?.uid,
+            teamId: appState.currentTeamId,
+            userRole: appState.currentTeamData?.members?.[currentAuthUser?.uid]?.role
+        }, error);
         return null;
     }
 }
 
 async function updateTaskInFirestore(task) {
     if (!db || !currentAuthUser || !appState.currentTeamId || !task.id) return false;
+    
+    const path = `teams/${appState.currentTeamId}/tasks/${task.id}`;
     
     try {
         const { doc, updateDoc, serverTimestamp } = 
@@ -19782,17 +20149,36 @@ async function updateTaskInFirestore(task) {
         // Remove id from the update data (Firestore doc ID shouldn't be a field)
         const { id, ...taskData } = task;
         
+        // SECURITY: Only include fields allowed by rules whitelist (UPDATE - mutable fields only)
+        // Allowed on UPDATE: title, description, status, assignee, assigneeId, priority, dueAt, dueDate,
+        //          updatedAt, tags, completed, completedAt, completedBy, progress, estimatedTime
+        // NOTE: updatedBy is NOT allowed - removed to fix permission-denied
+        // NOTE: createdBy, teamId, createdAt are immutable - don't send on UPDATE
+        const allowedFields = ['title', 'description', 'status', 'assignee', 'assigneeId', 'priority', 
+                               'dueAt', 'dueDate', 'tags', 'completed', 'completedAt', 'completedBy', 
+                               'progress', 'estimatedTime'];
+        const filteredData = {};
+        for (const key of allowedFields) {
+            if (key in taskData) {
+                filteredData[key] = taskData[key];
+            }
+        }
+        
         await updateDoc(taskRef, {
-            ...taskData,
-            updatedAt: serverTimestamp(),
-            updatedBy: currentAuthUser.uid
+            ...filteredData,
+            updatedAt: serverTimestamp()
         });
         
         debugLog('Task updated in Firestore:', task.id);
         return true;
     } catch (error) {
-        console.error('Error updating task:', error.code || error.message);
-        debugError('Full error:', error);
+        logFirestoreError('updateTaskInFirestore', path, filteredData, {
+            uid: currentAuthUser?.uid,
+            teamId: appState.currentTeamId,
+            taskId: task.id,
+            taskCreatedBy: task.createdBy,
+            userRole: appState.currentTeamData?.members?.[currentAuthUser?.uid]?.role
+        }, error);
         return false;
     }
 }
@@ -19829,10 +20215,24 @@ async function loadMessagesFromFirestore() {
                 encryptedMessages.map(async (msg) => {
                     let decryptedMsg = msg;
                     
-                    // Decrypt if encrypted
-                    if (msg.encrypted && msg.text) {
-                        const decryptedText = await decryptMessage(msg.text, appState.currentTeamId);
-                        decryptedMsg = { ...msg, text: decryptedText };
+                    // CRITICAL: Map Firestore 'message' field to UI 'text' field
+                    // Firestore rules require 'message', but UI expects 'text'
+                    if (msg.message && !msg.text) {
+                        decryptedMsg = { ...msg, text: msg.message };
+                    }
+                    
+                    // CRITICAL: All messages are ALWAYS encrypted (no 'encrypted' flag stored in Firestore)
+                    // The encryption happens in sendMessage() before saving
+                    // So we ALWAYS attempt to decrypt (with error handling)
+                    if (decryptedMsg.text) {
+                        try {
+                            const decryptedText = await decryptMessage(decryptedMsg.text, appState.currentTeamId);
+                            decryptedMsg = { ...decryptedMsg, text: decryptedText };
+                        } catch (error) {
+                            // If decryption fails, message might be plaintext (legacy) or corrupted
+                            console.warn('Failed to decrypt message, showing as-is:', error.message);
+                            // Keep original text
+                        }
                     }
                     
                     // Add formatted time field if timestamp exists
@@ -20038,36 +20438,30 @@ async function saveMessageToFirestore(message) {
         
         const messagesRef = collection(db, 'teams', appState.currentTeamId, 'messages');
         
-        // Build the message document
+        // SECURITY: Schema must match rules exactly
+        // Allowed fields: userId, userName, message, timestamp, createdAt, edited, editedAt, teamId, userEmail, photoURL
+        // SECURITY: userEmail must match request.auth.token.email if provided
         const messageDoc = {
-            author: message.author,
-            text: message.text, // Already encrypted text from sendMessage
-            encrypted: true,
             userId: currentAuthUser.uid,
-            avatarColor: message.avatarColor || '#0078D4',
-            mentions: message.mentions || [], // Array of mentioned user IDs
-            timestamp: serverTimestamp()
+            userName: message.author || currentAuthUser.displayName || currentAuthUser.email,
+            message: message.text, // Already encrypted text from sendMessage
+            userEmail: currentAuthUser.email, // Must match auth token
+            photoURL: currentAuthUser.photoURL || null,
+            teamId: appState.currentTeamId,
+            timestamp: serverTimestamp(),
+            createdAt: serverTimestamp()
         };
         
-        // Add reply data if present (repliedTo stores unencrypted preview since it's already
-        // a short snippet and the original message reference needs to be readable)
-        if (message.repliedTo) {
-            messageDoc.repliedTo = {
-                messageId: message.repliedTo.messageId,
-                userId: message.repliedTo.userId,
-                displayName: message.repliedTo.displayName,
-                preview: message.repliedTo.preview
-            };
-        }
+        // NOTE: repliedTo, mentions, avatarColor, encrypted flag are NOT stored in Firestore
+        // They are either derived client-side or stored in separate subcollections if needed
+        // The message text is pre-encrypted before reaching this function
         
         // Use addDoc to let Firestore generate the document ID
         const docRef = await addDoc(messagesRef, messageDoc);
         
         debugLog('✅ Message saved to Firestore:', { 
             messageId: docRef.id, 
-            docPath: `teams/${appState.currentTeamId}/messages/${docRef.id}`,
-            mentions: message.mentions || [],
-            hasReply: !!message.repliedTo
+            docPath: `teams/${appState.currentTeamId}/messages/${docRef.id}`
         });
     } catch (error) {
         console.error('Error saving message to Firestore:', error);
@@ -20235,7 +20629,8 @@ async function updateEventInFirestore(event) {
             startTimeStr: event.time,
             endTimeStr: event.endTime || '',
             color: event.color || '#007AFF',
-            visibility: event.visibility || 'team'
+            visibility: event.visibility || 'team',
+            updatedAt: new Date()  // Required by rules - helps with tracking changes
         };
         
         console.log('Updating event in Firestore:', event.id);
@@ -20326,6 +20721,16 @@ async function subscribeLinkLobbyGroups() {
                     
                     linksSnapshot.forEach(linkDoc => {
                         const linkData = { id: linkDoc.id, ...linkDoc.data() };
+                        
+                        // CRITICAL: Map Firestore field names to UI field names for backward compat
+                        // Firestore rules require 'title' and 'favicon', but UI expects 'label' and 'iconUrl'
+                        if (linkData.title && !linkData.label) {
+                            linkData.label = linkData.title;
+                        }
+                        if (linkData.favicon && !linkData.iconUrl) {
+                            linkData.iconUrl = linkData.favicon;
+                        }
+                        
                         if (groupData.autoGroupDomain && linkData.domain) {
                             if (!groupData.domainGroups[linkData.domain]) {
                                 groupData.domainGroups[linkData.domain] = [];
@@ -20361,9 +20766,17 @@ async function subscribeLinkLobbyGroups() {
         
         // Merge and deduplicate groups from all queries
         const mergeAndRender = () => {
+            console.log('%c🔀 mergeAndRender CALLED', 'color: #ff00ff; font-weight: bold', {
+                teamGroupsCount: teamGroups.length,
+                privateGroupsCount: privateGroups.length,
+                legacyGroupsCount: legacyGroups.length
+            });
+            
             // Combine all groups, filtering legacy groups to exclude those with explicit visibility
             const filteredLegacy = legacyGroups.filter(g => !('visibility' in g) || g.visibility === undefined);
             const allGroups = [...teamGroups, ...privateGroups, ...filteredLegacy];
+            
+            console.log('%c📊 All Groups (before dedup):', 'color: #ff00ff; font-weight: bold', allGroups.length);
             
             // Deduplicate by ID first, then by normalized title
             const seenIds = new Set();
@@ -20398,15 +20811,21 @@ async function subscribeLinkLobbyGroups() {
             // Re-sort after deduplication
             linkLobbyGroups.sort((a, b) => (a.sortOrder ?? Infinity) - (b.sortOrder ?? Infinity));
             
+            console.log('%c✅ Final linkLobbyGroups:', 'color: #00ff00; font-weight: bold', linkLobbyGroups.length, linkLobbyGroups.map(g => g.title));
+            console.log('%c🎨 Calling renderLinkLobby()...', 'color: #ff00ff; font-weight: bold');
+            
             renderLinkLobby();
         };
         
         // Subscribe to team groups (visibility == 'team')
         const unsub1 = onSnapshot(teamGroupsQuery, async (snapshot) => {
+            console.log('%c📥 Team groups snapshot:', 'color: #00aaff; font-weight: bold', snapshot.docs.length, 'docs');
             teamGroups = await processGroupDocs(snapshot);
+            console.log('%c✅ Team groups processed:', 'color: #00aaff; font-weight: bold', teamGroups.length, teamGroups.map(g => ({ id: g.id, title: g.title })));
             mergeAndRender();
         }, (error) => {
             // This query may fail if no groups have visibility=='team' yet, that's ok
+            console.log('%c⚠️ Team groups query error:', 'color: #ff8800; font-weight: bold', error.code);
             debugLog('Team groups query error (may be normal):', error.code);
             teamGroups = [];
             mergeAndRender();
@@ -20721,9 +21140,10 @@ async function saveLinkName(input) {
     if (!db || !appState.currentTeamId) return;
     
     try {
-        const { doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+        const { doc, updateDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
         const linkRef = doc(db, 'teams', appState.currentTeamId, 'linkLobbyGroups', groupId, 'links', linkId);
-        await updateDoc(linkRef, { label: newName });
+        // SECURITY: Rules use 'title' not 'label' for link names
+        await updateDoc(linkRef, { title: newName, updatedAt: serverTimestamp() });
         showToast('Link renamed!', 'success');
     } catch (error) {
         console.error('Error renaming link:', error);
@@ -20835,54 +21255,104 @@ function groupTitleExists(title, excludeGroupId = null) {
 async function saveLinkGroup(event) {
     event.preventDefault();
     
+    console.log('%c🔵 saveLinkGroup CALLED', 'color: #0088ff; font-weight: bold; font-size: 14px');
+    
     const groupId = document.getElementById('linkGroupId').value;
     const title = document.getElementById('linkGroupName').value.trim();
     const autoGroupDomain = document.getElementById('linkGroupAutoDomain').checked;
     
+    console.log('%c📝 Form Values:', 'color: #00aaff; font-weight: bold', { groupId, title, autoGroupDomain });
+    
     if (!title) {
+        console.log('%c❌ Validation Failed: Empty title', 'color: #ff0000; font-weight: bold');
         showToast('Please enter a group name', 'error');
         return;
     }
     
     // Check for duplicate group name
     if (groupTitleExists(title, groupId || null)) {
+        console.log('%c❌ Validation Failed: Duplicate title', 'color: #ff0000; font-weight: bold');
         showToast('A group with this name already exists', 'warning');
         return;
     }
     
     if (!db || !appState.currentTeamId) {
+        console.log('%c❌ Validation Failed: No db or teamId', 'color: #ff0000; font-weight: bold', { db: !!db, teamId: appState.currentTeamId });
         showToast('Not connected to team', 'error');
         return;
     }
+    
+    console.log('%c✅ Validation Passed - Proceeding to Firestore', 'color: #00ff00; font-weight: bold');
     
     try {
         const { collection, doc, addDoc, updateDoc, serverTimestamp } = 
             await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
         
         if (groupId) {
-            // Update existing group
+            console.log('%c🔄 UPDATE Mode', 'color: #ffaa00; font-weight: bold');
+            // Update existing group - only mutable fields
             const groupRef = doc(db, 'teams', appState.currentTeamId, 'linkLobbyGroups', groupId);
-            await updateDoc(groupRef, { title, autoGroupDomain });
+            const updateData = { title, autoGroupDomain, updatedAt: serverTimestamp() };
+            
+            // DEBUG_PERMS logging
+            if (DEBUG_PERMS) {
+                console.log('[DEBUG_PERMS] UPDATE linkLobbyGroup:', {
+                    path: `teams/${appState.currentTeamId}/linkLobbyGroups/${groupId}`,
+                    keys: Object.keys(updateData),
+                    uid: currentAuthUser.uid
+                });
+            }
+            
+            console.log('%c📤 Sending UPDATE to Firestore...', 'color: #ffaa00; font-weight: bold', updateData);
+            await updateDoc(groupRef, updateData);
+            console.log('%c✅ UPDATE Succeeded!', 'color: #00ff00; font-weight: bold');
             showToast('Group updated!', 'success');
         } else {
-            // Create new group - always set explicit visibility for query compatibility
+            console.log('%c➕ CREATE Mode', 'color: #00ff00; font-weight: bold');
+            // Create new group - full schema with immutable fields
             const groupsRef = collection(db, 'teams', appState.currentTeamId, 'linkLobbyGroups');
             const sortOrder = linkLobbyGroups.length;
-            await addDoc(groupsRef, {
+            const createData = {
                 title,
                 autoGroupDomain,
                 sortOrder,
-                visibility: 'team',  // SECURITY: Explicit visibility for split query support
-                createdAt: serverTimestamp(),
-                createdBy: currentAuthUser.uid
-            });
+                teamId: appState.currentTeamId,  // IMMUTABLE: set only on create
+                visibility: 'team',  // Explicit visibility for query compatibility
+                createdAt: serverTimestamp(),    // IMMUTABLE: set only on create
+                updatedAt: serverTimestamp(),
+                createdBy: currentAuthUser.uid   // IMMUTABLE: set only on create
+            };
+            
+            // DEBUG_PERMS logging
+            if (DEBUG_PERMS) {
+                console.log('[DEBUG_PERMS] CREATE linkLobbyGroup:', {
+                    path: `teams/${appState.currentTeamId}/linkLobbyGroups/<new>`,
+                    keys: Object.keys(createData),
+                    uid: currentAuthUser.uid
+                });
+            }
+            
+            console.log('%c📤 Sending CREATE to Firestore...', 'color: #00ff00; font-weight: bold', createData);
+            const docRef = await addDoc(groupsRef, createData);
+            console.log('%c✅ CREATE Succeeded! New Doc ID:', 'color: #00ff00; font-weight: bold; font-size: 14px', docRef.id);
             showToast('Group created!', 'success');
         }
         
+        console.log('%c🚪 Closing modal...', 'color: #00aaff; font-weight: bold');
         closeLinkGroupModal();
+        console.log('%c✅ saveLinkGroup COMPLETE', 'color: #00ff00; font-weight: bold; font-size: 14px');
         
     } catch (error) {
-        console.error('Error saving group:', error);
+        console.log('%c❌ ERROR CAUGHT IN CATCH BLOCK', 'color: #ff0000; font-weight: bold; font-size: 14px', error);
+        const path = groupId 
+            ? `teams/${appState.currentTeamId}/linkLobbyGroups/${groupId}`
+            : `teams/${appState.currentTeamId}/linkLobbyGroups/<new>`;
+        await logFirestoreError('saveLinkLobbyGroup', path, { title, autoGroupDomain }, {
+            uid: currentAuthUser?.uid,
+            teamId: appState.currentTeamId,
+            isUpdate: !!groupId,
+            userRole: appState.currentTeamData?.members?.[currentAuthUser?.uid]?.role
+        }, error);
         showToast('Error saving group: ' + error.message, 'error');
     }
 }
@@ -20894,11 +21364,14 @@ async function toggleAutoDomain(groupId, enabled) {
     if (!db || !appState.currentTeamId) return;
     
     try {
-        const { doc, updateDoc } = 
+        const { doc, updateDoc, serverTimestamp } = 
             await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
         
         const groupRef = doc(db, 'teams', appState.currentTeamId, 'linkLobbyGroups', groupId);
-        await updateDoc(groupRef, { autoGroupDomain: enabled });
+        await updateDoc(groupRef, { 
+            autoGroupDomain: enabled,
+            updatedAt: serverTimestamp()
+        });
         showToast(enabled ? 'Auto-grouping enabled!' : 'Auto-grouping disabled!', 'success');
         
     } catch (error) {
@@ -20914,11 +21387,14 @@ window.toggleGroupVisibility = async function(groupId, visibility) {
     if (!db || !appState.currentTeamId) return;
     
     try {
-        const { doc, updateDoc } = 
+        const { doc, updateDoc, serverTimestamp } = 
             await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
         
         const groupRef = doc(db, 'teams', appState.currentTeamId, 'linkLobbyGroups', groupId);
-        await updateDoc(groupRef, { visibility: visibility });
+        await updateDoc(groupRef, { 
+            visibility: visibility,
+            updatedAt: serverTimestamp()
+        });
         
         const msg = visibility === 'private' ? 'Group is now private' : 'Group is now visible to team';
         showToast(msg, 'success');
@@ -21051,11 +21527,13 @@ async function saveLink(event) {
         
         const linksRef = collection(db, 'teams', appState.currentTeamId, 'linkLobbyGroups', groupId, 'links');
         
+        // SECURITY: Only include fields allowed by Firestore rules
+        // Allowed: createdBy, url, title, description, domain, favicon, favorite, createdAt, updatedAt
         const newLinkData = {
             url: url.href,
-            label,
+            title: label,  // Rules use 'title', not 'label'
             domain,
-            iconUrl: `https://www.google.com/s2/favicons?domain=${domain}&sz=32`,
+            favicon: `https://www.google.com/s2/favicons?domain=${domain}&sz=32`,  // Rules use 'favicon', not 'iconUrl'
             favorite: false,
             createdAt: serverTimestamp(),
             createdBy: currentAuthUser.uid
@@ -21067,6 +21545,8 @@ async function saveLink(event) {
         const newLink = {
             id: docRef.id,
             ...newLinkData,
+            label: label,  // Keep label for backward compat in UI rendering
+            iconUrl: newLinkData.favicon,  // Keep iconUrl for backward compat in UI rendering
             createdAt: { toMillis: () => Date.now() } // Fake timestamp for sorting
         };
         
@@ -21143,11 +21623,14 @@ async function toggleLinkFavorite(groupId, linkId, favorite) {
     }
     
     try {
-        const { doc, updateDoc } = 
+        const { doc, updateDoc, serverTimestamp } = 
             await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
         
         const linkRef = doc(db, 'teams', appState.currentTeamId, 'linkLobbyGroups', groupId, 'links', linkId);
-        await updateDoc(linkRef, { favorite });
+        await updateDoc(linkRef, { 
+            favorite,
+            updatedAt: serverTimestamp()
+        });
         
     } catch (error) {
         console.error('Error toggling favorite:', error);
