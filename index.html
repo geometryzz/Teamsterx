@@ -2839,6 +2839,13 @@
     <div id="toastContainer"></div>
 
     <!-- Main JavaScript -->
-    <script src="main.js?v=65"></script>
+    <script src="main.js?v=65" id="main-script"></script>
+    <script>
+        // Auto-update version on links
+        if (window.APP_VERSION) {
+            document.getElementById('styles-link').href = `styles.css?v=${window.APP_VERSION}`;
+            document.getElementById('main-script').src = `main.js?v=${window.APP_VERSION}`;
+        }
+    </script>
 </body>
 </html>

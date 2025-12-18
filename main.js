@@ -3837,10 +3837,12 @@ function initTasks() {
         if (subtitleEl) subtitleEl.textContent = 'Update icon, color, and visibility';
         if (submitBtn) submitBtn.innerHTML = '<i class=\"fas fa-check\"></i> Save Changes';
         
-        // Hide name and type fields (can't change these after creation)
+        // Hide name and type fields and remove required validation (can't change these after creation)
         const nameField = modal.querySelector('#spreadsheetName')?.closest('.unified-form-field');
+        const nameInput = document.getElementById('spreadsheetName');
         const typeField = modal.querySelector('#typeSelectRow')?.closest('.unified-form-field');
         if (nameField) nameField.style.display = 'none';
+        if (nameInput) nameInput.removeAttribute('required');
         if (typeField) typeField.style.display = 'none';
         
         // Set icon
@@ -7331,10 +7333,14 @@ function initTasks() {
                     if (subtitleEl) subtitleEl.textContent = 'Create a new spreadsheet for your team';
                     if (submitBtn) submitBtn.innerHTML = '<i class=\"fas fa-plus\"></i> Create Spreadsheet';
                     
-                    // Show hidden fields
+                    // Show hidden fields and restore required validation
                     const nameField = document.querySelector('#spreadsheetName')?.closest('.unified-form-field');
+                    const nameInput = document.getElementById('spreadsheetName');
                     const typeField = document.querySelector('#typeSelectRow')?.closest('.unified-form-field');
                     if (nameField) nameField.style.display = '';
+                    if (nameInput) nameInput.setAttribute('required', '');
+                    if (typeField) typeField.style.display = '';
+                    if (nameInput) nameInput.setAttribute('required', '');
                     if (typeField) typeField.style.display = '';
                     
                     closeModal('spreadsheetModal');
@@ -12406,6 +12412,16 @@ function displayNotifications(notifications, readNotifications, filterMode = 'un
         // Get username from team members data if available
         const userMemberData = appState.currentTeamData?.members?.[notification.createdBy];
         const displayName = userMemberData?.username || notification.userName || 'Someone';
+        
+        // Debug: Log if username is missing
+        if (!userMemberData?.username && notification.createdBy) {
+            console.log('⚠️ Notification missing username for:', notification.createdBy, 'Using fallback:', displayName);
+        }
+        
+        // Debug: Log if username is missing
+        if (!userMemberData?.username && notification.createdBy) {
+            console.log('⚠️ No username for user:', notification.createdBy, 'Member data:', userMemberData);
+        }
         
         const notificationEl = document.createElement('div');
         notificationEl.className = `notification-item ${!isRead ? 'unread' : ''}`;
