@@ -7492,6 +7492,8 @@ function initTasks() {
             const docSnap = await getDoc(spreadsheetRef);
             const isNewDoc = !docSnap.exists();
             
+            console.log(`🔍 saveSpreadsheetToFirestore: id=${spreadsheet.id}, isNewDoc=${isNewDoc}, docExists=${docSnap.exists()}`);
+            
             // Determine default columns based on type
             const isLeadsType = spreadsheet.type === 'leads';
             const defaultColumns = isLeadsType 
@@ -7514,6 +7516,13 @@ function initTasks() {
                     customColumns: spreadsheet.customColumns || [],
                     columnSettings: spreadsheet.columnSettings || {}
                 };
+                
+                console.log('📝 CREATE spreadsheet with data:', {
+                    keys: Object.keys(createData),
+                    hasTeamId: 'teamId' in createData,
+                    hasCreatedAt: 'createdAt' in createData,
+                    hasId: 'id' in createData
+                });
                 
                 // DEBUG_PERMS logging
                 if (DEBUG_PERMS) {
