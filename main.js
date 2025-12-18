@@ -20148,15 +20148,16 @@ async function saveTaskToFirestore(task) {
         
         // SECURITY: Only include fields allowed by rules whitelist
         // Allowed: createdBy, teamId, title, description, status, assignee, assigneeId, priority, dueAt, dueDate,
-        //          createdAt, updatedAt, tags, completed, completedAt, completedBy, progress, estimatedTime
-        // NOTE: createdByName is NOT allowed - removed to fix permission-denied
+        //          createdAt, updatedAt, tags, completed, completedAt, completedBy, progress, estimatedTime,
+        //          budget, spreadsheetId, showOnCalendar
         const allowedFields = ['title', 'description', 'status', 'assignee', 'assigneeId', 'priority', 
                                'dueAt', 'dueDate', 'tags', 'completed', 'completedAt', 'completedBy', 
-                               'progress', 'estimatedTime'];
+                               'progress', 'estimatedTime', 'budget', 'spreadsheetId', 'showOnCalendar'];
         const taskData = {
             teamId: appState.currentTeamId,  // Required by rules
             createdBy: currentAuthUser.uid,
-            createdAt: serverTimestamp()
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()  // Add updatedAt for CREATE too
         };
         for (const key of allowedFields) {
             if (key in task && task[key] !== undefined) {
@@ -20822,11 +20823,10 @@ async function subscribeLinkLobbyGroups() {
             const filteredLegacy = legacyGroups.filter(g => !('visibility' in g) || g.visibility === undefined);
             const allGroups = [...teamGroups, ...privateGroups, ...filteredLegacy];
             
-            console.log(`📦 mergeAndRender: ${allGroups.length} total groups before dedup`);
-            
             // Deduplicate by ID first, then by normalized title
             const seenIds = new Set();
             const seenTitles = new Map();
+            const duplicatesByTitle = {};
             linkLobbyGroups = [];
             
             // Sort by sortOrder before deduplication
@@ -20843,19 +20843,19 @@ async function subscribeLinkLobbyGroups() {
                     seenTitles.set(normalizedTitle, group);
                     linkLobbyGroups.push(group);
                 } else {
-                    // Found duplicate title - log it
-                    const existing = seenTitles.get(normalizedTitle);
-                    console.log(`⚠️ Duplicate group title found: "${group.title}" (ID: ${group.id}) vs "${existing.title}" (ID: ${existing.id})`);
+                    // Track duplicates for summary
+                    if (!duplicatesByTitle[normalizedTitle]) {
+                        duplicatesByTitle[normalizedTitle] = [];
+                    }
+                    duplicatesByTitle[normalizedTitle].push(group.id);
                     
+                    const existing = seenTitles.get(normalizedTitle);
                     if ((group.sortOrder ?? Infinity) < (existing.sortOrder ?? Infinity)) {
                         const idx = linkLobbyGroups.indexOf(existing);
                         if (idx !== -1) {
-                            console.log(`   → Replacing ${existing.id} with ${group.id} (better sortOrder)`);
                             linkLobbyGroups[idx] = group;
                             seenTitles.set(normalizedTitle, group);
                         }
-                    } else {
-                        console.log(`   → Keeping ${existing.id}, hiding ${group.id}`);
                     }
                 }
             }
@@ -20863,7 +20863,14 @@ async function subscribeLinkLobbyGroups() {
             // Re-sort after deduplication
             linkLobbyGroups.sort((a, b) => (a.sortOrder ?? Infinity) - (b.sortOrder ?? Infinity));
             
-            console.log(`✅ After dedup: ${linkLobbyGroups.length} groups displayed:`, linkLobbyGroups.map(g => `${g.title} (${g.id})`));
+            // Summarize duplicates if any exist
+            const dupCount = Object.keys(duplicatesByTitle).length;
+            if (dupCount > 0) {
+                console.log(`⚠️ Found ${dupCount} duplicate group titles (${Object.values(duplicatesByTitle).flat().length} hidden groups):`);
+                for (const [title, ids] of Object.entries(duplicatesByTitle)) {
+                    console.log(`   "${title}": ${ids.length + 1} copies (showing ${seenTitles.get(title).id}, hiding ${ids.join(', ')})`);
+                }
+            }
             
             renderLinkLobby();
         };
