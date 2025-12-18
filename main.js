@@ -7489,10 +7489,19 @@ function initTasks() {
             const spreadsheetRef = doc(db, 'teams', appState.currentTeamId, 'spreadsheets', spreadsheet.id);
             
             // Check if doc exists to determine create vs update
-            const docSnap = await getDoc(spreadsheetRef);
-            const isNewDoc = !docSnap.exists();
+            // If getDoc fails (permission-denied on non-existent doc), treat as new
+            let docSnap = null;
+            let isNewDoc = true;
+            try {
+                docSnap = await getDoc(spreadsheetRef);
+                isNewDoc = !docSnap.exists();
+            } catch (getErr) {
+                // If we can't read it, assume it doesn't exist (CREATE mode)
+                console.log('📝 Cannot read doc (likely new):', getErr.code);
+                isNewDoc = true;
+            }
             
-            console.log(`🔍 saveSpreadsheetToFirestore: id=${spreadsheet.id}, isNewDoc=${isNewDoc}, docExists=${docSnap.exists()}`);
+            console.log(`🔍 saveSpreadsheetToFirestore: id=${spreadsheet.id}, isNewDoc=${isNewDoc}`);
             
             // Determine default columns based on type
             const isLeadsType = spreadsheet.type === 'leads';
@@ -7571,6 +7580,7 @@ function initTasks() {
             }
         } catch (error) {
             const path = `teams/${appState.currentTeamId}/spreadsheets/${spreadsheet.id}`;
+            // Log with a note that this is the INPUT object, not what was sent to Firestore
             logFirestoreError('saveSpreadsheetToFirestore', path, spreadsheet, {
                 uid: currentAuthUser?.uid,
                 teamId: appState.currentTeamId,
@@ -20178,11 +20188,20 @@ async function saveTaskToFirestore(task) {
             taskData.title = task.name || 'Untitled Task';
         }
         
+        console.log('📝 CREATE task with data:', {
+            keys: Object.keys(taskData),
+            hasTeamId: 'teamId' in taskData,
+            hasCreatedAt: 'createdAt' in taskData,
+            hasUpdatedAt: 'updatedAt' in taskData,
+            teamIdValue: taskData.teamId
+        });
+        
         const docRef = await addDoc(tasksRef, taskData);
         
         debugLog('Task saved to team collection with ID:', docRef.id);
         return docRef.id; // Return the Firestore document ID
     } catch (error) {
+        // Note: Logging input 'task' object for context, actual sent data logged above
         logFirestoreError('saveTaskToFirestore', path, task, {
             uid: currentAuthUser?.uid,
             teamId: appState.currentTeamId,
