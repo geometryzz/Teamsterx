@@ -96,6 +96,31 @@ service cloud.firestore {
       
       // User can update/delete their own profile
       allow update, delete: if request.auth != null && request.auth.uid == userId;
+      
+      // ==========================
+      // NOTIFICATIONS SUBCOLLECTION
+      // User's personal notifications (mentions, assignments, etc.)
+      // ==========================
+      match /notifications/{notificationId} {
+        // Only the user can read their own notifications
+        allow read: if request.auth != null && request.auth.uid == userId;
+        
+        // Anyone authenticated can create a notification for another user
+        // (for mentions, task assignments, etc.)
+        allow create: if request.auth != null
+          && request.resource.data.keys().hasOnly([
+            'type', 'title', 'message', 'teamId', 'senderId', 'read', 'timestamp'
+          ])
+          && request.resource.data.type is string
+          && request.resource.data.title is string
+          && request.resource.data.title.size() <= 200
+          && (!('message' in request.resource.data) || 
+              (request.resource.data.message is string && request.resource.data.message.size() <= 500))
+          && request.resource.data.read is bool;
+        
+        // Only the notification owner can update/delete their notifications
+        allow update, delete: if request.auth != null && request.auth.uid == userId;
+      }
     }
     
     // Separate rule for user settings subcollection
@@ -265,19 +290,21 @@ service cloud.firestore {
       // ==========================
       // TASKS SUBCOLLECTION
       // SECURITY: Schema validation + size limits
+      // RECURRING TASKS: Added isRecurring and recurrence fields
       // ==========================
       match /tasks/{taskId} {
         // Any team member can read tasks
         allow read: if isMemberInTeam(teamId);
         
         // Create: member, createdBy must match, validate schema
+        // RECURRING TASKS: Added isRecurring and recurrence to allowed fields
         allow create: if isMemberInTeam(teamId)
           && request.resource.data.createdBy == request.auth.uid
           && request.resource.data.keys().hasOnly([
             'createdBy', 'teamId', 'title', 'description', 'status', 
             'assignee', 'assigneeId', 'priority', 'dueAt', 'dueDate', 'createdAt', 'updatedAt',
             'tags', 'completed', 'completedAt', 'completedBy', 'progress', 'estimatedTime',
-            'budget', 'spreadsheetId', 'showOnCalendar'
+            'budget', 'spreadsheetId', 'showOnCalendar', 'isRecurring', 'recurrence'
           ])
           && request.resource.data.teamId == teamId
           && request.resource.data.title is string
@@ -290,11 +317,13 @@ service cloud.firestore {
           && (!('progress' in request.resource.data) || 
               (request.resource.data.progress is int && request.resource.data.progress >= 0 && request.resource.data.progress <= 100))
           && (!('estimatedTime' in request.resource.data) || 
-              (request.resource.data.estimatedTime is number && request.resource.data.estimatedTime >= 0 && request.resource.data.estimatedTime <= 10000));
+              (request.resource.data.estimatedTime is number && request.resource.data.estimatedTime >= 0 && request.resource.data.estimatedTime <= 10000))
+          && (!('isRecurring' in request.resource.data) || request.resource.data.isRecurring is bool);
 
         // Update: admin/owner can update any; creator can update their own; assignee can update progress/status
         // Cannot change immutable fields: createdBy, teamId
         // SECURITY: Schema validation on UPDATE using affectedKeys (allows legacy fields to exist)
+        // RECURRING TASKS: Added isRecurring, recurrence to allowed update fields
         allow update: if isMemberInTeam(teamId) && (
           isAdmin(teamId) ||
           resource.data.createdBy == request.auth.uid ||
@@ -302,15 +331,16 @@ service cloud.firestore {
           // Check assigneeId (UID) for permission, as assignee field is display name
           (
             resource.data.assigneeId == request.auth.uid &&
-            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['progress', 'status', 'completed', 'completedAt', 'completedBy', 'updatedAt'])
+            request.resource.data.diff(resource.data).affectedKeys().hasOnly(['progress', 'status', 'completed', 'completedAt', 'completedBy', 'updatedAt', 'dueDate', 'recurrence'])
           )
         ) && (
           // SECURITY: Only validate CHANGED fields (affectedKeys), not entire doc
           // This allows updates when docs have legacy fields not in whitelist
+          // RECURRING TASKS: Added isRecurring, recurrence
           request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             'title', 'description', 'status', 'assignee', 'assigneeId', 'priority', 'dueAt', 'dueDate', 'updatedAt',
             'tags', 'completed', 'completedAt', 'completedBy', 'progress', 'estimatedTime',
-            'budget', 'spreadsheetId', 'showOnCalendar'
+            'budget', 'spreadsheetId', 'showOnCalendar', 'isRecurring', 'recurrence'
           ])
         ) && (
           // SECURITY: Immutable fields cannot change (conditional checks for legacy docs without teamId/createdAt)
@@ -406,6 +436,27 @@ service cloud.firestore {
       }
 
       // ==========================
+      // TYPING INDICATOR SUBCOLLECTION
+      // Ephemeral presence data for chat typing status
+      // ==========================
+      match /typing/{typingUserId} {
+        // Any team member can read typing indicators
+        allow read: if isMemberInTeam(teamId);
+        
+        // Users can only create/update their own typing status
+        allow create, update: if isMemberInTeam(teamId)
+          && request.auth.uid == typingUserId
+          && request.resource.data.keys().hasOnly(['userId', 'displayName', 'updatedAt'])
+          && request.resource.data.userId == request.auth.uid
+          && request.resource.data.displayName is string
+          && request.resource.data.displayName.size() <= 100;
+        
+        // Users can only delete their own typing status
+        allow delete: if isMemberInTeam(teamId)
+          && request.auth.uid == typingUserId;
+      }
+
+      // ==========================
       // EVENTS SUBCOLLECTION
       // SECURITY: Visibility validation + size limits
       // ==========================
@@ -422,11 +473,13 @@ service cloud.firestore {
         );
 
         // Create: member, createdBy must match, visibility must be valid
+        // RECURRING EVENTS: Added repeat and repeatStart fields
         allow create: if isMemberInTeam(teamId)
           && request.resource.data.createdBy == request.auth.uid
           && request.resource.data.keys().hasOnly([
             'createdBy', 'teamId', 'title', 'description', 'startTime', 'endTimeStamp',
-            'startTimeStr', 'endTimeStr', 'color', 'visibility', 'createdAt', 'createdByName', 'updatedAt'
+            'startTimeStr', 'endTimeStr', 'color', 'visibility', 'createdAt', 'createdByName', 'updatedAt',
+            'repeat', 'repeatStart'
           ])
           && (!('teamId' in request.resource.data) || request.resource.data.teamId == teamId)
           && request.resource.data.title is string
@@ -434,10 +487,12 @@ service cloud.firestore {
           && request.resource.data.title.size() <= 200
           && (!('description' in request.resource.data) || 
               (request.resource.data.description is string && request.resource.data.description.size() <= 2000))
-          && (!('visibility' in request.resource.data) || isValidVisibility(request.resource.data.visibility));
+          && (!('visibility' in request.resource.data) || isValidVisibility(request.resource.data.visibility))
+          && (!('repeat' in request.resource.data) || request.resource.data.repeat in ['none', 'daily', 'weekly', 'monthly', 'yearly']);
 
         // Update: admin/owner or creator; cannot change immutable fields
         // SECURITY: Schema validation on UPDATE (prevents field injection)
+        // RECURRING EVENTS: Added repeat and repeatStart fields
         allow update: if isMemberInTeam(teamId) && (
           isAdmin(teamId) ||
           resource.data.createdBy == request.auth.uid
@@ -445,7 +500,8 @@ service cloud.firestore {
           // Schema validation: only allowed fields
           request.resource.data.keys().hasOnly([
             'createdBy', 'teamId', 'title', 'description', 'startTime', 'endTimeStamp',
-            'startTimeStr', 'endTimeStr', 'color', 'visibility', 'createdAt', 'createdByName', 'updatedAt'
+            'startTimeStr', 'endTimeStr', 'color', 'visibility', 'createdAt', 'createdByName', 'updatedAt',
+            'repeat', 'repeatStart'
           ])
         ) && (
           !request.resource.data.diff(resource.data).affectedKeys().hasAny(['createdBy', 'teamId']) ||

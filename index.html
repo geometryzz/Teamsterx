@@ -477,6 +477,13 @@
                     </div>
                     
                     <div class="chat-input-wrapper">
+                        <!-- TYPING INDICATOR: Shows who is typing -->
+                        <div class="typing-indicator" id="typingIndicator" style="display: none;">
+                            <div class="typing-dots">
+                                <span></span><span></span><span></span>
+                            </div>
+                            <span class="typing-text" id="typingText">Someone is typing...</span>
+                        </div>
                         <!-- Mention dropdown - positioned above input -->
                         <div class="mention-dropdown" id="mentionDropdown" style="display: none;">
                             <!-- Mention items will be populated dynamically -->
@@ -1051,20 +1058,29 @@
                         </div>
                         <div class="settings-card-body">
                             <form id="appearanceForm" class="settings-form">
-                                <!-- Toggle: Dark Mode -->
-                                <div class="form-group toggle-group">
-                                    <label class="toggle-label">
-                                        <div class="toggle-label-content">
-                                            <div class="toggle-label-text">
-                                                <i class="fas fa-moon"></i> Dark mode
-                                            </div>
-                                            <small>Switch between light and dark color schemes</small>
-                                        </div>
-                                        <div class="toggle-switch">
-                                            <input type="checkbox" id="darkModeToggle">
-                                            <span class="toggle-slider"></span>
-                                        </div>
+                                <!-- Theme Selector -->
+                                <div class="form-group">
+                                    <label class="form-label">
+                                        <i class="fas fa-moon"></i> Theme
+                                        <small style="display: block; font-weight: normal; color: var(--text-secondary); margin-top: 4px;">
+                                            Choose light, dark, or match your device settings
+                                        </small>
                                     </label>
+                                    <div class="theme-selector">
+                                        <button type="button" class="theme-option" data-theme="system">
+                                            <i class="fas fa-desktop"></i>
+                                            <span>System</span>
+                                        </button>
+                                        <button type="button" class="theme-option" data-theme="light">
+                                            <i class="fas fa-sun"></i>
+                                            <span>Light</span>
+                                        </button>
+                                        <button type="button" class="theme-option" data-theme="dark">
+                                            <i class="fas fa-moon"></i>
+                                            <span>Dark</span>
+                                        </button>
+                                    </div>
+                                    <input type="hidden" id="themePreference" value="system">
                                 </div>
                             </form>
                         </div>
@@ -2052,6 +2068,46 @@
                                     <span class="toggle-slider"></span>
                                 </div>
                             </label>
+                        </div>
+                        
+                        <!-- RECURRING TASK: Repeat frequency selector -->
+                        <div class="unified-form-field full-width">
+                            <label class="unified-form-label">
+                                <i class="fas fa-redo"></i> Repeat <span class="optional">(optional)</span>
+                            </label>
+                            <div class="unified-dropdown" id="taskRecurrenceDropdown">
+                                <div class="unified-dropdown-trigger" id="taskRecurrenceTrigger">
+                                    <div class="unified-dropdown-value">
+                                        <span>Does not repeat</span>
+                                    </div>
+                                    <i class="fas fa-chevron-down unified-dropdown-arrow"></i>
+                                </div>
+                                <div class="unified-dropdown-menu" id="taskRecurrenceMenu">
+                                    <div class="unified-dropdown-option selected" data-value="none">
+                                        <span>Does not repeat</span>
+                                        <i class="fas fa-check check-icon"></i>
+                                    </div>
+                                    <div class="unified-dropdown-option" data-value="daily">
+                                        <i class="fas fa-sun" style="margin-right: 8px; color: var(--warning);"></i>
+                                        <span>Daily</span>
+                                        <i class="fas fa-check check-icon"></i>
+                                    </div>
+                                    <div class="unified-dropdown-option" data-value="weekly">
+                                        <i class="fas fa-calendar-week" style="margin-right: 8px; color: var(--accent);"></i>
+                                        <span>Weekly</span>
+                                        <i class="fas fa-check check-icon"></i>
+                                    </div>
+                                    <div class="unified-dropdown-option" data-value="monthly">
+                                        <i class="fas fa-calendar-alt" style="margin-right: 8px; color: var(--success);"></i>
+                                        <span>Monthly</span>
+                                        <i class="fas fa-check check-icon"></i>
+                                    </div>
+                                </div>
+                                <input type="hidden" id="taskRecurrence" name="taskRecurrence" value="none">
+                            </div>
+                            <small class="recurrence-hint" id="recurrenceHint" style="display: none; margin-top: 6px; color: var(--text-muted);">
+                                <i class="fas fa-info-circle"></i> Task will reappear automatically after completion
+                            </small>
                         </div>
                     </div>
                 </div>

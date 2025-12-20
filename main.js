@@ -280,17 +280,85 @@ function debugError(...args) {
 }
 
 // ===================================
-// EARLY DARK MODE SUPPORT
-// Apply dark mode immediately on page load from localStorage
+// EARLY THEME SUPPORT
+// Apply theme immediately on page load from localStorage
+// Supports 'system', 'light', 'dark' preferences
 // ===================================
-function applyDarkModeEarly() {
-    const savedDarkMode = localStorage.getItem('darkMode');
-    if (savedDarkMode === 'true') {
+
+/**
+ * Check if user prefers dark mode based on system settings
+ * @returns {boolean} True if system prefers dark mode
+ */
+function systemPrefersDark() {
+    return window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
+}
+
+/**
+ * Resolve the effective theme based on preference
+ * @param {string} preference - 'system', 'light', or 'dark'
+ * @returns {boolean} True if dark mode should be applied
+ */
+function resolveTheme(preference) {
+    if (preference === 'dark') return true;
+    if (preference === 'light') return false;
+    // 'system' or unknown - use system preference
+    return systemPrefersDark();
+}
+
+/**
+ * Apply theme immediately on page load
+ * Reads from localStorage for instant application before Firestore load
+ */
+function applyThemeEarly() {
+    // First check new theme preference
+    let themePreference = localStorage.getItem('themePreference');
+    
+    // Migrate from old darkMode if present
+    if (!themePreference) {
+        const oldDarkMode = localStorage.getItem('darkMode');
+        if (oldDarkMode === 'true') {
+            themePreference = 'dark';
+            localStorage.setItem('themePreference', 'dark');
+        } else if (oldDarkMode === 'false') {
+            themePreference = 'light';
+            localStorage.setItem('themePreference', 'light');
+        } else {
+            themePreference = 'system';
+        }
+    }
+    
+    const shouldBeDark = resolveTheme(themePreference);
+    if (shouldBeDark) {
         document.body.classList.add('dark-mode');
+    } else {
+        document.body.classList.remove('dark-mode');
     }
 }
+
 // Run immediately
-applyDarkModeEarly();
+applyThemeEarly();
+
+// Listen for system theme changes (when preference is 'system')
+if (window.matchMedia) {
+    window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', (e) => {
+        const themePreference = localStorage.getItem('themePreference') || 'system';
+        if (themePreference === 'system') {
+            if (e.matches) {
+                document.body.classList.add('dark-mode');
+            } else {
+                document.body.classList.remove('dark-mode');
+            }
+            // Update settings cards if they exist
+            document.querySelectorAll('.settings-card').forEach(card => {
+                if (e.matches) {
+                    card.classList.add('dark-mode');
+                } else {
+                    card.classList.remove('dark-mode');
+                }
+            });
+        }
+    });
+}
 
 // ===================================
 // PROFILE NORMALIZATION HELPER
@@ -302,6 +370,19 @@ applyDarkModeEarly();
  * @param {string} uid - User's UID
  * @param {object} raw - Raw profile data from various sources
  * @returns {object} Normalized profile object
+ */
+/**
+ * Normalize profile data to canonical identity fields.
+ * CANONICAL IDENTITY FIELDS:
+ * - id: User ID (uid)
+ * - displayName: Primary display name (used in mentions, UI, etc.)
+ * - name: Alias for displayName (legacy compatibility)
+ * - avatarColor: Hex color for avatar background (#RRGGBB format)
+ * - email: User email
+ * - photoURL, occupation, role: Additional profile fields
+ * 
+ * IMPORTANT: Always use displayName for all UI rendering and mention operations.
+ * The 'name' field exists only for legacy compatibility and should not be preferred.
  */
 function normalizeProfile(uid, raw = {}) {
     // Determine display name using canonical resolution order
@@ -330,6 +411,81 @@ function normalizeProfile(uid, raw = {}) {
         occupation: raw.occupation || raw.jobTitle || null,
         joinedAt: raw.joinedAt || null
     };
+}
+
+// ===================================
+// TASK DATE NORMALIZATION
+// ===================================
+/**
+ * Normalize task date from various formats to a valid Date object.
+ * Handles: Firestore Timestamp, milliseconds (number), ISO string, Date object
+ * 
+ * FIX: Prevents "Invalid Date" bug when creating/displaying tasks
+ * 
+ * @param {any} dateValue - Date in various formats
+ * @returns {Date|null} - Valid Date object or null if invalid
+ */
+function normalizeTaskDate(dateValue) {
+    if (!dateValue) return null;
+    
+    // Already a Date object
+    if (dateValue instanceof Date) {
+        return isNaN(dateValue.getTime()) ? null : dateValue;
+    }
+    
+    // Firestore Timestamp (has toDate method)
+    if (dateValue && typeof dateValue.toDate === 'function') {
+        return dateValue.toDate();
+    }
+    
+    // Firestore Timestamp serialized (has seconds and nanoseconds)
+    if (dateValue && typeof dateValue.seconds === 'number') {
+        return new Date(dateValue.seconds * 1000);
+    }
+    
+    // Milliseconds timestamp (number)
+    if (typeof dateValue === 'number') {
+        // Check if it's seconds instead of milliseconds (pre-1970 check)
+        if (dateValue < 100000000000) {
+            return new Date(dateValue * 1000);
+        }
+        return new Date(dateValue);
+    }
+    
+    // ISO string or other string format
+    if (typeof dateValue === 'string') {
+        const parsed = new Date(dateValue);
+        return isNaN(parsed.getTime()) ? null : parsed;
+    }
+    
+    return null;
+}
+
+/**
+ * Calculate the next due date for a recurring task based on frequency
+ * @param {Date} currentDueDate - The current due date
+ * @param {string} frequency - 'daily', 'weekly', or 'monthly'
+ * @param {number} interval - Interval multiplier (default 1)
+ * @returns {Date} - Next due date
+ */
+function calculateNextDueDate(currentDueDate, frequency, interval = 1) {
+    const nextDate = new Date(currentDueDate);
+    
+    switch (frequency) {
+        case 'daily':
+            nextDate.setDate(nextDate.getDate() + interval);
+            break;
+        case 'weekly':
+            nextDate.setDate(nextDate.getDate() + (7 * interval));
+            break;
+        case 'monthly':
+            nextDate.setMonth(nextDate.getMonth() + interval);
+            break;
+        default:
+            return currentDueDate;
+    }
+    
+    return nextDate;
 }
 
 // ===================================
@@ -750,11 +906,11 @@ async function initializeFirebaseAuth() {
         auth = getAuth(app);
         db = getFirestore(app);
 
-        // Apply dark mode immediately if set in localStorage
-        let localDark = localStorage.getItem('darkMode');
-        if (localDark !== null) {
-            localDark = localDark === 'true';
-            applyDarkMode(localDark);
+        // Apply theme immediately if set in localStorage (already handled by applyThemeEarly)
+        // This is a fallback for any race conditions
+        const localTheme = localStorage.getItem('themePreference');
+        if (localTheme) {
+            applyTheme(localTheme);
         }
 
         // Check authentication state
@@ -1250,6 +1406,144 @@ let reactionsState = {
     longPressTriggered: false // Flag to prevent click after long-press
 };
 
+// ===================================
+// TYPING INDICATOR SYSTEM
+// Shows "User is typing..." when others type
+// ===================================
+let typingState = {
+    lastTypingUpdate: 0,          // Timestamp of last Firestore typing update
+    typingThrottleMs: 700,        // Throttle typing updates to reduce Firestore writes
+    typingTimeoutMs: 2000,        // Consider user stopped typing after 2s
+    unsubscribeTyping: null,      // Firestore listener unsubscribe function
+    currentlyTyping: new Map()    // Map of userId -> {displayName, updatedAt}
+};
+
+/**
+ * Update typing status in Firestore (throttled to prevent spam)
+ * Creates/updates: teams/{teamId}/typing/{userId}
+ */
+async function updateTypingStatus() {
+    if (!db || !currentAuthUser || !appState.currentTeamId) return;
+    
+    const now = Date.now();
+    
+    // Throttle: only update if enough time has passed since last update
+    if (now - typingState.lastTypingUpdate < typingState.typingThrottleMs) {
+        return;
+    }
+    
+    typingState.lastTypingUpdate = now;
+    
+    try {
+        const { doc, setDoc, serverTimestamp } = 
+            await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+        
+        const typingRef = doc(db, 'teams', appState.currentTeamId, 'typing', currentAuthUser.uid);
+        const identity = getIdentity(currentAuthUser.uid, currentAuthUser.displayName);
+        
+        await setDoc(typingRef, {
+            userId: currentAuthUser.uid,
+            displayName: identity.displayName,
+            updatedAt: serverTimestamp()
+        });
+        
+    } catch (error) {
+        // Silently fail - typing indicator is non-critical
+        console.debug('Typing update failed:', error.message);
+    }
+}
+
+/**
+ * Clear typing status when user stops typing or sends message
+ */
+async function clearTypingStatus() {
+    if (!db || !currentAuthUser || !appState.currentTeamId) return;
+    
+    try {
+        const { doc, deleteDoc } = 
+            await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+        
+        const typingRef = doc(db, 'teams', appState.currentTeamId, 'typing', currentAuthUser.uid);
+        await deleteDoc(typingRef);
+        
+    } catch (error) {
+        // Silently fail
+        console.debug('Clear typing failed:', error.message);
+    }
+}
+
+/**
+ * Subscribe to typing status updates for the current team
+ */
+async function subscribeToTypingIndicator() {
+    if (!db || !appState.currentTeamId) return;
+    
+    // Unsubscribe from previous listener
+    if (typingState.unsubscribeTyping) {
+        typingState.unsubscribeTyping();
+    }
+    
+    try {
+        const { collection, onSnapshot } = 
+            await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+        
+        const typingRef = collection(db, 'teams', appState.currentTeamId, 'typing');
+        
+        typingState.unsubscribeTyping = onSnapshot(typingRef, (snapshot) => {
+            const now = Date.now();
+            typingState.currentlyTyping.clear();
+            
+            snapshot.forEach((doc) => {
+                const data = doc.data();
+                // Skip current user
+                if (data.userId === currentAuthUser?.uid) return;
+                
+                // Check if typing entry is stale (older than 2 seconds)
+                const updatedAt = data.updatedAt?.toMillis ? data.updatedAt.toMillis() : 0;
+                if (now - updatedAt < typingState.typingTimeoutMs) {
+                    typingState.currentlyTyping.set(data.userId, {
+                        displayName: data.displayName,
+                        updatedAt: updatedAt
+                    });
+                }
+            });
+            
+            // Update UI
+            updateTypingIndicatorUI();
+        });
+        
+    } catch (error) {
+        console.error('Error subscribing to typing indicator:', error);
+    }
+}
+
+/**
+ * Update the typing indicator UI based on current state
+ */
+function updateTypingIndicatorUI() {
+    const indicator = document.getElementById('typingIndicator');
+    const textEl = document.getElementById('typingText');
+    
+    if (!indicator || !textEl) return;
+    
+    const typingUsers = Array.from(typingState.currentlyTyping.values());
+    
+    if (typingUsers.length === 0) {
+        indicator.style.display = 'none';
+        return;
+    }
+    
+    indicator.style.display = 'flex';
+    
+    if (typingUsers.length === 1) {
+        textEl.textContent = `${typingUsers[0].displayName} is typing...`;
+    } else if (typingUsers.length === 2) {
+        textEl.textContent = `${typingUsers[0].displayName} and ${typingUsers[1].displayName} are typing...`;
+    } else {
+        textEl.textContent = `${typingUsers[0].displayName} and ${typingUsers.length - 1} others are typing...`;
+    }
+}
+
 function initChat() {
     const chatInput = document.getElementById('chatInput');
     const sendBtn = document.getElementById('sendMessageBtn');
@@ -1308,11 +1602,24 @@ function initChat() {
         }
     });
 
-    // Handle input for mention detection and /r command
+    // Handle input for mention detection, /r command, AND typing indicator
     chatInput.addEventListener('input', (e) => {
         handleMentionInput(e);
         handleReplyCommand(e);
+        
+        // TYPING INDICATOR: Update typing status on input
+        if (e.target.value.trim().length > 0) {
+            updateTypingStatus();
+        }
     });
+    
+    // TYPING INDICATOR: Clear typing status when chat input loses focus or is empty
+    chatInput.addEventListener('blur', () => {
+        clearTypingStatus();
+    });
+    
+    // TYPING INDICATOR: Subscribe to typing updates when chat is initialized
+    subscribeToTypingIndicator();
 
     // Close mention dropdown when clicking outside
     document.addEventListener('click', (e) => {
@@ -1337,6 +1644,9 @@ function initChat() {
         const messageText = chatInput.value.trim();
         
         if (messageText === '') return;
+
+        // TYPING INDICATOR: Clear typing status when message is sent
+        clearTypingStatus();
 
         // Close mention dropdown if open
         closeMentionDropdown();
@@ -1860,9 +2170,9 @@ function handleMentionInput(e) {
         // Filter teammates based on query
         const teammates = appState.teammates || [];
         mentionState.filteredTeammates = teammates.filter(t => {
-            const name = (t.name || '').toLowerCase();
+            const displayName = (t.displayName || t.name || '').toLowerCase();
             const email = (t.email || '').toLowerCase();
-            return name.includes(query) || email.includes(query) || fuzzyMatch(query, name);
+            return displayName.includes(query) || email.includes(query) || fuzzyMatch(query, displayName);
         });
         
         mentionState.isActive = true;
@@ -2021,8 +2331,9 @@ function selectMention(teammate) {
     const beforeMention = text.substring(0, mentionState.startIndex);
     const afterMention = text.substring(input.selectionStart);
     
-    // Insert @Name 
-    const mentionText = `@${teammate.name} `;
+    // Insert @DisplayName using displayName field
+    const displayName = teammate.displayName || teammate.name || 'Unknown';
+    const mentionText = `@${displayName} `;
     input.value = beforeMention + mentionText + afterMention;
     
     // Position cursor after the mention
@@ -2059,12 +2370,12 @@ function extractMentions(text) {
     
     // Sort teammates by name length (longest first) for accurate matching
     const sortedTeammates = [...teammates].sort((a, b) => 
-        (b.name || '').length - (a.name || '').length
+        (b.displayName || b.name || '').length - (a.displayName || a.name || '').length
     );
     
     // Build regex to match all teammate names after @
     for (const teammate of sortedTeammates) {
-        const name = teammate.name || '';
+        const name = teammate.displayName || teammate.name || '';
         if (!name) continue;
         
         // Escape special regex characters in name
@@ -2139,7 +2450,7 @@ function renderMessageWithMentions(text, mentions = []) {
     // Build a map of mentioned user names
     const mentionedUsers = mentions.map(userId => {
         const teammate = teammates.find(t => t.id === userId);
-        return teammate ? { id: userId, name: teammate.name } : null;
+        return teammate ? { id: userId, name: teammate.displayName || teammate.name } : null;
     }).filter(Boolean);
     
     // Create regex to match @Name patterns for mentioned users
@@ -5504,7 +5815,10 @@ function initTasks() {
         dropdown.innerHTML = optionsHTML;
         
         positionInlineDropdown(dropdown, cell);
-        document.body.appendChild(dropdown);
+        
+        // Append to spreadsheet container for proper scrolling
+        const spreadsheetContainer = document.querySelector('.spreadsheet-table-area') || document.body;
+        spreadsheetContainer.appendChild(dropdown);
         
         requestAnimationFrame(() => dropdown.classList.add('visible'));
         
@@ -5936,6 +6250,20 @@ function initTasks() {
                 // Update local state
                 task.progress = newProgress;
                 
+                // Auto-update status based on progress (ONLY valid status enums: todo, inprogress, done)
+                let newStatus = task.status;
+                if (newProgress === 100) {
+                    newStatus = 'done';
+                } else if (newProgress > 0 && newProgress < 100) {
+                    newStatus = 'inprogress';
+                }
+                // Don't auto-change from 'inprogress' to 'todo' when progress goes to 0
+                // User may want to keep it inprogress
+                
+                if (newStatus !== task.status) {
+                    task.status = newStatus;
+                }
+                
                 // Show save feedback
                 showInlineSaveFeedback(cell);
                 
@@ -5944,12 +6272,22 @@ function initTasks() {
                     try {
                         const { doc, updateDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
                         const taskRef = doc(db, 'teams', appState.currentTeamId, 'tasks', String(taskId));
-                        const payload = { progress: newProgress, updatedAt: serverTimestamp() };
+                        const payload = { 
+                            progress: newProgress, 
+                            status: newStatus,
+                            updatedAt: serverTimestamp() 
+                        };
                         await updateDoc(taskRef, payload);
-                        debugLog('✅ Task progress updated:', taskId, newProgress);
+                        debugLog('✅ Task progress and status updated:', taskId, newProgress, newStatus);
+                        
+                        // Refresh the spreadsheet to show updated status badge
+                        const currentSpreadsheet = appState.spreadsheets.find(s => s.id === appState.currentSpreadsheetId);
+                        if (currentSpreadsheet) {
+                            renderSpreadsheet(currentSpreadsheet);
+                        }
                     } catch (error) {
                         const path = `teams/${appState.currentTeamId}/tasks/${taskId}`;
-                        logFirestoreError('updateTaskProgress', path, { progress: newProgress }, {
+                        logFirestoreError('updateTaskProgress', path, { progress: newProgress, status: newStatus }, {
                             uid: currentAuthUser?.uid,
                             teamId: appState.currentTeamId,
                             taskId: taskId,
@@ -6008,7 +6346,10 @@ function initTasks() {
         
         // Position dropdown
         positionInlineDropdown(dropdown, badge);
-        document.body.appendChild(dropdown);
+        
+        // Append to spreadsheet container for proper scrolling
+        const spreadsheetContainer = document.querySelector('.spreadsheet-table-area') || document.body;
+        spreadsheetContainer.appendChild(dropdown);
         
         // Add animation class
         requestAnimationFrame(() => dropdown.classList.add('visible'));
@@ -6124,7 +6465,10 @@ function initTasks() {
         
         // Position dropdown
         positionInlineDropdown(dropdown, cell);
-        document.body.appendChild(dropdown);
+        
+        // Append to spreadsheet container for proper scrolling
+        const spreadsheetContainer = document.querySelector('.spreadsheet-table-area') || document.body;
+        spreadsheetContainer.appendChild(dropdown);
         
         // Add animation class
         requestAnimationFrame(() => dropdown.classList.add('visible'));
@@ -6200,27 +6544,44 @@ function initTasks() {
     // INLINE EDIT HELPERS
     // ===================================
     function positionInlineDropdown(dropdown, trigger) {
-        const rect = trigger.getBoundingClientRect();
-        const viewportHeight = window.innerHeight;
-        const viewportWidth = window.innerWidth;
+        const triggerRect = trigger.getBoundingClientRect();
         
-        // Default: position below
-        let top = rect.bottom + 4;
-        let left = rect.left;
+        // Find the spreadsheet table area to get its scroll offset
+        const spreadsheetContainer = document.querySelector('.spreadsheet-table-area');
+        if (!spreadsheetContainer) return;
         
-        // Check if dropdown would go off bottom of screen
-        const dropdownHeight = 150; // estimated
-        if (top + dropdownHeight > viewportHeight - 20) {
-            top = rect.top - dropdownHeight - 4;
+        const containerRect = spreadsheetContainer.getBoundingClientRect();
+        
+        // Calculate position relative to the scrollable container
+        // Account for both the container's position and its scroll offset
+        const scrollTop = spreadsheetContainer.scrollTop;
+        const scrollLeft = spreadsheetContainer.scrollLeft;
+        
+        // Position relative to container's content (including scrolled area)
+        const relativeTop = triggerRect.top - containerRect.top + scrollTop;
+        const relativeLeft = triggerRect.left - containerRect.left + scrollLeft;
+        
+        // Estimated dropdown dimensions
+        const dropdownHeight = 200;
+        const dropdownWidth = 200;
+        
+        // Default: position below the trigger
+        let top = relativeTop + triggerRect.height + 4;
+        
+        // Check if dropdown would go off bottom of visible area
+        const triggerBottomInViewport = triggerRect.bottom - containerRect.top;
+        if (triggerBottomInViewport + dropdownHeight > containerRect.height) {
+            // Position above the trigger instead
+            top = relativeTop - dropdownHeight - 4;
         }
         
-        // Check if dropdown would go off right of screen
-        const dropdownWidth = 180;
-        if (left + dropdownWidth > viewportWidth - 20) {
-            left = viewportWidth - dropdownWidth - 20;
+        // Check if dropdown would go off right of container
+        let left = relativeLeft;
+        if (left + dropdownWidth > spreadsheetContainer.clientWidth + scrollLeft) {
+            left = spreadsheetContainer.clientWidth + scrollLeft - dropdownWidth - 20;
         }
         
-        dropdown.style.position = 'fixed';
+        dropdown.style.position = 'absolute';
         dropdown.style.top = top + 'px';
         dropdown.style.left = left + 'px';
         dropdown.style.zIndex = '100001';
@@ -6524,7 +6885,10 @@ function initTasks() {
         dropdown.innerHTML = optionsHTML;
         
         positionInlineDropdown(dropdown, cell);
-        document.body.appendChild(dropdown);
+        
+        // Append to spreadsheet container for proper scrolling
+        const spreadsheetContainer = document.querySelector('.spreadsheet-table-area') || document.body;
+        spreadsheetContainer.appendChild(dropdown);
         
         requestAnimationFrame(() => dropdown.classList.add('visible'));
         
@@ -6937,10 +7301,17 @@ function initTasks() {
             
             case 'dueDate':
                 // INLINE EDITABLE: Click to edit date
+                // FIX: Robust date parsing to prevent "Invalid Date" bug
                 if (!task.dueDate) {
                     return `<td class="cell-date-editable cell-editable date-cell" data-task-id="${task.id}">—</td>`;
                 }
-                const date = new Date(task.dueDate);
+                // Normalize date: handle Firestore Timestamp, milliseconds, ISO string, or Date object
+                const date = normalizeTaskDate(task.dueDate);
+                if (!date || isNaN(date.getTime())) {
+                    // Defensive fallback - never show "Invalid Date"
+                    console.warn('Invalid dueDate for task:', task.id, task.dueDate);
+                    return `<td class="cell-date-editable cell-editable date-cell" data-task-id="${task.id}">—</td>`;
+                }
                 const formatted = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
                 const today = new Date();
                 today.setHours(0, 0, 0, 0);
@@ -6959,7 +7330,9 @@ function initTasks() {
                         chipClass = 'date-chip-soon';
                     }
                 }
-                const chipHtml = chipClass ? `<span class="date-chip ${chipClass}">${formatted}</span>` : formatted;
+                // Show recurring icon if task has recurrence
+                const recurringIcon = task.isRecurring ? ' <i class="fas fa-redo" style="font-size: 10px; opacity: 0.6;" title="Recurring task"></i>' : '';
+                const chipHtml = chipClass ? `<span class="date-chip ${chipClass}">${formatted}${recurringIcon}</span>` : `${formatted}${recurringIcon}`;
                 return `<td class="cell-date-editable cell-editable date-cell" data-task-id="${task.id}">${chipHtml}</td>`;
             
             case 'progress':
@@ -7142,6 +7515,11 @@ function initTasks() {
     };
 
     window.batchChangeStatus = function() {
+        // VALID STATUS ENUMS: Only these three values are allowed
+        // - 'todo': To Do
+        // - 'inprogress': In Progress  
+        // - 'done': Done
+        // DO NOT use 'complete' or 'in-progress' (legacy values, now normalized)
         const statuses = ['todo', 'inprogress', 'done'];
         const statusLabels = { todo: 'To Do', inprogress: 'In Progress', done: 'Done' };
         
@@ -8247,11 +8625,70 @@ function initTasks() {
 }
 
 // Update task status
+// RECURRING TASKS: When a recurring task is completed, reschedule it instead of leaving it done
 async function updateTaskStatus(taskId, newStatus) {
     const task = appState.tasks.find(t => String(t.id) === String(taskId));
     if (!task) return;
     
     const oldStatus = task.status;
+    
+    // RECURRING TASKS: Handle completion-based rescheduling
+    // If task is being marked done AND it's recurring, reschedule instead
+    if (newStatus === 'done' && task.isRecurring && task.recurrence) {
+        const currentDueDate = normalizeTaskDate(task.dueDate);
+        if (currentDueDate) {
+            const nextDueDate = calculateNextDueDate(currentDueDate, task.recurrence.frequency, task.recurrence.interval || 1);
+            
+            // Update task with new due date and reset status
+            task.dueDate = nextDueDate.getTime();
+            task.status = 'todo';  // Reset to todo for next occurrence
+            task.progress = 0;     // Reset progress
+            task.recurrence.nextDueAt = calculateNextDueDate(nextDueDate, task.recurrence.frequency, task.recurrence.interval || 1).getTime();
+            
+            // Update in Firestore with rescheduled data
+            if (db && currentAuthUser && appState.currentTeamId) {
+                try {
+                    const { doc, updateDoc, serverTimestamp, Timestamp } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+                    const taskRef = doc(db, 'teams', appState.currentTeamId, 'tasks', String(taskId));
+                    await updateDoc(taskRef, { 
+                        status: 'todo',
+                        progress: 0,
+                        dueDate: Timestamp.fromMillis(task.dueDate),
+                        recurrence: task.recurrence,
+                        updatedAt: serverTimestamp()
+                    });
+                    
+                    debugLog('🔄 Recurring task rescheduled:', taskId, 'new due:', new Date(task.dueDate).toLocaleDateString());
+                    showToast(`"${task.title}" rescheduled to ${new Date(task.dueDate).toLocaleDateString()}`, 'success', 3000);
+                    
+                    // Add activity for recurring task completion
+                    const spreadsheet = appState.spreadsheets.find(s => s.id === task.spreadsheetId);
+                    const isPrivateSpreadsheet = spreadsheet && spreadsheet.visibility === 'private';
+                    
+                    if (!isPrivateSpreadsheet) {
+                        addActivity({
+                            type: 'task',
+                            description: `completed recurring task "${task.title}" (rescheduled)`
+                        });
+                    }
+                    
+                } catch (error) {
+                    console.error('Error rescheduling recurring task:', error.code || error.message);
+                }
+            }
+            
+            // Update local storage
+            saveToLocalStorage('tasks', appState.tasks);
+            
+            // Refresh display
+            if (window.displayTasks) {
+                window.displayTasks();
+            }
+            return; // Exit early - don't do normal status update
+        }
+    }
+    
+    // Normal (non-recurring) task status update
     task.status = newStatus;
     
     // Update in Firestore
@@ -8491,6 +8928,21 @@ function initTaskModalDropdowns() {
             <i class="fas ${icon ? icon.classList[1] : 'fa-table'} unified-dropdown-icon"></i>
             <span>${text}</span>
         `;
+    });
+    
+    // RECURRING TASKS: Recurrence dropdown
+    setupCustomDropdown('taskRecurrence', (value, option) => {
+        const icon = option.querySelector('i');
+        const text = option.querySelector('span').textContent;
+        // Show/hide recurrence hint based on selection
+        const hint = document.getElementById('recurrenceHint');
+        if (hint) {
+            hint.style.display = value !== 'none' ? 'block' : 'none';
+        }
+        if (icon && value !== 'none') {
+            return `<i class="${icon.className}" style="${icon.getAttribute('style')}"></i><span>${text}</span>`;
+        }
+        return `<span>${text}</span>`;
     });
 }
 
@@ -13616,6 +14068,7 @@ function initModals() {
         const progressSlider = document.getElementById('taskProgress');
         const spreadsheetSelect = document.getElementById('taskSpreadsheet');
         const showOnCalendarCheckbox = document.getElementById('taskShowOnCalendar');
+        const recurrenceInput = document.getElementById('taskRecurrence');
         
         // Validate title - 20 word limit
         let taskTitle = document.getElementById('taskTitle').value.trim();
@@ -13625,6 +14078,10 @@ function initModals() {
             taskTitle = taskTitle.split(/\s+/).slice(0, 20).join(' ');
             showToast('Task title limited to 20 words', 'warning');
         }
+        
+        // RECURRING TASKS: Get recurrence setting
+        const recurrence = recurrenceInput ? recurrenceInput.value : 'none';
+        const isRecurring = recurrence && recurrence !== 'none';
         
         const task = {
             title: taskTitle,
@@ -13639,6 +14096,13 @@ function initModals() {
             progress: progressSlider ? parseInt(progressSlider.value) || 0 : 0,
             spreadsheetId: spreadsheetSelect ? spreadsheetSelect.value : 'default',
             showOnCalendar: showOnCalendarCheckbox ? showOnCalendarCheckbox.checked : true,
+            // RECURRING TASKS: Store recurrence settings
+            isRecurring: isRecurring,
+            recurrence: isRecurring ? {
+                frequency: recurrence,  // 'daily', 'weekly', 'monthly'
+                interval: 1,            // Every 1 day/week/month
+                nextDueAt: dueDate ? calculateNextDueDate(new Date(dueDate), recurrence).getTime() : null
+            } : null,
             createdBy: currentAuthUser ? currentAuthUser.uid : null,
             createdAt: Date.now()
         };
@@ -18288,40 +18752,89 @@ window.resetChatAppearance = function() {
 };
 
 // ===================================
-// APPEARANCE SETTINGS (DARK MODE)
+// APPEARANCE SETTINGS (THEME PREFERENCE)
+// Supports system/light/dark with Firestore persistence
 // ===================================
 
-// Initialize appearance form
+// Initialize appearance form with theme selector
 function initAppearanceForm() {
     const form = document.getElementById('appearanceForm');
     if (!form) return;
     
-    // Load dark mode from localStorage first
-    let localDark = localStorage.getItem('darkMode');
-    if (localDark !== null) {
-        localDark = localDark === 'true';
-        document.getElementById('darkModeToggle').checked = localDark;
-        applyDarkMode(localDark);
+    const themeOptions = document.querySelectorAll('.theme-option');
+    const themeInput = document.getElementById('themePreference');
+    
+    if (!themeOptions.length) {
+        console.warn('Theme options not found');
+        return;
     }
+    
+    // Load theme from localStorage first (for instant UI)
+    let localTheme = localStorage.getItem('themePreference') || 'system';
+    
+    // Handle migration from old darkMode
+    if (!localStorage.getItem('themePreference')) {
+        const oldDarkMode = localStorage.getItem('darkMode');
+        if (oldDarkMode === 'true') {
+            localTheme = 'dark';
+        } else if (oldDarkMode === 'false') {
+            localTheme = 'light';
+        }
+    }
+    
+    // Set initial UI state
+    updateThemeUI(localTheme);
+    applyTheme(localTheme);
+    
     // Then load from Firestore and override if set
-    loadDarkModePreference().then(isDark => {
-        document.getElementById('darkModeToggle').checked = isDark;
-        applyDarkMode(isDark);
-        localStorage.setItem('darkMode', isDark ? 'true' : 'false');
+    loadThemePreference().then(savedTheme => {
+        if (savedTheme) {
+            updateThemeUI(savedTheme);
+            applyTheme(savedTheme);
+            localStorage.setItem('themePreference', savedTheme);
+        }
     });
-
-    // Auto-save on toggle change
-    document.getElementById('darkModeToggle').addEventListener('change', async (e) => {
-        applyDarkMode(e.target.checked);
-        localStorage.setItem('darkMode', e.target.checked ? 'true' : 'false');
-        await saveDarkModePreference();
+    
+    // Handle theme option clicks
+    themeOptions.forEach(option => {
+        option.addEventListener('click', async () => {
+            const theme = option.dataset.theme;
+            updateThemeUI(theme);
+            applyTheme(theme);
+            localStorage.setItem('themePreference', theme);
+            await saveThemePreference(theme);
+        });
     });
 }
 
-// Load dark mode preference
-async function loadDarkModePreference() {
+/**
+ * Update the theme selector UI to show active option
+ * @param {string} theme - 'system', 'light', or 'dark'
+ */
+function updateThemeUI(theme) {
+    const themeOptions = document.querySelectorAll('.theme-option');
+    const themeInput = document.getElementById('themePreference');
+    
+    themeOptions.forEach(option => {
+        if (option.dataset.theme === theme) {
+            option.classList.add('active');
+        } else {
+            option.classList.remove('active');
+        }
+    });
+    
+    if (themeInput) {
+        themeInput.value = theme;
+    }
+}
+
+/**
+ * Load theme preference from Firestore
+ * @returns {Promise<string|null>} Theme preference or null if not set
+ */
+async function loadThemePreference() {
     if (!currentAuthUser || !db) {
-        return false;
+        return null;
     }
     
     try {
@@ -18330,26 +18843,40 @@ async function loadDarkModePreference() {
         const userDoc = await getDoc(userRef);
         
         if (userDoc.exists()) {
-            return userDoc.data().preferences?.appearance?.darkMode || false;
+            const data = userDoc.data();
+            // Check for new theme preference first
+            if (data.preferences?.appearance?.theme) {
+                return data.preferences.appearance.theme;
+            }
+            // Fall back to old darkMode for migration
+            if (data.preferences?.appearance?.darkMode !== undefined) {
+                return data.preferences.appearance.darkMode ? 'dark' : 'light';
+            }
         }
         
-        return false;
+        return null;
     } catch (error) {
-        console.error('Error loading dark mode preference:', error);
-        return false;
+        console.error('Error loading theme preference:', error);
+        return null;
     }
 }
 
-// Apply dark mode
-function applyDarkMode(isDark) {
-    if (isDark) {
+/**
+ * Apply theme to the page
+ * @param {string} theme - 'system', 'light', or 'dark'
+ */
+function applyTheme(theme) {
+    const shouldBeDark = resolveTheme(theme);
+    
+    if (shouldBeDark) {
         document.body.classList.add('dark-mode');
     } else {
         document.body.classList.remove('dark-mode');
     }
+    
     // Also update settings cards immediately
     document.querySelectorAll('.settings-card').forEach(card => {
-        if (isDark) {
+        if (shouldBeDark) {
             card.classList.add('dark-mode');
         } else {
             card.classList.remove('dark-mode');
@@ -18357,26 +18884,42 @@ function applyDarkMode(isDark) {
     });
 }
 
-// Save dark mode preference
-async function saveDarkModePreference() {
+// Keep old applyDarkMode for backward compatibility with other code
+function applyDarkMode(isDark) {
+    applyTheme(isDark ? 'dark' : 'light');
+}
+
+/**
+ * Save theme preference to Firestore
+ * @param {string} theme - 'system', 'light', or 'dark'
+ */
+async function saveThemePreference(theme) {
     if (!currentAuthUser || !db) {
-        alert('Cannot save preferences. Please sign in again.');
+        console.warn('Cannot save theme preference - not authenticated');
         return;
     }
-    
-    const isDark = document.getElementById('darkModeToggle').checked;
     
     try {
         await updateUserPreferences({ 
             appearance: { 
-                darkMode: isDark 
+                theme: theme,
+                // Keep darkMode for backward compatibility
+                darkMode: theme === 'dark' || (theme === 'system' && systemPrefersDark())
             } 
         });
         
-        applyDarkMode(isDark);
+        showToast('Theme updated', 'success', 2000);
     } catch (error) {
-        console.error('Error saving dark mode preference:', error);
-        showToast('Error saving preferences. Please try again.', 'error', 5000, 'Save Failed');
+        console.error('Error saving theme preference:', error);
+        showToast('Error saving theme. Please try again.', 'error', 5000, 'Save Failed');
+    }
+}
+
+// Legacy function for backward compatibility
+async function saveDarkModePreference() {
+    const themeInput = document.getElementById('themePreference');
+    if (themeInput) {
+        await saveThemePreference(themeInput.value);
     }
 }
 
@@ -20706,7 +21249,16 @@ async function loadTasksFromFirestore() {
         onSnapshot(q, (querySnapshot) => {
             const tasks = [];
             querySnapshot.forEach((doc) => {
-                tasks.push({ id: doc.id, ...doc.data() });
+                const taskData = { id: doc.id, ...doc.data() };
+                
+                // Normalize legacy status values to valid enums (todo, inprogress, done)
+                if (taskData.status === 'complete') {
+                    taskData.status = 'done';
+                } else if (taskData.status === 'in-progress' || taskData.status === 'in progress') {
+                    taskData.status = 'inprogress';
+                }
+                
+                tasks.push(taskData);
             });
             
             appState.tasks = tasks;
@@ -20763,10 +21315,11 @@ async function saveTaskToFirestore(task) {
         // SECURITY: Only include fields allowed by rules whitelist
         // Allowed: createdBy, teamId, title, description, status, assignee, assigneeId, priority, dueAt, dueDate,
         //          createdAt, updatedAt, tags, completed, completedAt, completedBy, progress, estimatedTime,
-        //          budget, spreadsheetId, showOnCalendar
+        //          budget, spreadsheetId, showOnCalendar, isRecurring, recurrence
         const allowedFields = ['title', 'description', 'status', 'assignee', 'assigneeId', 'priority', 
                                'dueAt', 'dueDate', 'tags', 'completed', 'completedAt', 'completedBy', 
-                               'progress', 'estimatedTime', 'budget', 'spreadsheetId', 'showOnCalendar'];
+                               'progress', 'estimatedTime', 'budget', 'spreadsheetId', 'showOnCalendar',
+                               'isRecurring', 'recurrence'];
         const taskData = {
             teamId: appState.currentTeamId,  // Required by rules
             createdBy: currentAuthUser.uid,
@@ -20788,6 +21341,13 @@ async function saveTaskToFirestore(task) {
                 // completedAt might also be a timestamp
                 else if (key === 'completedAt' && typeof task[key] === 'number') {
                     taskData[key] = Timestamp.fromMillis(task[key]);
+                }
+                // RECURRING TASKS: Handle recurrence object with nested nextDueAt timestamp
+                else if (key === 'recurrence' && task[key]) {
+                    taskData[key] = {
+                        ...task[key],
+                        nextDueAt: task[key].nextDueAt ? Timestamp.fromMillis(task[key].nextDueAt) : null
+                    };
                 }
                 else {
                     taskData[key] = task[key];
@@ -21220,6 +21780,9 @@ async function loadEventsFromFirestore() {
                         endTime: data.endTimeStr || '',
                         color: data.color || '#0078d4',
                         visibility: visibility,
+                        // RECURRING EVENTS: Load repeat frequency and start date
+                        repeat: data.repeat || 'none',
+                        repeatStart: data.repeatStart?.toDate ? data.repeatStart.toDate() : (data.repeatStart ? new Date(data.repeatStart) : null),
                         teamId: data.teamId,
                         createdBy: data.createdBy,
                         createdByName: data.createdByName
@@ -21290,6 +21853,9 @@ async function saveEventToFirestore(event) {
             endTimeStr: event.endTime || '',
             color: event.color || '#0078d4',
             visibility: event.visibility || 'team',
+            // RECURRING EVENTS: Store repeat frequency and start date
+            repeat: event.repeat || 'none',
+            repeatStart: event.repeatStart ? Timestamp.fromDate(event.repeatStart) : null,
             teamId: appState.currentTeamId,
             createdBy: currentAuthUser.uid,
             createdByName: identity.displayName,
@@ -21333,6 +21899,9 @@ async function updateEventInFirestore(event) {
             endTimeStr: event.endTime || '',
             color: event.color || '#007AFF',
             visibility: event.visibility || 'team',
+            // RECURRING EVENTS: Store repeat frequency and start date
+            repeat: event.repeat || 'none',
+            repeatStart: event.repeatStart ? Timestamp.fromDate(event.repeatStart) : null,
             updatedAt: new Date()  // Required by rules - helps with tracking changes
         };
         
@@ -23390,6 +23959,160 @@ window.editTransaction = editTransaction;
 window.openDeleteTransactionModal = openDeleteTransactionModal;
 
 // ===================================
+// GLOBAL KEYBOARD SHORTCUTS
+// ===================================
+
+/**
+ * Check if user is currently typing in an input/textarea or editable element
+ * @returns {boolean} True if user is in a typing context
+ */
+function isTypingContext() {
+    const activeEl = document.activeElement;
+    if (!activeEl) return false;
+    
+    const tagName = activeEl.tagName.toLowerCase();
+    
+    // Check if in input or textarea
+    if (tagName === 'input' || tagName === 'textarea') {
+        return true;
+    }
+    
+    // Check if contenteditable
+    if (activeEl.isContentEditable || activeEl.contentEditable === 'true') {
+        return true;
+    }
+    
+    // Check for any modal being open (don't trigger shortcuts when modals are open)
+    const openModals = document.querySelectorAll('.unified-modal.show, .modal.show');
+    if (openModals.length > 0) {
+        return true;
+    }
+    
+    return false;
+}
+
+/**
+ * Initialize global keyboard shortcuts
+ * t = new task
+ * e = new event  
+ * m = focus chat message input
+ * / = focus search
+ */
+function initGlobalKeyboardShortcuts() {
+    document.addEventListener('keydown', (e) => {
+        // Skip if user is typing in an input, or if modifier keys are held
+        if (isTypingContext() || e.ctrlKey || e.metaKey || e.altKey) {
+            return;
+        }
+        
+        const key = e.key.toLowerCase();
+        
+        switch (key) {
+            case 't':
+                // Open new task modal
+                e.preventDefault();
+                openNewTaskModal();
+                break;
+                
+            case 'e':
+                // Open new event modal
+                e.preventDefault();
+                openNewEventModal();
+                break;
+                
+            case 'm':
+                // Focus chat input and navigate to chat section
+                e.preventDefault();
+                focusChatInput();
+                break;
+                
+            case '/':
+                // Focus search input
+                e.preventDefault();
+                focusSearchInput();
+                break;
+        }
+    });
+    
+    console.log('Global keyboard shortcuts initialized (t=task, e=event, m=chat, /=search)');
+}
+
+/**
+ * Open the task modal for creating a new task
+ */
+function openNewTaskModal() {
+    // Reset form for new task
+    const taskForm = document.getElementById('taskForm');
+    if (taskForm) {
+        taskForm.reset();
+        delete taskForm.dataset.editingTaskId;
+    }
+    
+    // Update modal title and button
+    const titleEl = document.querySelector('#taskModal .unified-modal-title h2');
+    const submitBtn = document.querySelector('#taskModal .unified-btn-primary');
+    if (titleEl) titleEl.innerHTML = '<i class="fas fa-plus-circle"></i> New Task';
+    if (submitBtn) submitBtn.innerHTML = '<i class="fas fa-check"></i> Create Task';
+    
+    // Populate dropdowns
+    if (typeof populateTaskAssigneeDropdown === 'function') {
+        populateTaskAssigneeDropdown();
+    }
+    if (typeof populateTaskSpreadsheetDropdown === 'function') {
+        populateTaskSpreadsheetDropdown();
+    }
+    if (typeof resetTaskModalDropdowns === 'function') {
+        resetTaskModalDropdowns();
+    }
+    
+    // Set minimum date to today
+    const taskDueDateInput = document.getElementById('taskDueDate');
+    if (taskDueDateInput) {
+        const today = new Date().toISOString().split('T')[0];
+        taskDueDateInput.setAttribute('min', today);
+    }
+    
+    openModal('taskModal');
+}
+
+/**
+ * Open the event modal for creating a new event
+ */
+function openNewEventModal() {
+    openModal('eventModal');
+}
+
+/**
+ * Focus the chat input and navigate to chat section if needed
+ */
+function focusChatInput() {
+    // Navigate to chat section first
+    const chatNav = document.querySelector('[data-section="chat-section"]');
+    if (chatNav) {
+        chatNav.click();
+    }
+    
+    // Focus the chat input after a short delay to allow navigation
+    setTimeout(() => {
+        const chatInput = document.getElementById('chatInput');
+        if (chatInput) {
+            chatInput.focus();
+        }
+    }, 100);
+}
+
+/**
+ * Focus the global search input
+ */
+function focusSearchInput() {
+    const searchInput = document.getElementById('globalSearchInput');
+    if (searchInput) {
+        searchInput.focus();
+        searchInput.select(); // Select existing text for easy replacement
+    }
+}
+
+// ===================================
 // INITIALIZATION
 // ===================================
 document.addEventListener('DOMContentLoaded', async () => {
@@ -23422,6 +24145,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     initJoinTeamModal(); // Initialize join team modal
     initLinkLobby(); // Initialize Link Lobby
     initFinances(); // Initialize Finances tab
+    initGlobalKeyboardShortcuts(); // Initialize keyboard shortcuts (t/e/m//)
     startActivityRefreshTimer(); // Start periodic refresh of activity times
     
     console.log('TeamHub App Ready!');
