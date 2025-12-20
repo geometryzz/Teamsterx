@@ -47,6 +47,9 @@ html {
        APPLE-STYLE DESIGN SYSTEM
        =================================== */
     
+    /* Mobile Navigation Height (used for safe bottom padding) */
+    --bottom-nav-height: 70px;
+    
     /* Background Colors */
     --bg-body: #F5F5F7;
     --bg-surface: #FFFFFF;
@@ -8014,8 +8017,9 @@ body.dark-mode .dropdown-menu-option.active {
         margin: 0;
         max-width: 100%;
         width: 100%;
-        max-height: 100vh;
-        padding-bottom: 70px; /* Space for bottom nav */
+        height: 100dvh; /* Use dynamic viewport height for mobile browsers */
+        height: 100vh; /* Fallback for older browsers */
+        overflow: hidden; /* Prevent body scroll, sections scroll internally */
         border: none;
         box-shadow: none;
     }
@@ -8026,24 +8030,27 @@ body.dark-mode .dropdown-menu-option.active {
         margin: 0;
     }
     
-    /* Hide desktop sidebar - becomes bottom nav */
+    /* Mobile bottom navigation - always visible with safe area support */
     .sidebar {
         position: fixed;
         bottom: 0;
         left: 0;
         right: 0;
         width: 100%;
-        height: 70px;
+        height: var(--bottom-nav-height);
         flex-direction: row;
         border-right: none;
         border-top: 1px solid var(--border-subtle);
         border-radius: 0;
         padding: 0;
+        padding-bottom: env(safe-area-inset-bottom); /* iOS home indicator safe area */
         z-index: 1000;
         background: var(--bg-surface-soft);
         backdrop-filter: blur(20px);
         -webkit-backdrop-filter: blur(20px);
         box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.08);
+        /* Always visible on mobile - no scroll-triggered visibility */
+        display: flex !important;
     }
     
     /* Hide sidebar header on mobile */
@@ -8120,11 +8127,16 @@ body.dark-mode .dropdown-menu-option.active {
         display: none;
     }
     
-    /* Main content - full width with no side padding */
+    /* Main content - full width with flex layout for proper scrolling */
     .main-content {
         padding: 0;
         border-radius: 0;
         width: 100%;
+        display: flex;
+        flex-direction: column;
+        flex: 1;
+        min-height: 0; /* Critical: allows flex children to shrink and scroll */
+        overflow: hidden; /* Container doesn't scroll, children do */
     }
     
     /* Top bar - full width */
@@ -8133,10 +8145,19 @@ body.dark-mode .dropdown-menu-option.active {
         border-radius: 0;
     }
     
-    /* Content sections - full width, minimal padding */
+    /* Content sections - full width with proper scrolling and bottom nav clearance */
     .content-section {
         padding: 0;
         width: 100%;
+        flex: 1;
+        min-height: 0; /* Critical: allows scrolling */
+        overflow-y: auto;
+        overflow-x: hidden; /* Prevent horizontal scroll except in specific containers */
+        -webkit-overflow-scrolling: touch;
+        /* Bottom padding ensures content is never hidden behind fixed nav */
+        /* Formula: 70px (nav height) + iOS safe area + 20px breathing room */
+        /* This ensures users can scroll past the last item and see all content */
+        padding-bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom) + 20px);
     }
     
     /* Section headers - full width edge to edge */
@@ -8495,12 +8516,15 @@ body.dark-mode .dropdown-menu-option.active {
         border-right: none;
     }
     
-    /* Chat container - full width */
+    /* Chat container - full width with flexible height */
     .chat-container {
         border-radius: 0;
         border-left: none;
         border-right: none;
-        max-height: calc(100vh - 160px);
+        display: flex;
+        flex-direction: column;
+        height: 100%;
+        max-height: none; /* Remove fixed max-height that causes clipping */
     }
     
     /* Calendar - full width */
@@ -8588,9 +8612,10 @@ body.dark-mode .dropdown-menu-option.active {
         min-height: 44px;
     }
     
-    /* Spreadsheet table container - full width with horizontal scroll */
+    /* Spreadsheet wrapper - ONLY container that horizontally scrolls on mobile */
     .spreadsheet-wrapper {
-        overflow-x: auto;
+        overflow-x: auto; /* Horizontal scroll allowed here */
+        overflow-y: visible;
         -webkit-overflow-scrolling: touch;
         margin: 0;
         padding: 0;
@@ -11204,6 +11229,24 @@ body.dark-mode .notification-prefs-toggles .toggle-label:hover {
 @media (max-width: 900px) {
     .overview-two-col {
         grid-template-columns: 1fr;
+    }
+}
+
+/* Mobile: disable internal scrolling in Overview cards for natural page scroll */
+@media (max-width: 768px) {
+    .overview-two-col .overview-card {
+        min-height: auto; /* Remove fixed height */
+    }
+    
+    .overview-two-col .overview-tasks,
+    .overview-two-col .overview-events {
+        overflow-y: visible; /* Let page scroll naturally */
+        max-height: none; /* Remove scroll trap */
+    }
+    
+    .overview-notifications-list {
+        overflow-y: visible; /* Let page scroll naturally */
+        max-height: none; /* Remove scroll trap */
     }
 }
 
