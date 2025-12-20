@@ -333,6 +333,163 @@ function normalizeProfile(uid, raw = {}) {
 }
 
 // ===================================
+// UNIFIED IDENTITY RESOLVER
+// ===================================
+/**
+ * Get identity (displayName, avatarColor, initials) for any user
+ * 
+ * This is the SINGLE SOURCE OF TRUTH for resolving teammate identity.
+ * Resolution order:
+ * 1. publicProfilesById cache (most reliable for OTHER users)
+ * 2. teammates array (normalized profile data)
+ * 3. team member snapshot from currentTeamData (may be stale)
+ * 4. fallbackName (e.g., message.userName snapshot)
+ * 5. 'Unknown'
+ * 
+ * @param {string} uid - User ID to resolve
+ * @param {string} fallbackName - Fallback name if no profile found
+ * @returns {object} { displayName, avatarColor, photoURL, initials }
+ */
+function getIdentity(uid, fallbackName = null) {
+    // Default values
+    let displayName = 'Unknown';
+    let avatarColor = '#0078D4';
+    let photoURL = null;
+    
+    if (!uid) {
+        // No UID - use fallback only
+        displayName = fallbackName || 'Unknown';
+    } else {
+        // 1. Check publicProfilesById cache (best source for other users)
+        const pub = appState.publicProfilesById?.[uid];
+        
+        // 2. Check teammates array (normalized profiles)
+        const teammate = appState.teammates?.find(t => t.id === uid);
+        
+        // 3. Check team member snapshot (may be stale)
+        const member = appState.currentTeamData?.members?.[uid];
+        
+        // Resolve displayName in priority order
+        displayName = 
+            pub?.displayName ||
+            teammate?.displayName || teammate?.name ||
+            member?.displayName || member?.name ||
+            fallbackName ||
+            'Unknown';
+        
+        // Resolve avatarColor in priority order
+        avatarColor = 
+            pub?.avatarColor ||
+            teammate?.avatarColor ||
+            member?.avatarColor ||
+            '#0078D4';
+        
+        // Resolve photoURL
+        photoURL = 
+            pub?.photoURL ||
+            teammate?.photoURL ||
+            member?.photoURL ||
+            null;
+    }
+    
+    // Generate initials from displayName
+    const initials = generateAvatar(displayName);
+    
+    return {
+        displayName,
+        avatarColor,
+        photoURL,
+        initials
+    };
+}
+
+/**
+ * Load publicProfiles for all team members into cache
+ * Called when switching teams or on initial load
+ */
+async function loadPublicProfilesForTeam() {
+    if (!db || !currentAuthUser || !appState.currentTeamId) {
+        debugLog('Cannot load public profiles: missing db, auth, or teamId');
+        return;
+    }
+    
+    const teamData = appState.currentTeamData;
+    if (!teamData?.members) {
+        debugLog('No team members to load profiles for');
+        return;
+    }
+    
+    const memberUids = Object.keys(teamData.members);
+    debugLog(`📥 Loading public profiles for ${memberUids.length} team members...`);
+    
+    try {
+        const { doc, getDoc } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+        
+        // Clear existing cache
+        appState.publicProfilesById = {};
+        
+        // Fetch profiles in parallel (with reasonable batch size)
+        const profilePromises = memberUids.map(async (uid) => {
+            try {
+                // Current user: use their own users doc (more complete)
+                if (uid === currentAuthUser.uid) {
+                    const userRef = doc(db, 'users', uid);
+                    const userDoc = await getDoc(userRef);
+                    if (userDoc.exists()) {
+                        const userData = userDoc.data();
+                        return {
+                            uid,
+                            displayName: userData.displayName || userData.name,
+                            avatarColor: userData.avatarColor,
+                            photoURL: userData.photoURL,
+                            occupation: userData.occupation
+                        };
+                    }
+                }
+                
+                // Other users: use publicProfiles
+                const profileRef = doc(db, 'publicProfiles', uid);
+                const profileDoc = await getDoc(profileRef);
+                if (profileDoc.exists()) {
+                    const data = profileDoc.data();
+                    return {
+                        uid,
+                        displayName: data.displayName,
+                        avatarColor: data.avatarColor,
+                        photoURL: data.photoURL,
+                        occupation: data.occupation
+                    };
+                }
+                return { uid, displayName: null, avatarColor: null };
+            } catch (error) {
+                // Individual profile fetch failed - continue with others
+                debugLog(`Could not load profile for ${uid}:`, error.code || error.message);
+                return { uid, displayName: null, avatarColor: null };
+            }
+        });
+        
+        const profiles = await Promise.all(profilePromises);
+        
+        // Store in cache
+        profiles.forEach(profile => {
+            if (profile.uid) {
+                appState.publicProfilesById[profile.uid] = {
+                    displayName: profile.displayName,
+                    avatarColor: profile.avatarColor,
+                    photoURL: profile.photoURL,
+                    occupation: profile.occupation
+                };
+            }
+        });
+        
+        debugLog(`✅ Loaded ${Object.keys(appState.publicProfilesById).length} public profiles`);
+        
+    } catch (error) {
+        console.error('Error loading public profiles:', error.code || error.message);
+    }
+}
+
+// ===================================
 // ROLE MANAGEMENT HELPERS
 // ===================================
 function getCurrentUserRole(teamData) {
@@ -605,35 +762,89 @@ async function initializeFirebaseAuth() {
             if (user) {
                 // User is signed in
                 currentAuthUser = user;
-                appState.currentUser = user.displayName || user.email.split('@')[0];
                 updateUserProfile(user);
                 console.log('✅ User authenticated');
                 
-                // Sync public profile for teammate visibility
-                // This ensures other users can see this user's basic info
+                // === PHASE 4 & 8: Sync public profile using SAVED displayName, not auth displayName ===
+                // This ensures the publicProfile always reflects the user's chosen name
                 try {
-                    // Get avatarColor from user doc if it exists
-                    let avatarColorToSync = null;
-                    try {
-                        const { doc, getDoc } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
-                        const userRef = doc(db, 'users', user.uid);
-                        const userDoc = await getDoc(userRef);
-                        if (userDoc.exists()) {
-                            avatarColorToSync = userDoc.data()?.avatarColor || null;
-                        }
-                    } catch (e) {
-                        // Ignore if user doc doesn't exist yet
+                    const { doc, getDoc, setDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+                    
+                    // Read saved user doc to get chosen displayName and avatarColor
+                    const userRef = doc(db, 'users', user.uid);
+                    const userDoc = await getDoc(userRef);
+                    
+                    let savedDisplayName = null;
+                    let savedAvatarColor = null;
+                    let savedOccupation = null;
+                    
+                    if (userDoc.exists()) {
+                        const userData = userDoc.data();
+                        savedDisplayName = userData.displayName || null;
+                        savedAvatarColor = userData.avatarColor || null;
+                        savedOccupation = userData.jobTitle || userData.occupation || null;
                     }
                     
+                    // Fallback chain for displayName
+                    const displayNameToSync = savedDisplayName || user.displayName || user.email?.split('@')[0] || 'Unknown';
+                    
+                    // Update appState.currentUser with the correct name
+                    appState.currentUser = displayNameToSync;
+                    
+                    // === PHASE 8: Ensure publicProfile exists with correct data ===
+                    const publicProfileRef = doc(db, 'publicProfiles', user.uid);
+                    const publicProfileDoc = await getDoc(publicProfileRef);
+                    
+                    // Generate deterministic avatar color if missing
+                    if (!savedAvatarColor) {
+                        // Simple hash-based color generation from UID
+                        const hash = user.uid.split('').reduce((acc, char) => acc + char.charCodeAt(0), 0);
+                        const hue = hash % 360;
+                        savedAvatarColor = `hsl(${hue}, 65%, 45%)`;
+                        // Convert HSL to hex for consistency
+                        const hslToHex = (h, s, l) => {
+                            s /= 100; l /= 100;
+                            const c = (1 - Math.abs(2 * l - 1)) * s;
+                            const x = c * (1 - Math.abs((h / 60) % 2 - 1));
+                            const m = l - c / 2;
+                            let r = 0, g = 0, b = 0;
+                            if (h < 60) { r = c; g = x; }
+                            else if (h < 120) { r = x; g = c; }
+                            else if (h < 180) { g = c; b = x; }
+                            else if (h < 240) { g = x; b = c; }
+                            else if (h < 300) { r = x; b = c; }
+                            else { r = c; b = x; }
+                            const toHex = n => Math.round((n + m) * 255).toString(16).padStart(2, '0');
+                            return `#${toHex(r)}${toHex(g)}${toHex(b)}`;
+                        };
+                        savedAvatarColor = hslToHex(hue, 65, 45);
+                    }
+                    
+                    // Sync to publicProfile
                     await syncPublicProfile({
-                        displayName: user.displayName || user.email.split('@')[0],
+                        displayName: displayNameToSync,
                         email: user.email,
                         photoURL: user.photoURL || null,
-                        avatarColor: avatarColorToSync
+                        occupation: savedOccupation,
+                        avatarColor: savedAvatarColor
                     });
+                    
+                    // Initialize publicProfilesById cache with current user
+                    if (!appState.publicProfilesById) appState.publicProfilesById = {};
+                    appState.publicProfilesById[user.uid] = {
+                        displayName: displayNameToSync,
+                        avatarColor: savedAvatarColor,
+                        photoURL: user.photoURL || null,
+                        occupation: savedOccupation
+                    };
+                    
+                    console.log('✅ [IDENTITY] Public profile synced:', { displayName: displayNameToSync, avatarColor: savedAvatarColor });
+                    
                 } catch (profileError) {
                     // Non-critical - don't block auth flow
-                    console.warn('Public profile sync deferred');
+                    console.warn('Public profile sync deferred:', profileError.message);
+                    // Still set a fallback for appState.currentUser
+                    appState.currentUser = user.displayName || user.email?.split('@')[0] || 'Unknown';
                 }
                 
                 // Track session login time for force logout feature
@@ -854,6 +1065,7 @@ const appState = {
     tasks: [],
     activities: [],
     teammates: [], // Real team members only
+    publicProfilesById: {}, // Cache of publicProfiles for team members (keyed by uid)
     calendarView: 'month', // 'month' or 'week'
     currentDate: new Date(),
     spreadsheets: [], // Spreadsheet configurations
@@ -1211,32 +1423,13 @@ function initChat() {
         // Determine sender uid with backward compatibility
         const senderUid = message.authorId || message.userId || message.createdBy;
         
-        // Resolve sender profile using canonical resolution order:
-        // 1. appState.teammates (normalized, most reliable)
-        // 2. message.userName (snapshot fallback)
-        // 3. Default values
-        let authorName = 'User';
-        let avatarColor = '#0078D4';
+        // Use unified identity resolver
+        const identity = getIdentity(senderUid, message.userName || message.author);
+        const authorName = identity.displayName;
+        const avatarColor = identity.avatarColor;
         
-        if (senderUid) {
-            // Primary source: teammates array (already normalized with displayName and avatarColor)
-            const teammate = appState.teammates?.find(t => t.id === senderUid);
-            if (teammate) {
-                authorName = teammate.displayName || teammate.name || message.userName || 'User';
-                avatarColor = teammate.avatarColor || '#0078D4';
-            } else {
-                // Fallback to message snapshot if sender not in teammates
-                authorName = message.userName || message.author || 'User';
-                avatarColor = message.avatarColor || '#0078D4';
-            }
-        } else {
-            // No sender uid - use whatever is stored in message
-            authorName = message.userName || message.author || 'User';
-            avatarColor = message.avatarColor || '#0078D4';
-        }
-        
-        // Get initials for avatar using generateAvatar function
-        const initials = generateAvatar(authorName);
+        // Get initials for avatar
+        const initials = identity.initials;
         
         // Create avatar element
         const avatarDiv = document.createElement('div');
@@ -1756,11 +1949,14 @@ function showMentionDropdown() {
             item.className = 'mention-item' + (index === mentionState.selectedIndex ? ' selected' : '');
             item.dataset.index = index;
             
+            // Use unified identity resolver for consistent display
+            const identity = getIdentity(teammate.id, teammate.name);
+            
             // Avatar
             const avatar = document.createElement('div');
             avatar.className = 'mention-item-avatar';
-            avatar.style.background = teammate.avatarColor || '#0078D4';
-            avatar.textContent = generateAvatar(teammate.name);
+            avatar.style.background = identity.avatarColor;
+            avatar.textContent = identity.initials;
             
             // Info
             const info = document.createElement('div');
@@ -1768,7 +1964,7 @@ function showMentionDropdown() {
             
             const name = document.createElement('div');
             name.className = 'mention-item-name';
-            name.textContent = teammate.name;
+            name.textContent = identity.displayName;
             
             const role = document.createElement('div');
             role.className = 'mention-item-role';
@@ -5910,12 +6106,15 @@ function initTasks() {
         
         appState.teammates.forEach(member => {
             const isActive = task.assigneeId === member.id;
-            const initials = (member.name || member.email || '?').substring(0, 1).toUpperCase();
-            const color = member.avatarColor || '#0070f3';
+            // Use unified identity resolver for consistent display
+            const identity = getIdentity(member.id, member.name || member.email);
+            const initials = identity.initials;
+            const color = identity.avatarColor;
+            const displayName = identity.displayName;
             optionsHTML += `
-                <div class="inline-dropdown-option ${isActive ? 'active' : ''}" data-value="${member.id}" data-name="${escapeHtml(member.name || member.email)}">
+                <div class="inline-dropdown-option ${isActive ? 'active' : ''}" data-value="${member.id}" data-name="${escapeHtml(displayName)}">
                     <div class="assignee-option-avatar" style="background: ${color}">${initials}</div>
-                    <span>${escapeHtml(member.name || member.email)}</span>
+                    <span>${escapeHtml(displayName)}</span>
                     ${isActive ? '<i class="fas fa-check"></i>' : ''}
                 </div>
             `;
@@ -5954,12 +6153,12 @@ function initTasks() {
         task.assigneeId = newAssigneeId || null;
         task.assignee = newAssigneeName || 'Unassigned';
         
-        // Update cell visual
-        const assignee = appState.teammates.find(m => m.id === newAssigneeId) || {};
-        const fullName = newAssigneeName || 'Unassigned';
+        // Update cell visual using unified identity resolver
+        const identity = newAssigneeId ? getIdentity(newAssigneeId, newAssigneeName) : { displayName: 'Unassigned', avatarColor: '#8E8E93', initials: '?' };
+        const fullName = identity.displayName;
         const firstName = fullName.split(' ')[0];
-        const initials = firstName.substring(0, 1).toUpperCase();
-        const color = assignee.avatarColor || '#8E8E93';
+        const initials = identity.initials;
+        const color = identity.avatarColor;
         
         cell.innerHTML = `
             <div class="assignee-avatar" style="background: ${color}">${initials}</div>
@@ -6705,11 +6904,12 @@ function initTasks() {
             
             case 'assignee':
                 // INLINE EDITABLE: Assignee cell with click-to-edit
-                const assignee = appState.teammates.find(m => m.id === task.assigneeId) || {};
-                const fullName = task.assignee || 'Unassigned';
+                // Use unified identity resolver for consistent display
+                const assigneeIdentity = task.assigneeId ? getIdentity(task.assigneeId, task.assignee) : { displayName: 'Unassigned', avatarColor: '#8E8E93', initials: '?' };
+                const fullName = assigneeIdentity.displayName;
                 const firstName = fullName.split(' ')[0];
-                const initials = firstName.substring(0, 1).toUpperCase();
-                const color = assignee.avatarColor || '#8E8E93';
+                const initials = assigneeIdentity.initials;
+                const color = assigneeIdentity.avatarColor;
                 return `<td class="cell-editable"><div class="assignee-cell assignee-cell-inline" data-task-id="${task.id}" title="${escapeHtml(fullName)}"><div class="assignee-avatar" style="background: ${color}">${initials}</div><span class="assignee-name">${escapeHtml(firstName)}</span></div></td>`;
             
             case 'priority':
@@ -7043,9 +7243,11 @@ function initTasks() {
         
         select.innerHTML = '<option value="">All</option>';
         appState.teammates.forEach(member => {
+            // Use unified identity resolver for consistent display
+            const identity = getIdentity(member.id, member.email);
             const option = document.createElement('option');
             option.value = member.id;
-            option.textContent = member.displayName || member.email;
+            option.textContent = identity.displayName;
             select.appendChild(option);
         });
     }
@@ -7947,17 +8149,17 @@ function initTasks() {
 
     // Show task details in a clean modal
     window.showTaskDetails = function(task) {
-        // Find creator info
-        const creator = appState.teammates.find(m => m.id === task.createdBy) || {};
-        const creatorName = creator.displayName || creator.email || 'Unknown';
-        const creatorColor = creator.avatarColor || '#0078D4';
-        const creatorInitials = creatorName.substring(0, 2).toUpperCase();
+        // Find creator info using unified identity resolver
+        const creatorIdentity = getIdentity(task.createdBy, 'Unknown');
+        const creatorName = creatorIdentity.displayName;
+        const creatorColor = creatorIdentity.avatarColor;
+        const creatorInitials = creatorIdentity.initials;
 
-        // Find assignee info
-        const assignee = appState.teammates.find(m => m.displayName === task.assignee || m.email === task.assignee) || {};
-        const assigneeName = assignee.displayName || task.assignee || 'Unassigned';
-        const assigneeColor = assignee.avatarColor || '#8E8E93';
-        const assigneeInitials = assigneeName.substring(0, 2).toUpperCase();
+        // Find assignee info using unified identity resolver
+        const assigneeIdentity = task.assigneeId ? getIdentity(task.assigneeId, task.assignee) : { displayName: task.assignee || 'Unassigned', avatarColor: '#8E8E93', initials: '?' };
+        const assigneeName = assigneeIdentity.displayName;
+        const assigneeColor = assigneeIdentity.avatarColor;
+        const assigneeInitials = assigneeIdentity.initials;
 
         const modalHTML = `
             <div class="modal active" id="taskDetailsModal">
@@ -8105,13 +8307,12 @@ function populateTaskAssigneeDropdown() {
     let optionsHTML = '';
     let firstMember = null;
     
-    // Add current user first - check appState.teammates for proper display name
+    // Add current user first - use unified identity resolver
     if (currentAuthUser) {
-        // Try to find current user in teammates for consistent display name
-        const currentUserInTeam = appState.teammates?.find(t => t.id === currentAuthUser.uid);
-        const displayName = currentUserInTeam?.name || currentAuthUser.displayName || currentAuthUser.email || 'You';
-        const initials = displayName.substring(0, 1).toUpperCase();
-        const color = currentUserInTeam?.avatarColor || '#0070F3';
+        const identity = getIdentity(currentAuthUser.uid, currentAuthUser.displayName || currentAuthUser.email);
+        const displayName = identity.displayName;
+        const initials = identity.initials;
+        const color = identity.avatarColor;
         firstMember = { id: currentAuthUser.uid, name: displayName, initials, color };
         
         optionsHTML += `
@@ -8128,9 +8329,11 @@ function populateTaskAssigneeDropdown() {
             // Skip current user (already added)
             if (currentAuthUser && teammate.id === currentAuthUser.uid) return;
             
-            const name = teammate.name || teammate.email || 'Unknown';
-            const initials = name.substring(0, 1).toUpperCase();
-            const color = teammate.avatarColor || '#8E8E93';
+            // Use unified identity resolver for consistent display
+            const identity = getIdentity(teammate.id, teammate.name || teammate.email);
+            const name = identity.displayName;
+            const initials = identity.initials;
+            const color = identity.avatarColor;
             
             if (!firstMember) {
                 firstMember = { id: teammate.id, name, initials, color };
@@ -8765,16 +8968,15 @@ async function addActivity(activity) {
         
         const activitiesRef = collection(db, 'teams', appState.currentTeamId, 'activities');
         
-        // Get username from team members data (chosen username) with proper fallback chain
-        const currentUserData = appState.currentTeamData?.members?.[currentAuthUser.uid];
-        const username = currentUserData?.displayName || currentUserData?.name || 
-                        currentAuthUser.displayName || currentAuthUser.email?.split('@')[0] || 'Unknown';
+        // Use unified identity resolver for consistent username
+        const identity = getIdentity(currentAuthUser.uid, currentAuthUser.email?.split('@')[0]);
+        const username = identity.displayName;
         
         // SECURITY: Rules require createdBy == request.auth.uid
         const activityData = {
             type: activity.type,
             createdBy: currentAuthUser.uid, // Required by rules - canonical uid field
-            userName: username,  // Use chosen username, not default auth displayName
+            userName: username,  // Use SSOT-resolved username
             description: activity.description,
             createdAt: serverTimestamp()
         };
@@ -8846,9 +9048,9 @@ function displayActivities() {
         const headerDiv = document.createElement('div');
         headerDiv.className = 'activity-header';
         
-        // Resolve display name: team member data (live) -> stored userName snapshot -> fallback
-        const userMemberData = appState.currentTeamData?.members?.[activity.createdBy];
-        const displayName = userMemberData?.displayName || userMemberData?.name || activity.userName || activity.user || 'Someone';
+        // Use unified identity resolver for consistent display
+        const identity = getIdentity(activity.createdBy, activity.userName || activity.user);
+        const displayName = identity.displayName;
         
         const userNameStrong = document.createElement('strong');
         userNameStrong.textContent = displayName; // Use textContent for user name
@@ -12581,9 +12783,9 @@ function displayNotifications(notifications, readNotifications, filterMode = 'un
                     notification.type === 'message' ? 'fa-comment' : 
                     notification.type === 'team' ? 'fa-user-plus' : 'fa-calendar';
         
-        // Resolve display name: team member data (live) -> stored userName snapshot -> fallback
-        const userMemberData = appState.currentTeamData?.members?.[notification.createdBy];
-        const displayName = userMemberData?.displayName || userMemberData?.name || notification.userName || 'Someone';
+        // Use unified identity resolver for consistent display
+        const identity = getIdentity(notification.createdBy, notification.userName);
+        const displayName = identity.displayName;
         
         // Short description for compact popup
         const shortDesc = notification.description.length > 40 
@@ -12643,9 +12845,9 @@ function displayOverviewNotifications(notifications, readNotifications) {
                     notification.type === 'message' ? 'fa-comment' : 
                     notification.type === 'team' ? 'fa-user-plus' : 'fa-calendar';
         
-        // Resolve display name
-        const userMemberData = appState.currentTeamData?.members?.[notification.createdBy];
-        const displayName = userMemberData?.displayName || userMemberData?.name || notification.userName || 'Someone';
+        // Use unified identity resolver for consistent display
+        const identity = getIdentity(notification.createdBy, notification.userName);
+        const displayName = identity.displayName;
         
         const rowEl = document.createElement('div');
         rowEl.className = `overview-notification-row ${!isRead ? 'unread' : ''}`;
@@ -13393,13 +13595,13 @@ function initModals() {
             return;
         }
         
-        // Get assignee name from teammates (always use canonical source)
-        const assignee = appState.teammates.find(t => t.id === assigneeId);
-        if (!assignee) {
+        // Get assignee name using unified identity resolver
+        const assigneeIdentity = getIdentity(assigneeId, null);
+        if (assigneeIdentity.displayName === 'Unknown') {
             showToast('Invalid assignee. Please select a valid team member.', 'error');
             return;
         }
-        const assigneeName = assignee.name;
+        const assigneeName = assigneeIdentity.displayName;
         
         // Get due date if provided
         const dueDateInput = document.getElementById('taskDueDate').value;
@@ -14151,10 +14353,13 @@ async function deleteEvent(eventId) {
         
         debugLog('✅ Event deleted');
         
+        // Use unified identity resolver for consistent name
+        const identity = getIdentity(currentAuthUser.uid, currentAuthUser.email?.split('@')[0]);
+        
         // Add activity
         addActivity({
             type: 'calendar',
-            user: currentAuthUser.displayName || currentAuthUser.email,
+            user: identity.displayName,
             description: 'deleted an event'
         });
         
@@ -14198,9 +14403,12 @@ async function initializeUserTeam() {
             // Create user document if it doesn't exist
             debugLog('📝 Creating user document...');
             try {
+                // Use unified identity resolver for consistent name
+                const identity = getIdentity(currentAuthUser.uid, currentAuthUser.email?.split('@')[0]);
+                
                 await setDoc(userRef, {
                     email: currentAuthUser.email,
-                    displayName: currentAuthUser.displayName || currentAuthUser.email.split('@')[0],
+                    displayName: identity.displayName,
                     teams: [],
                     createdAt: serverTimestamp()
                 });
@@ -14383,8 +14591,11 @@ async function createTeamNow() {
         const { collection, doc, addDoc, setDoc, serverTimestamp, getDoc, updateDoc, deleteField } = 
             await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
 
+        // Use unified identity resolver for consistent name
+        const identity = getIdentity(currentAuthUser.uid, currentAuthUser.email?.split('@')[0]);
+        
         const teamCode = generateTeamCode();
-        const teamName = `${currentAuthUser.displayName || currentAuthUser.email.split('@')[0]}'s Team`;
+        const teamName = `${identity.displayName}'s Team`;
         
         const teamData = {
             name: teamName,
@@ -14394,7 +14605,7 @@ async function createTeamNow() {
             members: {
                 [currentAuthUser.uid]: {
                     role: 'owner',
-                    name: currentAuthUser.displayName || currentAuthUser.email,
+                    name: identity.displayName,
                     email: currentAuthUser.email,
                     joinedAt: serverTimestamp()
                 }
@@ -14445,7 +14656,7 @@ async function createTeamNow() {
         // Update user document with new team reference
         await setDoc(userRef, {
             email: currentAuthUser.email,
-            displayName: currentAuthUser.displayName || currentAuthUser.email,
+            displayName: identity.displayName,
             teams: [teamRef.id],
             createdAt: serverTimestamp()
         }, { merge: true });
@@ -14653,6 +14864,9 @@ async function loadTeamData() {
         debugLog('💰 Finances enabled:', appState.financesEnabled);
         debugLog('💰 Finances visibility:', appState.financesVisibility);
         debugLog('💰 Finances access:', appState.financesAccess);
+        
+        // Load public profiles for all team members (for identity resolution)
+        await loadPublicProfilesForTeam();
         
         // Load metrics chart configuration from team settings
         loadMetricsChartConfig(appState.currentTeamId);
@@ -15208,10 +15422,14 @@ async function processJoinCode(teamCode) {
         // Add join request to subcollection (prevents DoS via map growth)
         // Uses /teams/{teamId}/joinRequests/{userId} instead of deprecated pendingRequests map
         const { setDoc } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+        
+        // Use unified identity resolver for consistent name
+        const identity = getIdentity(currentAuthUser.uid, currentAuthUser.email?.split('@')[0]);
+        
         const joinRequestRef = doc(db, 'teams', teamId, 'joinRequests', currentAuthUser.uid);
         await setDoc(joinRequestRef, {
             userId: currentAuthUser.uid,
-            name: currentAuthUser.displayName || currentAuthUser.email.split('@')[0],
+            name: identity.displayName,
             email: currentAuthUser.email,
             photoURL: currentAuthUser.photoURL || null,
             requestedAt: serverTimestamp(),
@@ -15283,10 +15501,14 @@ window.submitJoinRequest = async function() {
 
         // Add join request to subcollection (prevents DoS via map growth)
         // Uses /teams/{teamId}/joinRequests/{userId} instead of deprecated pendingRequests map
+        
+        // Use unified identity resolver for consistent name
+        const identity = getIdentity(currentAuthUser.uid, currentAuthUser.email?.split('@')[0]);
+        
         const joinRequestRef = doc(db, 'teams', teamId, 'joinRequests', currentAuthUser.uid);
         await setDoc(joinRequestRef, {
             userId: currentAuthUser.uid,
-            name: currentAuthUser.displayName || currentAuthUser.email.split('@')[0],
+            name: identity.displayName,
             email: currentAuthUser.email,
             photoURL: currentAuthUser.photoURL || null,
             requestedAt: serverTimestamp(),
@@ -15639,8 +15861,19 @@ async function executeRejectJoinRequest(userId) {
 }
 
 // Check for pending requests count
+// SECURITY: Only admins/owners can query joinRequests - regular members will get permission-denied
 async function getPendingRequestsCount() {
     if (!db || !currentAuthUser || !appState.currentTeamId) return 0;
+    
+    // Check user role first - only admins/owners can read join requests
+    const teamData = appState.currentTeamData;
+    if (!teamData) return 0;
+    
+    const userRole = getCurrentUserRole(teamData);
+    if (userRole !== 'admin' && userRole !== 'owner') {
+        // Non-admin users cannot query joinRequests - return 0 silently
+        return 0;
+    }
 
     try {
         const { collection, getDocs, query, where } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
@@ -15688,6 +15921,9 @@ async function sendTeamInvitation(invitedEmail, invitedName, occupation) {
 
         // Generate unique invitation token
         const invitationToken = generateInvitationToken();
+        
+        // Use unified identity resolver for consistent name
+        const identity = getIdentity(currentAuthUser.uid, currentAuthUser.email?.split('@')[0]);
 
         // Create invitation document
         const invitationRef = await addDoc(collection(db, 'teamInvitations'), {
@@ -15697,7 +15933,7 @@ async function sendTeamInvitation(invitedEmail, invitedName, occupation) {
             invitedName: invitedName || '',
             occupation: occupation || '',
             invitedBy: currentAuthUser.uid,
-            invitedByName: currentAuthUser.displayName || currentAuthUser.email,
+            invitedByName: identity.displayName,
             invitedByEmail: currentAuthUser.email,
             status: 'pending',
             token: invitationToken,
@@ -17583,41 +17819,39 @@ async function saveAccountSettings(e) {
         return;
     }
     
-    if (DEBUG) console.log('💾 Saving account settings for user');
-    
-    const displayName = document.getElementById('settingsDisplayName').value.trim();
+    // Get raw input values
+    let displayName = document.getElementById('settingsDisplayName').value;
     const jobTitle = document.getElementById('settingsJobTitle').value.trim();
     const avatarColor = document.getElementById('settingsAvatarColor').value;
+    
+    // === NORMALIZE displayName (Phase 3) ===
+    // 1. Trim whitespace
+    displayName = displayName.trim();
+    // 2. Collapse multiple spaces to single space
+    displayName = displayName.replace(/\s+/g, ' ');
+    // 3. Enforce max length (100 chars to match Firestore rules)
+    if (displayName.length > 100) {
+        displayName = displayName.substring(0, 100);
+    }
     
     if (!displayName) {
         alert('Display name is required');
         return;
     }
     
-    debugLog('📝 Settings to save:', { displayName, jobTitle, avatarColor });
+    // === DEBUG: Log the normalization ===
+    console.log('📝 [IDENTITY DEBUG] saveAccountSettings normalization:');
+    console.log('  - Normalized displayName:', JSON.stringify(displayName));
+    console.log('  - avatarColor:', avatarColor);
+    console.log('  - Firebase Auth displayName (before):', JSON.stringify(currentAuthUser.displayName));
     
     try {
         const { doc, setDoc, updateDoc, getDoc, serverTimestamp } = 
             await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
-        
-        debugLog('🔥 Updating user document...');
-        debugLog('📍 Document path: users/' + currentAuthUser.uid);
+        const { updateProfile } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-auth.js');
         
         // Check if user document exists first
         const userRef = doc(db, 'users', currentAuthUser.uid);
-        debugLog('📄 UserRef:', userRef);
-        
-        // Try to read first to verify permissions
-        try {
-            const userDoc = await getDoc(userRef);
-            debugLog('📖 User document exists:', userDoc.exists());
-            if (userDoc.exists()) {
-                debugLog('📋 Current user data:', userDoc.data());
-            }
-        } catch (readError) {
-            console.error('❌ Error reading user document:', readError.code || readError.message);
-            debugError('Full error:', readError);
-        }
         
         const userData = {
             displayName: displayName,
@@ -17627,12 +17861,13 @@ async function saveAccountSettings(e) {
             updatedAt: serverTimestamp()
         };
         
-        debugLog('📤 Writing to Firestore:', userData);
+        // Write to /users/{uid}
+        console.log('📤 [IDENTITY DEBUG] Writing to /users:', userData);
         await setDoc(userRef, userData, { merge: true });
+        console.log('✅ [IDENTITY DEBUG] User document updated successfully');
         
-        debugLog('✅ User document updated successfully');
-        
-        // Sync public profile for teammate visibility
+        // Sync public profile for teammate visibility (/publicProfiles/{uid})
+        console.log('📤 [IDENTITY DEBUG] Syncing to /publicProfiles...');
         await syncPublicProfile({
             displayName: displayName,
             email: currentAuthUser.email,
@@ -17640,20 +17875,37 @@ async function saveAccountSettings(e) {
             occupation: jobTitle || null,
             avatarColor: avatarColor
         });
+        console.log('✅ [IDENTITY DEBUG] Public profile synced');
         
-        // Note: Team member display names will update automatically when loadTeammatesFromFirestore()
-        // fetches user documents - no need to update team document directly
+        // === SYNC TO FIREBASE AUTH (Phase 3) ===
+        // This ensures currentAuthUser.displayName stays in sync with our saved value
+        // Legacy code paths that still use currentAuthUser.displayName will work correctly
+        try {
+            await updateProfile(currentAuthUser, { displayName: displayName });
+            console.log('✅ [IDENTITY DEBUG] Firebase Auth displayName updated to:', JSON.stringify(displayName));
+            console.log('  - Firebase Auth displayName (after):', JSON.stringify(currentAuthUser.displayName));
+        } catch (authUpdateError) {
+            // Non-critical - log but continue
+            console.warn('⚠️ [IDENTITY DEBUG] Could not update Firebase Auth profile:', authUpdateError.message);
+        }
+        
+        // Update publicProfilesById cache for immediate effect
+        if (!appState.publicProfilesById) appState.publicProfilesById = {};
+        appState.publicProfilesById[currentAuthUser.uid] = {
+            displayName: displayName,
+            avatarColor: avatarColor,
+            photoURL: currentAuthUser.photoURL || null,
+            occupation: jobTitle || null
+        };
+        console.log('✅ [IDENTITY DEBUG] publicProfilesById cache updated');
         
         // Update sidebar display
         updateSidebarProfile(displayName, avatarColor);
         
-        debugLog('🔄 Reloading team members and section...');
-        
         // Reload team members display
         await loadTeammatesFromFirestore();
+        await loadPublicProfilesForTeam();
         await initTeamSection();
-        
-        debugLog('✅ Team section refreshed with updated profile');
         
         // Show success message
         showSuccessMessage('Settings saved successfully!');
@@ -18938,6 +19190,9 @@ async function startTeamMembersListener() {
             // Update team data in appState
             appState.currentTeamData = teamData;
             
+            // Reload public profiles for identity resolution
+            await loadPublicProfilesForTeam();
+            
             // Set up listeners for each team member's user profile
             setupUserProfileListeners(Object.keys(members));
             
@@ -20189,13 +20444,16 @@ async function joinTeamByCode(teamCode) {
         
         debugLog('✅ Found team:', teamName);
         
+        // Use unified identity resolver for consistent name
+        const identity = getIdentity(currentAuthUser.uid, currentAuthUser.email?.split('@')[0]);
+        
         // Create join request in subcollection (prevents DoS via map growth)
         // Uses /teams/{teamId}/joinRequests/{userId} instead of deprecated pendingRequests map
         const { setDoc } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
         const joinRequestRef = doc(db, 'teams', teamId, 'joinRequests', currentAuthUser.uid);
         await setDoc(joinRequestRef, {
             userId: currentAuthUser.uid,
-            name: currentAuthUser.displayName || currentAuthUser.email,
+            name: identity.displayName,
             email: currentAuthUser.email,
             requestedAt: serverTimestamp(),
             status: 'pending'
@@ -20268,11 +20526,14 @@ window.leaveTeam = async function() {
             return;
         }
         
+        // Use unified identity resolver for consistent name
+        const identity = getIdentity(currentAuthUser.uid, currentAuthUser.email?.split('@')[0]);
+        
         // Create leave request
         const leaveRequestsRef = collection(db, 'teams', appState.currentTeamId, 'pendingLeaveRequests');
         await addDoc(leaveRequestsRef, {
             userId: currentAuthUser.uid,
-            userName: currentAuthUser.displayName || currentAuthUser.email,
+            userName: identity.displayName,
             userEmail: currentAuthUser.email,
             requestedAt: serverTimestamp(),
             status: 'pending'
@@ -20872,17 +21133,17 @@ async function saveMessageToFirestore(message) {
         
         const messagesRef = collection(db, 'teams', appState.currentTeamId, 'messages');
         
-        // Get username from team members (chosen username) with fallback chain
-        const userMemberData = appState.currentTeamData?.members?.[currentAuthUser.uid];
-        const resolvedUsername = userMemberData?.displayName || userMemberData?.name || 
-                                 currentAuthUser.displayName || currentAuthUser.email?.split('@')[0] || 'Unknown';
+        // Use unified identity resolver for consistent username
+        // Priority: publicProfilesById cache > teammates > team members snapshot > auth
+        const identity = getIdentity(currentAuthUser.uid, currentAuthUser.email?.split('@')[0]);
+        const resolvedUsername = identity.displayName;
         
         // SECURITY: Schema must match rules exactly
         // Allowed fields: userId, userName, message, timestamp, createdAt, edited, editedAt, teamId, userEmail, photoURL
         // SECURITY: userEmail must match request.auth.token.email if provided
         const messageDoc = {
             userId: currentAuthUser.uid,
-            userName: resolvedUsername, // Use resolved username, not default auth displayName
+            userName: resolvedUsername, // Use SSOT-resolved username
             message: message.text, // Already encrypted text from sendMessage
             userEmail: currentAuthUser.email, // Must match auth token
             photoURL: currentAuthUser.photoURL || null,
@@ -21016,6 +21277,9 @@ async function saveEventToFirestore(event) {
         const eventsRef = collection(db, 'teams', appState.currentTeamId, 'events');
         debugLog('Events collection path:', `teams/${appState.currentTeamId}/events`);
         
+        // Use unified identity resolver for consistent display name
+        const identity = getIdentity(currentAuthUser.uid, currentAuthUser.email?.split('@')[0]);
+        
         // Convert Date objects to Firestore Timestamps
         const eventData = {
             title: event.title,
@@ -21028,7 +21292,7 @@ async function saveEventToFirestore(event) {
             visibility: event.visibility || 'team',
             teamId: appState.currentTeamId,
             createdBy: currentAuthUser.uid,
-            createdByName: currentAuthUser.displayName || currentAuthUser.email,
+            createdByName: identity.displayName,
             createdAt: serverTimestamp()
         };
         

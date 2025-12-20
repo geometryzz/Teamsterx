@@ -111,7 +111,7 @@ service cloud.firestore {
     // ============================
     match /publicProfiles/{userId} {
       // Any authenticated user can read public profiles
-      // LIMITATION: This allows cross-team profile scraping (displayName, occupation, photoURL)
+      // LIMITATION: This allows cross-team profile scraping (displayName, occupation, photoURL, avatarColor)
       // MITIGATION: Email removed; only non-sensitive fields exposed
       allow read: if request.auth != null;
 
@@ -119,7 +119,7 @@ service cloud.firestore {
       // SECURITY: Email NOT allowed - use team members map for email in team context
       allow create: if request.auth != null 
         && request.auth.uid == userId
-        && request.resource.data.keys().hasOnly(['displayName', 'photoURL', 'occupation', 'updatedAt'])
+        && request.resource.data.keys().hasOnly(['displayName', 'photoURL', 'occupation', 'avatarColor', 'updatedAt'])
         && request.resource.data.displayName is string
         && request.resource.data.displayName.size() <= 100;
       
@@ -127,11 +127,12 @@ service cloud.firestore {
         && request.auth.uid == userId
         // SECURITY: Only validate CHANGED fields (affectedKeys), not entire doc
         // This allows updates when docs have legacy fields not in whitelist
-        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'photoURL', 'occupation', 'updatedAt'])
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['displayName', 'photoURL', 'occupation', 'avatarColor', 'updatedAt'])
         && request.resource.data.displayName is string
         && request.resource.data.displayName.size() <= 100
         // Validate optional fields if present in final doc
         && (!('photoURL' in request.resource.data) || request.resource.data.photoURL is string)
+        && (!('avatarColor' in request.resource.data) || request.resource.data.avatarColor is string)
         && (!('occupation' in request.resource.data) || 
             (request.resource.data.occupation is string && request.resource.data.occupation.size() <= 200));
 
