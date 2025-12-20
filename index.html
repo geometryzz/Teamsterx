@@ -185,25 +185,41 @@
                     </div>
                 </div>
 
-                <!-- My Tasks Section -->
-                <div class="overview-section">
-                    <div class="overview-section-header">
-                        <h2><i class="fas fa-tasks"></i> My Tasks</h2>
-                        <button class="btn-link" onclick="switchTab('tasks')">View All →</button>
+                <!-- Two Column Layout: My Tasks + Upcoming Events -->
+                <div class="overview-two-col">
+                    <!-- My Tasks Section -->
+                    <div class="overview-section overview-card">
+                        <div class="overview-section-header">
+                            <h2><i class="fas fa-tasks"></i> My Tasks</h2>
+                            <button class="btn-link" onclick="switchTab('tasks')">View All →</button>
+                        </div>
+                        <div id="overviewTasksList" class="overview-tasks">
+                            <p style="text-align: center; color: var(--text-muted); padding: 20px;">No tasks assigned to you</p>
+                        </div>
                     </div>
-                    <div id="overviewTasksList" class="overview-tasks">
-                        <p style="text-align: center; color: var(--text-muted); padding: 20px;">No tasks assigned to you</p>
+
+                    <!-- Upcoming Events Section -->
+                    <div class="overview-section overview-card">
+                        <div class="overview-section-header">
+                            <h2><i class="fas fa-calendar-check"></i> Upcoming Events</h2>
+                            <button class="btn-link" onclick="switchTab('calendar')">View Calendar →</button>
+                        </div>
+                        <div id="overviewEventsList" class="overview-events">
+                            <p style="text-align: center; color: var(--text-muted); padding: 20px;">No upcoming events</p>
+                        </div>
                     </div>
                 </div>
 
-                <!-- Upcoming Events Section -->
-                <div class="overview-section">
+                <!-- Notifications Inbox Section -->
+                <div class="overview-section overview-notifications-section">
                     <div class="overview-section-header">
-                        <h2><i class="fas fa-calendar-check"></i> Upcoming Events</h2>
-                        <button class="btn-link" onclick="switchTab('calendar')">View Calendar →</button>
+                        <h2><i class="fas fa-bell"></i> Notifications</h2>
+                        <div class="overview-notifications-actions">
+                            <button class="btn-link" id="overviewMarkAllReadBtn" onclick="markAllNotificationsRead()">Mark all read</button>
+                        </div>
                     </div>
-                    <div id="overviewEventsList" class="overview-events">
-                        <p style="text-align: center; color: var(--text-muted); padding: 20px;">No upcoming events</p>
+                    <div id="overviewNotificationsList" class="overview-notifications-list">
+                        <div class="no-notifications-overview">No notifications</div>
                     </div>
                 </div>
 
@@ -563,6 +579,10 @@
                             </div>
                         </div>
                         <div class="panel-header-right">
+                            <button class="icon-btn" id="toggleCompletedBtn" title="Toggle completed tasks visibility">
+                                <i class="fas fa-eye"></i>
+                                <span id="toggleCompletedText">See all</span>
+                            </button>
                             <button class="icon-btn primary" id="addTaskPanelBtn">
                                 <i class="fas fa-plus"></i>
                             </button>
@@ -1741,82 +1761,79 @@
     <!-- Modal for Event Details - Clean Modern Design -->
     <div class="unified-modal" id="eventDetailsModal">
         <div class="unified-modal-container event-details-modal">
-            <div class="unified-modal-header">
+            <div class="unified-modal-header event-modal-header-clean">
                 <div class="event-header-text">
                     <h2 id="eventDetailsTitle">Event Details</h2>
                     <p class="event-subtitle" id="eventSubtitle"></p>
                 </div>
                 <div class="unified-modal-header-actions">
-                    <button class="btn-icon-subtle" id="editEventBtnHeader" style="display: none;" title="Edit Event">
+                    <button class="btn-icon-clean" id="editEventBtnHeader" style="display: none;" title="Edit Event">
                         <i class="fas fa-pen"></i>
                     </button>
-                    <button type="button" class="unified-modal-close" id="closeEventDetailsModal">
+                    <button type="button" class="unified-modal-close btn-close-clean" id="closeEventDetailsModal">
                         <i class="fas fa-times"></i>
                     </button>
                 </div>
             </div>
-            <div class="unified-modal-body">
-                <div class="event-info-grid">
-                    <!-- Date & Time Row -->
-                    <div class="event-info-card">
-                        <div class="event-info-icon">
-                            <i class="fas fa-calendar-day"></i>
-                        </div>
-                        <div class="event-info-data">
-                            <span class="event-info-label">Date</span>
-                            <span class="event-info-value" id="detailDate"></span>
-                        </div>
+            <div class="unified-modal-body event-modal-body-clean">
+                <!-- Clean info rows -->
+                <div class="event-info-row-clean">
+                    <i class="fas fa-calendar-day event-icon-clean"></i>
+                    <div class="event-info-text">
+                        <span class="event-label-clean">Date</span>
+                        <span class="event-value-clean" id="detailDate"></span>
                     </div>
-                    
-                    <div class="event-info-card">
-                        <div class="event-info-icon">
-                            <i class="fas fa-clock"></i>
-                        </div>
-                        <div class="event-info-data">
-                            <span class="event-info-label">Time</span>
-                            <span class="event-info-value" id="detailTime"></span>
-                        </div>
+                </div>
+                
+                <div class="event-info-row-clean">
+                    <i class="fas fa-clock event-icon-clean"></i>
+                    <div class="event-info-text">
+                        <span class="event-label-clean">Time</span>
+                        <span class="event-value-clean" id="detailTime"></span>
                     </div>
-                    
-                    <div class="event-info-card">
-                        <div class="event-info-icon">
-                            <i class="fas fa-hourglass-half"></i>
-                        </div>
-                        <div class="event-info-data">
-                            <span class="event-info-label">Duration</span>
-                            <span class="event-info-value" id="detailDuration"></span>
-                        </div>
+                </div>
+                
+                <div class="event-info-row-clean">
+                    <i class="fas fa-hourglass-half event-icon-clean"></i>
+                    <div class="event-info-text">
+                        <span class="event-label-clean">Duration</span>
+                        <span class="event-value-clean" id="detailDuration"></span>
                     </div>
-                    
-                    <div class="event-info-card">
-                        <div class="event-info-icon">
-                            <i class="fas fa-user-circle"></i>
-                        </div>
-                        <div class="event-info-data">
-                            <span class="event-info-label">Created By</span>
-                            <span class="event-info-value" id="detailCreatedBy"></span>
-                        </div>
+                </div>
+                
+                <div class="event-info-row-clean">
+                    <i class="fas fa-user-circle event-icon-clean"></i>
+                    <div class="event-info-text">
+                        <span class="event-label-clean">Created By</span>
+                        <span class="event-value-clean" id="detailCreatedBy"></span>
                     </div>
-                    
-                    <!-- Visibility (new) -->
-                    <div class="event-info-card full-width" id="visibilityCard" style="display: none;">
-                        <div class="event-info-icon">
-                            <i class="fas fa-eye"></i>
-                        </div>
-                        <div class="event-info-data">
-                            <span class="event-info-label">Visibility</span>
-                            <span class="event-info-value visibility-badge" id="detailVisibility"></span>
-                        </div>
+                </div>
+                
+                <!-- Visibility -->
+                <div class="event-info-row-clean" id="visibilityCard" style="display: none;">
+                    <i class="fas fa-eye event-icon-clean"></i>
+                    <div class="event-info-text">
+                        <span class="event-label-clean">Visibility</span>
+                        <span class="event-value-clean visibility-badge-clean" id="detailVisibility"></span>
+                    </div>
+                </div>
+                
+                <!-- Repeat -->
+                <div class="event-info-row-clean" id="repeatCard" style="display: none;">
+                    <i class="fas fa-redo event-icon-clean"></i>
+                    <div class="event-info-text">
+                        <span class="event-label-clean">Repeats</span>
+                        <span class="event-value-clean" id="detailRepeat"></span>
                     </div>
                 </div>
                 
                 <!-- Description Section -->
-                <div class="event-description-section" id="descriptionSection">
-                    <div class="event-description-header">
+                <div class="event-description-clean" id="descriptionSection">
+                    <div class="event-desc-label">
                         <i class="fas fa-align-left"></i>
                         <span>Description</span>
                     </div>
-                    <div class="event-description-content" id="detailDescription">
+                    <div class="event-desc-text" id="detailDescription">
                         No description provided
                     </div>
                 </div>
@@ -1824,11 +1841,11 @@
                 <!-- Hidden color field for JS use -->
                 <div id="detailColor" style="display: none;"></div>
             </div>
-            <div class="unified-modal-footer" id="eventDetailsActions">
-                <button type="button" class="unified-btn unified-btn-danger" id="deleteEventBtn" style="display: none;">
+            <div class="unified-modal-footer event-modal-footer-clean" id="eventDetailsActions">
+                <button type="button" class="unified-btn unified-btn-danger btn-clean" id="deleteEventBtn" style="display: none;">
                     <i class="fas fa-trash"></i> Delete
                 </button>
-                <button type="button" class="unified-btn unified-btn-secondary" onclick="closeModal('eventDetailsModal')">
+                <button type="button" class="unified-btn unified-btn-secondary btn-clean" onclick="closeModal('eventDetailsModal')">
                     Close
                 </button>
             </div>

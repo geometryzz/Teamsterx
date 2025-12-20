@@ -293,6 +293,46 @@ function applyDarkModeEarly() {
 applyDarkModeEarly();
 
 // ===================================
+// PROFILE NORMALIZATION HELPER
+// ===================================
+/**
+ * Normalizes a user profile object to ensure consistent field names.
+ * This is the SINGLE SOURCE OF TRUTH for how we build teammate/profile objects.
+ * 
+ * @param {string} uid - User's UID
+ * @param {object} raw - Raw profile data from various sources
+ * @returns {object} Normalized profile object
+ */
+function normalizeProfile(uid, raw = {}) {
+    // Determine display name using canonical resolution order
+    let displayName = raw.displayName || raw.name || raw.username || null;
+    if (!displayName && raw.email) {
+        displayName = raw.email.split('@')[0];
+    }
+    if (!displayName) {
+        displayName = 'Unknown';
+    }
+    
+    // Ensure avatarColor is always a valid hex string
+    let avatarColor = raw.avatarColor;
+    if (!avatarColor || typeof avatarColor !== 'string' || !avatarColor.startsWith('#')) {
+        avatarColor = '#0078D4'; // Default blue
+    }
+    
+    return {
+        id: uid,
+        displayName: displayName,
+        name: displayName, // Alias for legacy UI compatibility
+        email: raw.email || null,
+        avatarColor: avatarColor,
+        photoURL: raw.photoURL || null,
+        role: raw.role || 'member',
+        occupation: raw.occupation || raw.jobTitle || null,
+        joinedAt: raw.joinedAt || null
+    };
+}
+
+// ===================================
 // ROLE MANAGEMENT HELPERS
 // ===================================
 function getCurrentUserRole(teamData) {
@@ -572,10 +612,24 @@ async function initializeFirebaseAuth() {
                 // Sync public profile for teammate visibility
                 // This ensures other users can see this user's basic info
                 try {
+                    // Get avatarColor from user doc if it exists
+                    let avatarColorToSync = null;
+                    try {
+                        const { doc, getDoc } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+                        const userRef = doc(db, 'users', user.uid);
+                        const userDoc = await getDoc(userRef);
+                        if (userDoc.exists()) {
+                            avatarColorToSync = userDoc.data()?.avatarColor || null;
+                        }
+                    } catch (e) {
+                        // Ignore if user doc doesn't exist yet
+                    }
+                    
                     await syncPublicProfile({
                         displayName: user.displayName || user.email.split('@')[0],
                         email: user.email,
-                        photoURL: user.photoURL || null
+                        photoURL: user.photoURL || null,
+                        avatarColor: avatarColorToSync
                     });
                 } catch (profileError) {
                     // Non-critical - don't block auth flow
@@ -1154,16 +1208,31 @@ function initChat() {
         messageEl.className = 'message';
         messageEl.dataset.messageId = message.id; // Store message ID for deletion
         
-        // Get sender's info from teammates using userId
-        let avatarColor = message.avatarColor || '#0078D4';
-        let authorName = message.author || 'User';
+        // Determine sender uid with backward compatibility
+        const senderUid = message.authorId || message.userId || message.createdBy;
         
-        if (message.userId) {
-            const sender = appState.teammates?.find(t => t.id === message.userId);
-            if (sender) {
-                avatarColor = sender.avatarColor || '#0078D4';
-                authorName = sender.name; // Use displayName from teammates
+        // Resolve sender profile using canonical resolution order:
+        // 1. appState.teammates (normalized, most reliable)
+        // 2. message.userName (snapshot fallback)
+        // 3. Default values
+        let authorName = 'User';
+        let avatarColor = '#0078D4';
+        
+        if (senderUid) {
+            // Primary source: teammates array (already normalized with displayName and avatarColor)
+            const teammate = appState.teammates?.find(t => t.id === senderUid);
+            if (teammate) {
+                authorName = teammate.displayName || teammate.name || message.userName || 'User';
+                avatarColor = teammate.avatarColor || '#0078D4';
+            } else {
+                // Fallback to message snapshot if sender not in teammates
+                authorName = message.userName || message.author || 'User';
+                avatarColor = message.avatarColor || '#0078D4';
             }
+        } else {
+            // No sender uid - use whatever is stored in message
+            authorName = message.userName || message.author || 'User';
+            avatarColor = message.avatarColor || '#0078D4';
         }
         
         // Get initials for avatar using generateAvatar function
@@ -3423,7 +3492,8 @@ const spreadsheetState = {
     sortDirection: 'asc',
     filters: { status: '', priority: '', assignee: '' },
     searchQuery: '',
-    selectedTasks: new Set()
+    selectedTasks: new Set(),
+    showCompleted: localStorage.getItem('showCompletedTasks') === 'true' // Default: hide completed
 };
 
 function initTasks() {
@@ -4194,19 +4264,29 @@ function initTasks() {
                     const draggedId = draggedItem.dataset.columnId;
                     const targetId = item.dataset.columnId;
                     
+                    // Determine first column based on spreadsheet type
+                    const isLeadsTable = spreadsheet?.type === 'leads';
+                    const firstCol = isLeadsTable ? 'leadName' : 'title';
+                    
                     // Build new column order from current DOM order
                     const allItems = Array.from(container.querySelectorAll('.column-toggle-item'));
                     const activeIds = [];
                     
+                    // Always include first column at the beginning (can't be reordered)
+                    if (spreadsheet.columns.includes(firstCol)) {
+                        activeIds.push(firstCol);
+                    }
+                    
                     allItems.forEach(el => {
                         const id = el.dataset.columnId;
-                        if (spreadsheet.columns.includes(id) && id !== draggedId) {
+                        // Skip first column (already added) and dragged column (will be inserted at target position)
+                        if (spreadsheet.columns.includes(id) && id !== draggedId && id !== firstCol) {
                             activeIds.push(id);
                         }
                     });
                     
-                    // Find where to insert dragged column
-                    if (spreadsheet.columns.includes(draggedId)) {
+                    // Find where to insert dragged column (only if it's not the first column)
+                    if (spreadsheet.columns.includes(draggedId) && draggedId !== firstCol) {
                         const targetIndex = activeIds.indexOf(targetId);
                         if (targetIndex >= 0) {
                             if (insertBefore) {
@@ -6388,13 +6468,44 @@ function initTasks() {
     function getTasksForSpreadsheet(spreadsheet) {
         if (!spreadsheet || spreadsheet.id === 'default') {
             // "All Tasks" shows all tasks EXCEPT leads (leads have different presets)
+            // SECURITY: Also filter out tasks from private/admins-only spreadsheets the user can't access
             // Get all spreadsheet IDs that are of type 'leads'
             const leadsSpreadsheetIds = (appState.spreadsheets || [])
                 .filter(s => s.type === 'leads')
                 .map(s => s.id);
             
-            // Filter out tasks that belong to leads spreadsheets
-            return appState.tasks.filter(t => !leadsSpreadsheetIds.includes(t.spreadsheetId));
+            // Get current user's role for permission checks
+            const currentUserRole = appState.currentTeamData?.members?.[currentAuthUser?.uid]?.role || 'member';
+            const isAdminOrOwner = currentUserRole === 'admin' || currentUserRole === 'owner';
+            
+            // Filter out tasks that:
+            // 1. Belong to leads spreadsheets
+            // 2. Belong to private spreadsheets not created by current user
+            // 3. Belong to admins-only spreadsheets if user is not admin/owner
+            return appState.tasks.filter(t => {
+                // Exclude leads
+                if (leadsSpreadsheetIds.includes(t.spreadsheetId)) return false;
+                
+                // Find the spreadsheet this task belongs to
+                const taskSpreadsheet = appState.spreadsheets.find(s => s.id === t.spreadsheetId);
+                if (!taskSpreadsheet) return true; // If spreadsheet not found, show task (legacy tasks)
+                
+                // Check visibility
+                const visibility = taskSpreadsheet.visibility || 'team';
+                
+                // Private: only show if current user is creator
+                if (visibility === 'private') {
+                    return taskSpreadsheet.createdBy === currentAuthUser?.uid;
+                }
+                
+                // Admins: only show if user is admin/owner or creator
+                if (visibility === 'admins') {
+                    return isAdminOrOwner || taskSpreadsheet.createdBy === currentAuthUser?.uid;
+                }
+                
+                // Team: show to everyone
+                return true;
+            });
         }
         // Other spreadsheets only show tasks assigned to them
         return appState.tasks.filter(t => t.spreadsheetId === spreadsheet.id);
@@ -6426,11 +6537,26 @@ function initTasks() {
             tasks = tasks.filter(t => t.assigneeId === spreadsheetState.filters.assignee);
         }
 
-        // Always sort by closest due date
+        // Hide completed tasks by default (unless showCompleted is true)
+        // Completed = status === 'done' OR status === 'won' (for leads)
+        if (!spreadsheetState.showCompleted) {
+            tasks = tasks.filter(t => t.status !== 'done' && t.status !== 'won');
+        }
+
+        // Sort: completed tasks at the bottom, active tasks sorted by due date
         tasks.sort((a, b) => {
-            const aVal = a.dueDate || Infinity;
-            const bVal = b.dueDate || Infinity;
-            return aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
+            const aCompleted = a.status === 'done' || a.status === 'won';
+            const bCompleted = b.status === 'done' || b.status === 'won';
+            
+            // If both completed or both active, sort by due date
+            if (aCompleted === bCompleted) {
+                const aVal = a.dueDate || Infinity;
+                const bVal = b.dueDate || Infinity;
+                return aVal < bVal ? -1 : aVal > bVal ? 1 : 0;
+            }
+            
+            // Active tasks come before completed tasks
+            return aCompleted ? 1 : -1;
         });
 
         return tasks;
@@ -7533,26 +7659,47 @@ function initTasks() {
                     taskDueDateInput.setAttribute('min', today);
                 }
                 
-                // Reset progress bar (range slider + number input + fill + badge)
-                const progressInput = document.getElementById('taskProgress');
-                const progressSlider = document.getElementById('taskProgressSlider');
-                const progressFill = document.getElementById('taskProgressFill');
-                const progressBadge = document.getElementById('taskProgressBadge');
-                if (progressInput) {
-                    progressInput.value = 0;
-                    if (progressSlider) {
-                        progressSlider.value = 0;
-                    }
-                    if (progressFill) {
-                        progressFill.style.width = '0%';
-                    }
-                    if (progressBadge) {
-                        progressBadge.textContent = '0%';
-                    }
-                }
-                
                 openModal('taskModal');
             });
+        }
+        
+        // Toggle completed tasks visibility button
+        const toggleCompletedBtn = document.getElementById('toggleCompletedBtn');
+        const toggleCompletedText = document.getElementById('toggleCompletedText');
+        if (toggleCompletedBtn && toggleCompletedText) {
+            // Initialize button text based on current state
+            updateToggleCompletedButton();
+            
+            toggleCompletedBtn.addEventListener('click', () => {
+                // Toggle state
+                spreadsheetState.showCompleted = !spreadsheetState.showCompleted;
+                
+                // Persist to localStorage
+                localStorage.setItem('showCompletedTasks', spreadsheetState.showCompleted.toString());
+                
+                // Update button appearance
+                updateToggleCompletedButton();
+                
+                // Re-render table with new filter
+                if (appState.currentSpreadsheet) {
+                    renderSpreadsheetTable(appState.currentSpreadsheet);
+                }
+            });
+        }
+        
+        // Helper function to update toggle button appearance
+        function updateToggleCompletedButton() {
+            const toggleCompletedBtn = document.getElementById('toggleCompletedBtn');
+            const toggleCompletedText = document.getElementById('toggleCompletedText');
+            if (!toggleCompletedBtn || !toggleCompletedText) return;
+            
+            if (spreadsheetState.showCompleted) {
+                toggleCompletedText.textContent = 'Hide completed';
+                toggleCompletedBtn.classList.add('active');
+            } else {
+                toggleCompletedText.textContent = 'See all';
+                toggleCompletedBtn.classList.remove('active');
+            }
         }
     }
 
@@ -8618,15 +8765,16 @@ async function addActivity(activity) {
         
         const activitiesRef = collection(db, 'teams', appState.currentTeamId, 'activities');
         
-        // Get username from team members data
+        // Get username from team members data (chosen username) with proper fallback chain
         const currentUserData = appState.currentTeamData?.members?.[currentAuthUser.uid];
-        const username = currentUserData?.username || currentAuthUser.displayName || currentAuthUser.email;
+        const username = currentUserData?.displayName || currentUserData?.name || 
+                        currentAuthUser.displayName || currentAuthUser.email?.split('@')[0] || 'Unknown';
         
         // SECURITY: Rules require createdBy == request.auth.uid
         const activityData = {
             type: activity.type,
-            createdBy: currentAuthUser.uid, // Required by rules (was userId)
-            userName: username,  // Use username, not displayName
+            createdBy: currentAuthUser.uid, // Required by rules - canonical uid field
+            userName: username,  // Use chosen username, not default auth displayName
             description: activity.description,
             createdAt: serverTimestamp()
         };
@@ -8698,8 +8846,12 @@ function displayActivities() {
         const headerDiv = document.createElement('div');
         headerDiv.className = 'activity-header';
         
+        // Resolve display name: team member data (live) -> stored userName snapshot -> fallback
+        const userMemberData = appState.currentTeamData?.members?.[activity.createdBy];
+        const displayName = userMemberData?.displayName || userMemberData?.name || activity.userName || activity.user || 'Someone';
+        
         const userNameStrong = document.createElement('strong');
-        userNameStrong.textContent = activity.userName || activity.user; // Use textContent for user name
+        userNameStrong.textContent = displayName; // Use textContent for user name
         
         const descriptionText = document.createTextNode(' ' + activity.description); // Use textNode for description
         
@@ -8742,12 +8894,16 @@ async function loadActivities() {
                 const data = doc.data();
                 const timestamp = data.createdAt?.toDate ? data.createdAt.toDate() : new Date();
                 
+                // Normalize uid field: prefer createdBy, fallback to userId/authorId for backward compat
+                const uid = data.createdBy || data.userId || data.authorId || null;
+                
                 activities.push({
                     id: doc.id,
                     type: data.type,
                     user: data.userName,
                     userName: data.userName,
-                    userId: data.userId,
+                    userId: uid, // Keep for backward compat
+                    createdBy: uid, // Canonical uid field
                     description: data.description,
                     timestamp: timestamp,
                     timeAgo: getTimeAgo(timestamp)
@@ -8849,7 +9005,7 @@ function updateOverviewTasks() {
     });
     
     if (myTasks.length === 0) {
-        container.innerHTML = '<p style="text-align: center; color: var(--text-muted); padding: 20px;">No tasks assigned to you</p>';
+        container.innerHTML = '<div class="ov-empty-state">No tasks assigned to you</div>';
         return;
     }
     
@@ -8862,27 +9018,23 @@ function updateOverviewTasks() {
     container.innerHTML = '';
     sortedTasks.forEach(task => {
         const taskEl = document.createElement('div');
-        taskEl.className = `overview-task-item priority-${task.priority}`;
+        taskEl.className = 'ov-task-row';
+        taskEl.dataset.taskId = task.id;
         taskEl.onclick = (e) => {
-            if (!e.target.closest('.overview-task-checkbox')) {
-                viewTaskDetails && viewTaskDetails(task.id);
-            }
+            viewTaskDetails && viewTaskDetails(task.id);
         };
         
-        // Priority chip text
-        const priorityLabel = task.priority.charAt(0).toUpperCase() + task.priority.slice(1);
+        // Priority label and class
+        const priority = task.priority || 'medium';
+        const priorityLabel = priority.charAt(0).toUpperCase() + priority.slice(1);
+        
+        // Format due date
+        const dueDateText = task.dueDate ? formatDueDate(task.dueDate) : 'No date';
         
         taskEl.innerHTML = `
-            <div class="overview-task-checkbox" onclick="event.stopPropagation(); toggleTaskFromOverview('${escapeHtml(task.id)}')">
-                ${task.status === 'done' ? '<i class="fas fa-check"></i>' : ''}
-            </div>
-            <div class="overview-task-content">
-                <div class="overview-task-title">${escapeHtml(task.title)}</div>
-                <div class="overview-task-meta">
-                    <span class="priority-chip ${task.priority}">${priorityLabel}</span>
-                    ${task.dueDate ? `<span class="due-chip">${formatDueDate(task.dueDate)}</span>` : ''}
-                </div>
-            </div>
+            <div class="ov-task-title">${escapeHtml(task.title)}</div>
+            <div class="ov-task-priority ov-priority-${priority}">${priorityLabel}</div>
+            <div class="ov-task-date">${dueDateText}</div>
         `;
         container.appendChild(taskEl);
     });
@@ -8908,7 +9060,7 @@ function updateOverviewEvents() {
     }).slice(0, 5); // Show max 5 events
     
     if (upcomingEvents.length === 0) {
-        container.innerHTML = '<p style="text-align: center; color: var(--text-muted); padding: 20px;">No upcoming events</p>';
+        container.innerHTML = '<div class="ov-empty-state">No upcoming events</div>';
         return;
     }
     
@@ -8916,18 +9068,32 @@ function updateOverviewEvents() {
     upcomingEvents.forEach(event => {
         const eventDate = event.date instanceof Date ? event.date : new Date(event.date);
         const timeStr = formatTime24(eventDate.getHours(), eventDate.getMinutes());
+        const dayNum = eventDate.getDate();
+        const monthAbbr = eventDate.toLocaleString('en-US', { month: 'short' }).toUpperCase();
+        
+        // Check if event is private or admins-only
+        const isPrivate = event.visibility === 'private' || event.visibility === 'admins';
+        const visibilityLabel = event.visibility === 'admins' ? 'Admins' : 'Private';
+        
         const eventEl = document.createElement('div');
-        eventEl.className = 'overview-event-item';
+        eventEl.className = 'ov-event-row';
+        eventEl.dataset.eventId = event.id;
+        eventEl.tabIndex = 0; // Make keyboard focusable
         eventEl.onclick = () => viewEventDetails(event.id);
+        eventEl.onkeydown = (e) => {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                viewEventDetails(event.id);
+            }
+        };
+        
         eventEl.innerHTML = `
-            <div class="overview-event-date">
-                <div class="overview-event-day">${eventDate.getDate()}</div>
-                <div class="overview-event-month">${eventDate.toLocaleString('en-US', { month: 'short' }).toUpperCase()}</div>
+            <div class="ov-event-date">
+                <span class="ov-event-day">${dayNum}</span>
+                <span class="ov-event-month">${monthAbbr}</span>
             </div>
-            <div class="overview-event-content">
-                <div class="overview-event-title">${escapeHtml(event.title)}</div>
-                <div class="overview-event-time">${timeStr}</div>
-            </div>
+            <div class="ov-event-title">${escapeHtml(event.title)}</div>
+            <div class="ov-event-time">${timeStr}</div>
         `;
         container.appendChild(eventEl);
     });
@@ -12378,8 +12544,11 @@ async function updateNotifications(activities) {
         }
     }
     
-    // Display notifications
+    // Display notifications in popup (compact, limited items)
     displayNotifications(notifications, readNotifications, currentNotificationFilter);
+    
+    // Display notifications in Overview inbox (full list)
+    displayOverviewNotifications(notifications, readNotifications);
 }
 
 function displayNotifications(notifications, readNotifications, filterMode = 'unread') {
@@ -12400,7 +12569,10 @@ function displayNotifications(notifications, readNotifications, filterMode = 'un
     
     notificationsList.innerHTML = '';
     
-    filteredNotifications.forEach(notification => {
+    // Limit to 6 items max in popup for compact view
+    const popupNotifications = filteredNotifications.slice(0, 6);
+    
+    popupNotifications.forEach(notification => {
         const isRead = readNotifications.includes(notification.id);
         const iconClass = notification.type === 'task' ? 'task-icon' : 
                          notification.type === 'message' ? 'message-icon' : 
@@ -12409,19 +12581,14 @@ function displayNotifications(notifications, readNotifications, filterMode = 'un
                     notification.type === 'message' ? 'fa-comment' : 
                     notification.type === 'team' ? 'fa-user-plus' : 'fa-calendar';
         
-        // Get username from team members data if available
+        // Resolve display name: team member data (live) -> stored userName snapshot -> fallback
         const userMemberData = appState.currentTeamData?.members?.[notification.createdBy];
-        const displayName = userMemberData?.username || notification.userName || 'Someone';
+        const displayName = userMemberData?.displayName || userMemberData?.name || notification.userName || 'Someone';
         
-        // Debug: Log if username is missing
-        if (!userMemberData?.username && notification.createdBy) {
-            console.log('⚠️ Notification missing username for:', notification.createdBy, 'Using fallback:', displayName);
-        }
-        
-        // Debug: Log if username is missing
-        if (!userMemberData?.username && notification.createdBy) {
-            console.log('⚠️ No username for user:', notification.createdBy, 'Member data:', userMemberData);
-        }
+        // Short description for compact popup
+        const shortDesc = notification.description.length > 40 
+            ? notification.description.substring(0, 40) + '...' 
+            : notification.description;
         
         const notificationEl = document.createElement('div');
         notificationEl.className = `notification-item ${!isRead ? 'unread' : ''}`;
@@ -12432,7 +12599,7 @@ function displayNotifications(notifications, readNotifications, filterMode = 'un
             </div>
             <div class="notification-content">
                 <div class="notification-text">
-                    <strong>${escapeHtml(displayName)}</strong> ${escapeHtml(notification.description)}
+                    <strong>${escapeHtml(displayName)}</strong> ${escapeHtml(shortDesc)}
                 </div>
                 <div class="notification-time">${notification.timeAgo}</div>
             </div>
@@ -12452,6 +12619,57 @@ function displayNotifications(notifications, readNotifications, filterMode = 'un
     });
 }
 
+// Display notifications in Overview section (full inbox-style list)
+function displayOverviewNotifications(notifications, readNotifications) {
+    const overviewList = document.getElementById('overviewNotificationsList');
+    if (!overviewList) return;
+    
+    if (notifications.length === 0) {
+        overviewList.innerHTML = '<div class="no-notifications-overview">No notifications</div>';
+        return;
+    }
+    
+    overviewList.innerHTML = '';
+    
+    // Show up to 30 notifications in overview inbox
+    const overviewNotifications = notifications.slice(0, 30);
+    
+    overviewNotifications.forEach(notification => {
+        const isRead = readNotifications.includes(notification.id);
+        const iconClass = notification.type === 'task' ? 'task-icon' : 
+                         notification.type === 'message' ? 'message-icon' : 
+                         notification.type === 'team' ? 'team-icon' : 'calendar-icon';
+        const icon = notification.type === 'task' ? 'fa-check-circle' : 
+                    notification.type === 'message' ? 'fa-comment' : 
+                    notification.type === 'team' ? 'fa-user-plus' : 'fa-calendar';
+        
+        // Resolve display name
+        const userMemberData = appState.currentTeamData?.members?.[notification.createdBy];
+        const displayName = userMemberData?.displayName || userMemberData?.name || notification.userName || 'Someone';
+        
+        const rowEl = document.createElement('div');
+        rowEl.className = `overview-notification-row ${!isRead ? 'unread' : ''}`;
+        rowEl.innerHTML = `
+            <div class="overview-notification-icon ${iconClass}">
+                <i class="fas ${icon}"></i>
+            </div>
+            <div class="overview-notification-content">
+                <div class="overview-notification-text">
+                    <strong>${escapeHtml(displayName)}</strong> ${escapeHtml(notification.description)}
+                </div>
+                <div class="overview-notification-time">${notification.timeAgo}</div>
+            </div>
+        `;
+        
+        rowEl.addEventListener('click', () => {
+            markNotificationAsRead(notification.id);
+            navigateToNotificationSource(notification);
+        });
+        
+        overviewList.appendChild(rowEl);
+    });
+}
+
 window.markAllNotificationsRead = async function() {
     if (!appState.activities) return;
     
@@ -12467,8 +12685,16 @@ window.markAllNotificationsRead = async function() {
         badge.style.display = 'none';
     }
     
-    // Refresh notifications display
-    displayNotifications(appState.activities.filter(a => a.userId !== currentAuthUser.uid), notificationIds, currentNotificationFilter);
+    // Get filtered notifications for refresh
+    const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
+    let notifications = appState.activities.filter(a => 
+        a.createdBy !== currentAuthUser.uid && a.timestamp > oneDayAgo
+    );
+    notifications = filterNotificationsByPreferences(notifications);
+    
+    // Refresh both popup and overview notifications display
+    displayNotifications(notifications, notificationIds, currentNotificationFilter);
+    displayOverviewNotifications(notifications, notificationIds);
 }
 
 async function markNotificationAsRead(notificationId) {
@@ -12489,20 +12715,23 @@ async function markNotificationAsRead(notificationId) {
             }
         }
         
-        // Refresh display
+        // Refresh display for both popup and overview
         const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-        const notifications = appState.activities.filter(a => 
-            a.userId !== currentAuthUser.uid && a.timestamp > oneDayAgo
+        let notifications = appState.activities.filter(a => 
+            a.createdBy !== currentAuthUser.uid && a.timestamp > oneDayAgo
         );
+        notifications = filterNotificationsByPreferences(notifications);
         displayNotifications(notifications, readNotifications, currentNotificationFilter);
+        displayOverviewNotifications(notifications, readNotifications);
     }
 }
 
 async function markAllUnreadNotificationsAsRead() {
     const oneDayAgo = new Date(Date.now() - 24 * 60 * 60 * 1000);
-    const notifications = appState.activities.filter(a => 
-        a.userId !== currentAuthUser.uid && a.timestamp > oneDayAgo
+    let notifications = appState.activities.filter(a => 
+        a.createdBy !== currentAuthUser.uid && a.timestamp > oneDayAgo
     );
+    notifications = filterNotificationsByPreferences(notifications);
     
     const readNotifications = await getReadNotificationsFromFirestore();
     let marked = false;
@@ -12523,8 +12752,9 @@ async function markAllUnreadNotificationsAsRead() {
             badge.style.display = 'none';
         }
         
-        // Refresh display
+        // Refresh both displays
         displayNotifications(notifications, readNotifications, currentNotificationFilter);
+        displayOverviewNotifications(notifications, readNotifications);
     }
 }
 
@@ -13163,18 +13393,13 @@ function initModals() {
             return;
         }
         
-        // Get assignee name
-        let assigneeName = '';
-        if (currentAuthUser && assigneeId === currentAuthUser.uid) {
-            assigneeName = currentAuthUser.displayName || currentAuthUser.email;
-        } else {
-            const assignee = appState.teammates.find(t => t.id === assigneeId);
-            if (!assignee) {
-                showToast('Invalid assignee. Please select a valid team member.', 'error');
-                return;
-            }
-            assigneeName = assignee.name;
+        // Get assignee name from teammates (always use canonical source)
+        const assignee = appState.teammates.find(t => t.id === assigneeId);
+        if (!assignee) {
+            showToast('Invalid assignee. Please select a valid team member.', 'error');
+            return;
         }
+        const assigneeName = assignee.name;
         
         // Get due date if provided
         const dueDateInput = document.getElementById('taskDueDate').value;
@@ -13806,7 +14031,7 @@ async function viewEventDetails(eventId, occurrenceDateStr = '') {
     const visibilityBadge = document.getElementById('detailVisibility');
     if (event.visibility && event.visibility !== 'team') {
         visibilityCard.style.display = 'flex';
-        visibilityBadge.className = 'event-info-value visibility-badge ' + event.visibility;
+        visibilityBadge.className = 'event-value-clean visibility-badge-clean';
         if (event.visibility === 'private') {
             visibilityBadge.innerHTML = '<i class="fas fa-lock"></i> Only Me';
         } else if (event.visibility === 'admins') {
@@ -13820,34 +14045,15 @@ async function viewEventDetails(eventId, occurrenceDateStr = '') {
     const repeatCard = document.getElementById('repeatCard');
     const repeatBadge = document.getElementById('detailRepeat');
     if (event.repeat && event.repeat !== 'none') {
-        if (!repeatCard) {
-            // Create the repeat card if it doesn't exist (for backwards compatibility)
-            const infoGrid = document.querySelector('#eventDetailsModal .event-info-grid');
-            if (infoGrid) {
-                const newCard = document.createElement('div');
-                newCard.className = 'event-info-card';
-                newCard.id = 'repeatCard';
-                newCard.innerHTML = `
-                    <div class="event-info-icon"><i class="fas fa-redo"></i></div>
-                    <div class="event-info-content">
-                        <div class="event-info-label">Repeats</div>
-                        <div class="event-info-value" id="detailRepeat"></div>
-                    </div>
-                `;
-                infoGrid.appendChild(newCard);
-            }
-        }
-        const repeatCardEl = document.getElementById('repeatCard');
-        const repeatBadgeEl = document.getElementById('detailRepeat');
-        if (repeatCardEl && repeatBadgeEl) {
-            repeatCardEl.style.display = 'flex';
+        if (repeatCard) {
+            repeatCard.style.display = 'flex';
             const repeatLabels = {
                 'daily': 'Every day',
                 'weekly': 'Every week',
                 'monthly': 'Every month',
                 'yearly': 'Every year'
             };
-            repeatBadgeEl.textContent = repeatLabels[event.repeat] || event.repeat;
+            repeatBadge.textContent = repeatLabels[event.repeat] || event.repeat;
         }
     } else if (repeatCard) {
         repeatCard.style.display = 'none';
@@ -13862,25 +14068,6 @@ async function viewEventDetails(eventId, occurrenceDateStr = '') {
     } else {
         descriptionEl.textContent = '';
         descriptionSection.style.display = 'none';
-    }
-    
-    // Add editing notice for recurring events
-    const editNotice = document.getElementById('repeatEditNotice');
-    if (event.repeat && event.repeat !== 'none') {
-        if (!editNotice) {
-            const descSection = document.getElementById('descriptionSection');
-            if (descSection) {
-                const notice = document.createElement('div');
-                notice.id = 'repeatEditNotice';
-                notice.className = 'repeat-edit-notice';
-                notice.innerHTML = '<i class="fas fa-info-circle"></i> Editing this event updates all repeats.';
-                descSection.parentNode.insertBefore(notice, descSection);
-            }
-        } else {
-            editNotice.style.display = 'flex';
-        }
-    } else if (editNotice) {
-        editNotice.style.display = 'none';
     }
     
     // Hidden color field for backward compatibility
@@ -15608,6 +15795,9 @@ async function syncPublicProfile(profileData) {
             // Clamp occupation length to 200 chars (matches rule)
             publicData.occupation = profileData.occupation.substring(0, 200);
         }
+        if (profileData.avatarColor && typeof profileData.avatarColor === 'string') {
+            publicData.avatarColor = profileData.avatarColor;
+        }
         
         // FIX FOR LEGACY NULL FIELDS:
         // If existing doc has photoURL or occupation that is NOT a string (commonly null),
@@ -15918,8 +16108,9 @@ async function loadTeammatesFromFirestore() {
                             const publicData = publicProfileDoc.data();
                             userData = {
                                 displayName: publicData.displayName,
-                                jobTitle: publicData.occupation,
-                                photoURL: publicData.photoURL
+                                occupation: publicData.occupation,
+                                photoURL: publicData.photoURL,
+                                avatarColor: publicData.avatarColor
                             };
                         }
                     }
@@ -15928,23 +16119,26 @@ async function loadTeammatesFromFirestore() {
                     debugLog('Could not fetch profile for:', userId);
                 }
                 
-                // Merge team member data with latest user profile data
-                // User profile data takes priority for display settings
-                const teammate = {
-                    id: userId,
-                    name: userData?.displayName || member.name || member.email.split('@')[0],
-                    email: member.email,
-                    occupation: userData?.jobTitle || member.occupation || member.role,
-                    avatar: generateAvatar(userData?.displayName || member.name || member.email),
-                    avatarColor: userData?.avatarColor || member.avatarColor || '#0078D4',
-                    photoURL: member.photoURL,
-                    role: member.role,
+                // Merge all data sources and normalize using the canonical helper
+                const mergedData = {
+                    ...member,  // Base team membership data
+                    ...userData, // Profile data overrides
+                    email: member.email, // Always keep email from membership
+                    role: member.role,   // Always keep role from membership
                     joinedAt: member.joinedAt
                 };
                 
-                // Log current user's data
+                const teammate = normalizeProfile(userId, mergedData);
+                
+                // Update appState.currentUser with chosen name if this is current user
                 if (userId === currentAuthUser.uid) {
-                    debugLog('👤 Current user data:', teammate);
+                    appState.currentUser = teammate.displayName;
+                    debugLog('👤 Updated appState.currentUser to:', teammate.displayName);
+                }
+                
+                // Log teammate data in debug mode
+                if (DEBUG && userId === currentAuthUser.uid) {
+                    debugLog('👤 Current user teammate data:', teammate);
                 }
                 
                 return teammate;
@@ -17443,7 +17637,8 @@ async function saveAccountSettings(e) {
             displayName: displayName,
             email: currentAuthUser.email,
             photoURL: currentAuthUser.photoURL || null,
-            occupation: jobTitle || null
+            occupation: jobTitle || null,
+            avatarColor: avatarColor
         });
         
         // Note: Team member display names will update automatically when loadTeammatesFromFirestore()
@@ -20677,12 +20872,17 @@ async function saveMessageToFirestore(message) {
         
         const messagesRef = collection(db, 'teams', appState.currentTeamId, 'messages');
         
+        // Get username from team members (chosen username) with fallback chain
+        const userMemberData = appState.currentTeamData?.members?.[currentAuthUser.uid];
+        const resolvedUsername = userMemberData?.displayName || userMemberData?.name || 
+                                 currentAuthUser.displayName || currentAuthUser.email?.split('@')[0] || 'Unknown';
+        
         // SECURITY: Schema must match rules exactly
         // Allowed fields: userId, userName, message, timestamp, createdAt, edited, editedAt, teamId, userEmail, photoURL
         // SECURITY: userEmail must match request.auth.token.email if provided
         const messageDoc = {
             userId: currentAuthUser.uid,
-            userName: message.author || currentAuthUser.displayName || currentAuthUser.email,
+            userName: resolvedUsername, // Use resolved username, not default auth displayName
             message: message.text, // Already encrypted text from sendMessage
             userEmail: currentAuthUser.email, // Must match auth token
             photoURL: currentAuthUser.photoURL || null,
