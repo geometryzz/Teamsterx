@@ -94,59 +94,81 @@ function unloadHomeBundle() {
  */
 function initializeRouting() {
     const path = window.location.pathname;
+    const hash = window.location.hash;
+    
+    // GITHUB PAGES / STATIC HOST DETECTION
+    // GitHub Pages and static hosts don't support server-side routing
+    // Use hash-based routing for compatibility
+    const isStaticHost = window.location.hostname.includes('github.io') || 
+                        window.location.hostname.includes('gitlab.io') ||
+                        window.location.hostname.includes('netlify.app') ||
+                        window.location.hostname.includes('vercel.app');
     
     // LOCAL DEVELOPMENT FALLBACK
-    // Check if we're on localhost and handle missing routes
     const isLocalhost = window.location.hostname === 'localhost' || 
                        window.location.hostname === '127.0.0.1' ||
                        window.location.hostname === '';
     
+    // Handle hash-based routing (works on all static hosts including GitHub Pages)
+    if (hash === '#/app' || hash === '#app') {
+        currentRoute = 'app';
+        showAppContainer();
+        return 'app';
+    }
+    
+    if (hash === '#/home' || hash === '#home') {
+        currentRoute = 'home';
+        showHomePage();
+        return 'home';
+    }
+    
+    // For static hosts, if no hash, default to app and update hash
+    if (isStaticHost && !hash) {
+        window.history.replaceState({}, '', '#/app');
+        currentRoute = 'app';
+        showAppContainer();
+        return 'app';
+    }
+    
+    // LOCAL DEVELOPMENT: Handle query params and paths
     if (isLocalhost) {
-        // For localhost, use query parameter or hash-based routing as fallback
         const urlParams = new URLSearchParams(window.location.search);
         const route = urlParams.get('route');
         
         if (route === 'app' || path === '/app' || path === '/app/') {
-            // Clean up URL and navigate to app
-            window.history.replaceState({}, '', '/index.html');
+            window.history.replaceState({}, '', '#/app');
             currentRoute = 'app';
             showAppContainer();
             return 'app';
         }
         
         if (route === 'home' || path === '/home' || path === '/home/') {
-            // Clean up URL and navigate to homepage
-            window.history.replaceState({}, '', '/index.html');
+            window.history.replaceState({}, '', '#/home');
             currentRoute = 'home';
             showHomePage();
             return 'home';
         }
     }
     
-    // Handle /home redirect to /
-    if (path === '/home' || path === '/home/') {
-        window.history.replaceState({}, '', '/');
-        currentRoute = 'home';
-        showHomePage();
-        return 'home';
-    }
-    
-    // Handle /app path - show the main application
+    // Handle /app path for servers that support it
     if (path === '/app' || path === '/app/' || path.startsWith('/app/')) {
+        // Redirect to hash-based for compatibility
+        window.history.replaceState({}, '', '#/app');
         currentRoute = 'app';
         showAppContainer();
         return 'app';
     }
     
-    // Handle root path / - TEMPORARILY redirect to app (homepage disabled)
-    if (path === '/' || path === '' || path === '/index.html') {
+    // Handle root path - TEMPORARILY redirect to app (homepage disabled)
+    if (path === '/' || path === '' || path === '/index.html' || path.endsWith('/Teamster/')) {
+        window.history.replaceState({}, '', '#/app');
         currentRoute = 'app';
         showAppContainer();
         return 'app';
     }
     
-    // Default: For any other path (like direct file access), show app
-    // This handles cases like accessing index.html directly
+    // Default fallback: show app
+    window.history.replaceState({}, '', '#/app');
     currentRoute = 'app';
     showAppContainer();
     return 'app';
@@ -190,18 +212,8 @@ function showAppContainer() {
  * Navigate to the app (used by CTAs and after auth)
  */
 function navigateToApp() {
-    // Check if localhost - use query params for compatibility
-    const isLocalhost = window.location.hostname === 'localhost' || 
-                       window.location.hostname === '127.0.0.1' ||
-                       window.location.hostname === '';
-    
-    if (isLocalhost && window.location.pathname === '/index.html') {
-        // On localhost, stay on index.html but update state
-        window.history.pushState({}, '', '/index.html?route=app');
-    } else {
-        window.history.pushState({}, '', '/app');
-    }
-    
+    // Use hash-based routing for GitHub Pages compatibility
+    window.history.pushState({}, '', '#/app');
     currentRoute = 'app';
     showAppContainer();
 }
@@ -211,6 +223,7 @@ function navigateToApp() {
  */
 function navigateToHome() {
     // TEMPORARY: Redirect to app instead of showing homepage
+    // Use hash-based routing for GitHub Pages compatibility
     navigateToApp();
 }
 
@@ -218,6 +231,13 @@ function navigateToHome() {
  * Handle browser back/forward navigation
  */
 window.addEventListener('popstate', () => {
+    initializeRouting();
+});
+
+/**
+ * Handle hash changes for hash-based routing
+ */
+window.addEventListener('hashchange', () => {
     initializeRouting();
 });
 
