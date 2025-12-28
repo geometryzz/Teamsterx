@@ -18916,7 +18916,7 @@ async function showTeamCode() {
         modal.innerHTML = `
             <div class="modal-content" style="max-width: 500px;">
                 <div class="modal-header">
-                    <h2><i class="fas fa-key"></i> Your Team Code</h2>
+                    <h2>Your Team Code</h2>
                     <span class="modal-close" onclick="closeTeamCodeModal()">&times;</span>
                 </div>
                 <div class="modal-body">
