@@ -1386,6 +1386,10 @@ async function initializeFirebaseAuth() {
                 loadAnimationPreference().then(enabled => {
                     applyAnimationPreference(enabled);
                 });
+                // Apply sidebar icons preference from user settings
+                loadSidebarIconsPreference().then(enabled => {
+                    applySidebarIconsPreference(enabled);
+                });
                 // Start listening for force logout events
                 startForceLogoutListener();
                 // Initialize team after authentication
@@ -21394,6 +21398,9 @@ function initSettings() {
     // Initialize animation settings
     initAnimationsForm();
     
+    // Initialize sidebar icons settings
+    initSidebarIconsToggle();
+    
     // Initialize notification settings
     initNotificationForm();
     
@@ -22521,6 +22528,78 @@ async function saveAnimationPreference() {
         applyAnimationPreference(enabled);
     } catch (error) {
         console.error('Error saving animation preference:', error);
+        showToast('Error saving preferences. Please try again.', 'error', 5000, 'Save Failed');
+    }
+}
+
+// ===================================
+// SIDEBAR ICONS TOGGLE
+// ===================================
+
+// Initialize sidebar icons toggle
+function initSidebarIconsToggle() {
+    const toggle = document.getElementById('showSidebarIcons');
+    if (!toggle) return;
+    
+    // Load and apply current preference
+    loadSidebarIconsPreference().then(enabled => {
+        toggle.checked = enabled;
+        applySidebarIconsPreference(enabled);
+    });
+    
+    // Auto-save when toggle changes
+    toggle.addEventListener('change', async () => {
+        applySidebarIconsPreference(toggle.checked);
+        await saveSidebarIconsPreference();
+    });
+}
+
+// Load sidebar icons preference
+async function loadSidebarIconsPreference() {
+    if (!currentAuthUser || !db) return true; // Default to enabled
+    
+    try {
+        const userDoc = await getDoc(doc(db, 'users', currentAuthUser.uid));
+        if (userDoc.exists()) {
+            const preferences = userDoc.data().preferences || {};
+            return preferences.ui?.sidebarIconsEnabled !== false; // Default to true
+        }
+    } catch (error) {
+        console.error('Error loading sidebar icons preference:', error);
+    }
+    return true;
+}
+
+// Apply sidebar icons preference
+function applySidebarIconsPreference(enabled) {
+    const sidebar = document.querySelector('.sidebar');
+    if (!sidebar) return;
+    
+    if (enabled) {
+        sidebar.classList.remove('hide-sidebar-icons');
+    } else {
+        sidebar.classList.add('hide-sidebar-icons');
+    }
+}
+
+// Save sidebar icons preference
+async function saveSidebarIconsPreference() {
+    if (!currentAuthUser || !db) {
+        showToast('Cannot save preferences. Please sign in again.', 'error');
+        return;
+    }
+    
+    const enabled = document.getElementById('showSidebarIcons').checked;
+    
+    console.log('Saving sidebar icons preference:', enabled);
+    
+    try {
+        await updateUserPreferences({ ui: { sidebarIconsEnabled: enabled } });
+        
+        // Apply to UI immediately
+        applySidebarIconsPreference(enabled);
+    } catch (error) {
+        console.error('Error saving sidebar icons preference:', error);
         showToast('Error saving preferences. Please try again.', 'error', 5000, 'Save Failed');
     }
 }
