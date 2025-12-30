@@ -1815,6 +1815,7 @@ const appState = {
     financesVisibility: 'owner-only', // Current team's finances visibility setting
     financesAccess: { canAccess: false, mode: 'none' }, // Finances visibility access for current user
     transactions: [], // Cached transactions for current team
+    subscriptions: [], // Cached subscriptions for current team
     financesFilters: { type: 'all', category: 'all', date: 'all', search: '' }, // Current filter state
     // Docs state
     docs: [], // Team documents
@@ -1994,6 +1995,7 @@ function initNavigation() {
                     return;
                 }
                 loadTransactions(); // This will also call renderFinances
+                loadSubscriptions(); // Load subscriptions data
             }
         });
     });
@@ -6068,7 +6070,10 @@ function initTasks() {
                     // Save to Firestore
                     await saveSpreadsheetToFirestore(spreadsheet);
                     
-                    // Re-render
+                    // Update currentSpreadsheet to ensure state is in sync
+                    appState.currentSpreadsheet = spreadsheet;
+                    
+                    // Re-render sidebar and table
                     populateColumnToggles(spreadsheet);
                     renderSpreadsheetTable(spreadsheet);
                     
@@ -6327,10 +6332,11 @@ function initTasks() {
                     : '<i class="fas fa-plus"></i> Create';
             }
             
-            // Show/hide delete button (only for custom columns in edit mode)
+            // Show/hide delete button (only in edit mode, hide for protected columns)
             const deleteBtn = document.getElementById('deleteColumnBtn');
+            const protectedColumns = ['title', 'leadName'];
             if (deleteBtn) {
-                deleteBtn.style.display = (editingColumnId && !editingColumnIsBuiltIn) ? 'inline-flex' : 'none';
+                deleteBtn.style.display = (editingColumnId && !protectedColumns.includes(editingColumnId)) ? 'inline-flex' : 'none';
             }
         }
 
@@ -6692,14 +6698,15 @@ function initTasks() {
 
         if (tasks.length === 0 && spreadsheetTasks.length === 0) {
             tableContainer.innerHTML = `
-                <div class="spreadsheet-empty">
-                    <i class="fas fa-${isLeadsTable ? 'user-plus' : 'clipboard-list'} empty-state-icon"></i>
-                    <h4>No ${itemNamePlural} yet</h4>
-                    <p>Create your first ${itemName} to get started</p>
-                    <button class="btn-primary" onclick="openAddItemModal()">
-                        <i class="fas fa-plus"></i>
-                        Add ${itemName.charAt(0).toUpperCase() + itemName.slice(1)}
+                <div class="spreadsheet-empty-wrapper">
+                    <button class="add-row-btn empty-state-add-btn" onclick="openAddItemModal()">
+                        <i class="fas fa-plus"></i> Add new ${isLeadsTable ? 'lead' : 'task'}
                     </button>
+                    <div class="spreadsheet-empty">
+                        <i class="fas fa-${isLeadsTable ? 'user-plus' : 'clipboard-list'}"></i>
+                        <h4>No ${itemNamePlural} yet</h4>
+                        <p>Create your first ${itemName} to get started</p>
+                    </div>
                 </div>
             `;
             return;
@@ -27521,11 +27528,6 @@ window.openDeleteTransactionModal = openDeleteTransactionModal;
 // ===================================
 // SUBSCRIPTIONS MANAGEMENT
 // ===================================
-
-// Initialize subscriptions array in appState (if not done elsewhere)
-if (!appState.subscriptions) {
-    appState.subscriptions = [];
-}
 
 // Current subscription tab filter
 let currentSubscriptionTab = 'company';

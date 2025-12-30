@@ -6503,6 +6503,18 @@ body.dark-mode .day-event-time {
 }
 
 /* Empty State */
+.spreadsheet-empty-wrapper {
+    position: relative;
+    min-height: 400px;
+}
+
+.empty-state-add-btn {
+    position: absolute;
+    top: 20px;
+    left: 20px;
+    margin: 0;
+}
+
 .spreadsheet-empty {
     display: flex;
     flex-direction: column;
@@ -24237,18 +24249,16 @@ body.dark-mode .toggle-slider {
    SUBSCRIPTIONS SECTION
    =================================== */
 .subscriptions-section {
-    margin-top: 32px;
-    background: var(--bg-surface);
-    border-radius: var(--radius-lg);
-    padding: 24px;
-    border: 1px solid var(--border-subtle);
+    margin-top: 24px;
+    padding: 0;
 }
 
 .subscriptions-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    margin-bottom: 20px;
+    margin-bottom: 16px;
+    padding: 0 4px;
 }
 
 .subscriptions-title {
@@ -24258,31 +24268,33 @@ body.dark-mode .toggle-slider {
 }
 
 .subscriptions-icon {
-    width: 40px;
-    height: 40px;
-    border-radius: 12px;
-    background: linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(139, 92, 246, 0.05) 100%);
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: var(--accent-soft);
     display: flex;
     align-items: center;
     justify-content: center;
-    color: #8b5cf6;
-    font-size: 18px;
+    color: var(--accent);
+    font-size: 16px;
 }
 
 .subscriptions-title h2 {
-    font-size: 18px;
+    font-size: 17px;
     font-weight: 600;
     color: var(--text-main);
     margin: 0;
 }
 
 .subscriptions-count {
-    background: var(--bg-muted);
-    color: var(--text-muted);
+    background: var(--accent-soft);
+    color: var(--accent);
     font-size: 12px;
-    font-weight: 600;
-    padding: 4px 10px;
+    font-weight: 700;
+    padding: 3px 9px;
     border-radius: 999px;
+    min-width: 24px;
+    text-align: center;
 }
 
 .btn-add-subscription {
@@ -24307,26 +24319,26 @@ body.dark-mode .toggle-slider {
 
 /* Subscriptions Tabs */
 .subscriptions-tabs {
-    display: flex;
-    gap: 8px;
+    display: inline-flex;
+    gap: 6px;
     margin-bottom: 16px;
     padding: 4px;
-    background: var(--bg-muted);
-    border-radius: 12px;
+    background: var(--bg-surface);
+    border-radius: 999px;
+    border: 1px solid var(--border-subtle);
 }
 
 .sub-tab {
-    flex: 1;
     display: flex;
     align-items: center;
     justify-content: center;
     gap: 8px;
-    padding: 10px 16px;
+    padding: 10px 20px;
     border: none;
     background: transparent;
-    border-radius: 10px;
+    border-radius: 999px;
     font-size: 14px;
-    font-weight: 500;
+    font-weight: 600;
     color: var(--text-muted);
     cursor: pointer;
     transition: all var(--transition-fast);
@@ -24334,34 +24346,35 @@ body.dark-mode .toggle-slider {
 
 .sub-tab:hover {
     color: var(--text-main);
+    background: var(--bg-body);
 }
 
 .sub-tab.active {
-    background: var(--bg-surface);
-    color: var(--text-main);
-    box-shadow: var(--shadow-subtle);
+    background: var(--accent);
+    color: white;
+    box-shadow: 0 2px 8px rgba(0, 122, 255, 0.25);
 }
 
 .sub-tab-count {
-    background: rgba(0, 0, 0, 0.08);
-    padding: 2px 8px;
+    background: var(--bg-muted);
+    padding: 2px 7px;
     border-radius: 999px;
     font-size: 11px;
-    font-weight: 600;
+    font-weight: 700;
 }
 
 .sub-tab.active .sub-tab-count {
-    background: var(--accent-soft);
-    color: var(--accent);
+    background: rgba(255, 255, 255, 0.25);
+    color: white;
 }
 
 /* Upcoming Subscriptions Banner */
 .upcoming-subscriptions {
-    background: linear-gradient(135deg, rgba(245, 158, 11, 0.1) 0%, rgba(245, 158, 11, 0.05) 100%);
-    border: 1px solid rgba(245, 158, 11, 0.2);
-    border-radius: 12px;
-    padding: 16px;
-    margin-bottom: 16px;
+    background: rgba(245, 158, 11, 0.08);
+    border: 1px solid rgba(245, 158, 11, 0.25);
+    border-radius: 10px;
+    padding: 14px 16px;
+    margin-bottom: 14px;
     display: none;
 }
 
@@ -24372,56 +24385,58 @@ body.dark-mode .toggle-slider {
 .upcoming-header {
     display: flex;
     align-items: center;
-    gap: 10px;
-    margin-bottom: 12px;
+    gap: 8px;
+    margin-bottom: 10px;
 }
 
 .upcoming-header i {
-    color: #f59e0b;
-    font-size: 16px;
+    color: #d97706;
+    font-size: 14px;
 }
 
 .upcoming-header span {
-    font-size: 14px;
+    font-size: 13px;
     font-weight: 600;
-    color: #f59e0b;
+    color: #d97706;
 }
 
 .upcoming-list {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
 }
 
 .upcoming-item {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 10px 14px;
+    padding: 8px 12px;
     background: var(--bg-surface);
-    border-radius: 10px;
+    border-radius: 8px;
+    border: 1px solid var(--border-subtle);
 }
 
 .upcoming-item-info {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
 }
 
 .upcoming-item-name {
-    font-size: 14px;
-    font-weight: 500;
+    font-size: 13px;
+    font-weight: 600;
     color: var(--text-main);
 }
 
 .upcoming-item-date {
     font-size: 12px;
     color: var(--text-muted);
+    font-weight: 500;
 }
 
 .upcoming-item-amount {
-    font-size: 14px;
-    font-weight: 600;
+    font-size: 13px;
+    font-weight: 700;
     color: var(--text-main);
 }
 
@@ -24429,57 +24444,58 @@ body.dark-mode .toggle-slider {
 .subscriptions-list {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 6px;
 }
 
 .subscription-row {
     display: flex;
     align-items: center;
     justify-content: space-between;
-    padding: 14px 18px;
-    background: var(--bg-base);
-    border-radius: 12px;
+    padding: 12px 16px;
+    background: var(--bg-surface);
+    border-radius: 10px;
     border: 1px solid var(--border-subtle);
     transition: all var(--transition-fast);
 }
 
 .subscription-row:hover {
     border-color: var(--accent);
-    box-shadow: 0 2px 8px rgba(0, 112, 243, 0.08);
+    background: var(--bg-base);
+    box-shadow: 0 1px 4px rgba(0, 112, 243, 0.06);
 }
 
 .subscription-row.private {
-    background: linear-gradient(135deg, rgba(139, 92, 246, 0.04) 0%, transparent 100%);
+    border-left: 3px solid #8b5cf6;
 }
 
 .subscription-info {
     display: flex;
     align-items: center;
-    gap: 14px;
+    gap: 12px;
     flex: 1;
     min-width: 0;
 }
 
 .subscription-logo {
-    width: 40px;
-    height: 40px;
-    border-radius: 10px;
+    width: 36px;
+    height: 36px;
+    border-radius: 8px;
     background: var(--bg-muted);
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 18px;
+    font-size: 16px;
     color: var(--text-muted);
     flex-shrink: 0;
 }
 
 .subscription-logo.company {
-    background: linear-gradient(135deg, rgba(59, 130, 246, 0.15) 0%, rgba(59, 130, 246, 0.05) 100%);
-    color: #3b82f6;
+    background: var(--accent-soft);
+    color: var(--accent);
 }
 
 .subscription-logo.private {
-    background: linear-gradient(135deg, rgba(139, 92, 246, 0.15) 0%, rgba(139, 92, 246, 0.05) 100%);
+    background: rgba(139, 92, 246, 0.12);
     color: #8b5cf6;
 }
 
@@ -24489,30 +24505,31 @@ body.dark-mode .toggle-slider {
 }
 
 .subscription-name {
-    font-size: 15px;
+    font-size: 14px;
     font-weight: 600;
     color: var(--text-main);
     display: flex;
     align-items: center;
-    gap: 8px;
+    gap: 6px;
 }
 
 .subscription-name .private-badge {
     font-size: 10px;
-    background: rgba(139, 92, 246, 0.15);
+    background: rgba(139, 92, 246, 0.12);
     color: #8b5cf6;
-    padding: 2px 8px;
-    border-radius: 999px;
-    font-weight: 600;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-weight: 700;
 }
 
 .subscription-meta {
     display: flex;
     align-items: center;
-    gap: 12px;
+    gap: 10px;
     font-size: 12px;
     color: var(--text-muted);
-    margin-top: 4px;
+    margin-top: 3px;
+    font-weight: 500;
 }
 
 .subscription-meta span {
@@ -24521,15 +24538,20 @@ body.dark-mode .toggle-slider {
     gap: 4px;
 }
 
+.subscription-meta i {
+    font-size: 11px;
+    opacity: 0.7;
+}
+
 .subscription-amount-col {
     display: flex;
     flex-direction: column;
     align-items: flex-end;
-    gap: 4px;
+    gap: 2px;
 }
 
 .subscription-amount {
-    font-size: 16px;
+    font-size: 15px;
     font-weight: 700;
     color: var(--text-main);
 }
@@ -24538,19 +24560,20 @@ body.dark-mode .toggle-slider {
     font-size: 11px;
     color: var(--text-muted);
     text-transform: lowercase;
+    font-weight: 600;
 }
 
 .subscription-actions {
     display: flex;
     align-items: center;
-    gap: 6px;
-    margin-left: 16px;
+    gap: 4px;
+    margin-left: 12px;
 }
 
 .subscription-action-btn {
-    width: 32px;
-    height: 32px;
-    border-radius: 8px;
+    width: 30px;
+    height: 30px;
+    border-radius: 7px;
     border: none;
     background: transparent;
     color: var(--text-muted);
@@ -24558,7 +24581,7 @@ body.dark-mode .toggle-slider {
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 12px;
+    font-size: 13px;
     transition: all var(--transition-fast);
 }
 
@@ -24568,7 +24591,7 @@ body.dark-mode .toggle-slider {
 }
 
 .subscription-action-btn.delete:hover {
-    background: rgba(239, 68, 68, 0.1);
+    background: rgba(239, 68, 68, 0.12);
     color: #ef4444;
 }
 
@@ -24578,6 +24601,7 @@ body.dark-mode .toggle-slider {
 
 .subscription-action-btn.link:hover {
     background: var(--accent-soft);
+    color: var(--accent);
 }
 
 /* Subscriptions Empty State */
@@ -24586,37 +24610,47 @@ body.dark-mode .toggle-slider {
     flex-direction: column;
     align-items: center;
     justify-content: center;
-    padding: 60px 20px;
+    padding: 40px 20px;
     text-align: center;
 }
 
 .subscriptions-empty-state i {
-    font-size: 48px;
-    color: var(--border-subtle);
-    margin-bottom: 16px;
+    font-size: 40px;
+    color: var(--text-muted);
+    opacity: 0.5;
+    margin-bottom: 12px;
+}
+
+.subscriptions-empty-state .add-row-btn i {
+    font-size: 14px;
+    margin: 0;
 }
 
 .subscriptions-empty-state p {
-    font-size: 15px;
+    font-size: 14px;
     color: var(--text-muted);
-    margin: 0 0 16px 0;
+    margin: 0 0 14px 0;
 }
 
 /* Subscription Type Toggle */
 .subscription-type-toggle {
-    display: flex;
-    gap: 12px;
+    display: inline-flex;
+    background: var(--bg-surface);
+    border-radius: 999px;
+    padding: 4px;
+    gap: 4px;
+    border: 1px solid var(--border-subtle);
 }
 
 .subscription-type-toggle .type-btn {
     flex: 1;
-    padding: 14px 20px;
-    border: 2px solid var(--border-subtle);
-    background: var(--bg-surface);
-    border-radius: 10px;
-    font-size: 15px;
-    font-weight: 600;
+    padding: 10px 20px;
+    border: none;
+    background: transparent;
     color: var(--text-muted);
+    font-size: 14px;
+    font-weight: 600;
+    border-radius: 999px;
     cursor: pointer;
     display: flex;
     align-items: center;
@@ -24626,19 +24660,20 @@ body.dark-mode .toggle-slider {
 }
 
 .subscription-type-toggle .type-btn:hover {
-    border-color: var(--text-muted);
+    color: var(--text-main);
+    background: var(--bg-body);
 }
 
 .subscription-type-toggle .type-btn.active[data-type="company"] {
-    border-color: #3b82f6;
-    background: rgba(59, 130, 246, 0.1);
-    color: #3b82f6;
+    background: var(--accent);
+    color: white;
+    box-shadow: 0 2px 8px rgba(0, 122, 255, 0.25);
 }
 
 .subscription-type-toggle .type-btn.active[data-type="private"] {
-    border-color: #8b5cf6;
-    background: rgba(139, 92, 246, 0.1);
-    color: #8b5cf6;
+    background: #8b5cf6;
+    color: white;
+    box-shadow: 0 2px 8px rgba(139, 92, 246, 0.25);
 }
 
 .form-field-hint {
@@ -24686,7 +24721,7 @@ body.dark-mode .subscription-row {
     background: var(--bg-base);
 }
 
-body.dark-mode .subscription-type-toggle .type-btn {
+body.dark-mode .subscription-type-toggle {
     background: var(--bg-surface);
 }
 
@@ -24901,7 +24936,3 @@ body.dark-mode .date-chip-soon {
     border-color: rgba(255, 214, 10, 0.35);
 }
 
-/* ===================================
-   HOMEPAGE STYLES (DEPRECATED)
-   Homepage CSS is now lazy-loaded from /home/home.css
-   =================================== */
