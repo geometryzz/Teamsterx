@@ -895,28 +895,33 @@ service cloud.firestore {
       }
 
       // ==========================
+      // FINANCES HELPER FUNCTIONS
+      // Used by both transactions and subscriptions
+      // ==========================
+      
+      // Helper to safely get finances visibility setting (with guards)
+      function getFinancesVisibility() {
+        let teamData = getTeamData(teamId);
+        // Guard: check if settings and financesVisibility exist
+        return ('settings' in teamData && 'financesVisibility' in teamData.settings)
+          ? teamData.settings.financesVisibility
+          : 'owner-only';  // Conservative default
+      }
+
+      // Helper to check if user can access finances (safe version)
+      function canAccessFinances() {
+        let role = getMemberRole(teamId);
+        let visibility = getFinancesVisibility();
+        return role == 'owner' ||
+          (role == 'admin' && visibility in ['admin-owner', 'everyone']) ||
+          (role == 'member' && visibility == 'everyone');
+      }
+
+      // ==========================
       // TRANSACTIONS SUBCOLLECTION (Finances Tab)
       // SECURITY: Schema validation + amount bounds
       // ==========================
       match /transactions/{transactionId} {
-        // Helper to safely get finances visibility setting (with guards)
-        function getFinancesVisibility() {
-          let teamData = getTeamData(teamId);
-          // Guard: check if settings and financesVisibility exist
-          return ('settings' in teamData && 'financesVisibility' in teamData.settings)
-            ? teamData.settings.financesVisibility
-            : 'owner-only';  // Conservative default
-        }
-
-        // Helper to check if user can access finances (safe version)
-        function canAccessFinances() {
-          let role = getMemberRole(teamId);
-          let visibility = getFinancesVisibility();
-          return role == 'owner' ||
-            (role == 'admin' && visibility in ['admin-owner', 'everyone']) ||
-            (role == 'member' && visibility == 'everyone');
-        }
-
         // Read: based on finances visibility settings
         allow read: if isMemberInTeam(teamId) && canAccessFinances();
 
@@ -982,6 +987,70 @@ service cloud.firestore {
               (request.resource.data.frequency is string && request.resource.data.frequency in ['daily', 'weekly', 'monthly', 'yearly', ''])) &&
           (!('isRecurring' in request.resource.data) || 
               request.resource.data.isRecurring is bool)
+        );
+
+        // Delete: creator or admin/owner with access
+        allow delete: if isMemberInTeam(teamId) && (
+          (getMemberRole(teamId) == 'owner') ||
+          (getMemberRole(teamId) == 'admin' && getFinancesVisibility() in ['admin-owner', 'everyone']) ||
+          resource.data.createdBy == request.auth.uid
+        );
+      }
+
+      // ==========================
+      // SUBSCRIPTIONS SUBCOLLECTION (Finances Tab - Recurring Payments)
+      // SECURITY: Schema validation + amount bounds
+      // ==========================
+      match /subscriptions/{subscriptionId} {
+        // Read: based on finances visibility settings (same as transactions)
+        allow read: if isMemberInTeam(teamId) && canAccessFinances();
+
+        // Create: must have access and createdBy must match
+        allow create: if isMemberInTeam(teamId) 
+          && canAccessFinances()
+          && request.resource.data.createdBy == request.auth.uid
+          && request.resource.data.keys().hasOnly([
+            'createdBy', 'name', 'amount', 'currency', 'type', 'category',
+            'frequency', 'nextPayDate', 'cancelLink', 'notes',
+            'createdAt', 'updatedAt'
+          ])
+          && request.resource.data.type in ['company', 'private']
+          && request.resource.data.name is string
+          && request.resource.data.name.size() <= 200
+          && request.resource.data.amount is number
+          && request.resource.data.amount >= 0
+          && request.resource.data.amount <= 999999999
+          && request.resource.data.frequency in ['weekly', 'monthly', 'quarterly', 'yearly']
+          && (!('currency' in request.resource.data) || 
+              (request.resource.data.currency is string && request.resource.data.currency.size() <= 3))
+          && (!('category' in request.resource.data) || 
+              (request.resource.data.category is string && request.resource.data.category.size() <= 100))
+          && (!('cancelLink' in request.resource.data) || 
+              (request.resource.data.cancelLink is string && request.resource.data.cancelLink.size() <= 500))
+          && (!('notes' in request.resource.data) || 
+              (request.resource.data.notes is string && request.resource.data.notes.size() <= 1000));
+
+        // Update: creator or admin/owner with access
+        allow update: if isMemberInTeam(teamId) && (
+          (getMemberRole(teamId) == 'owner') ||
+          (getMemberRole(teamId) == 'admin' && getFinancesVisibility() in ['admin-owner', 'everyone']) ||
+          resource.data.createdBy == request.auth.uid
+        ) && (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'name', 'amount', 'currency', 'type', 'category',
+            'frequency', 'nextPayDate', 'cancelLink', 'notes', 'updatedAt'
+          ])
+        ) && (
+          fieldUnchanged('createdBy') &&
+          fieldUnchanged('createdAt')
+        ) && (
+          request.resource.data.name is string &&
+          request.resource.data.name.size() <= 200 &&
+          request.resource.data.amount is number &&
+          request.resource.data.amount >= 0 &&
+          request.resource.data.amount <= 999999999 &&
+          request.resource.data.type in ['company', 'private'] &&
+          request.resource.data.frequency in ['weekly', 'monthly', 'quarterly', 'yearly']
         );
 
         // Delete: creator or admin/owner with access

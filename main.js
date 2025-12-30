@@ -1916,6 +1916,7 @@ window.switchTab = function(sectionName) {
     // Render finances when navigating to finances tab
     if (sectionName === 'finances') {
         loadTransactions(); // This will also call renderFinances
+        loadSubscriptions(); // Load subscriptions data
     }
 };
 
@@ -5991,6 +5992,91 @@ function initTasks() {
         if (closeBtn) closeBtn.addEventListener('click', () => closeModal('customColumnModal'));
         if (cancelBtn) cancelBtn.addEventListener('click', () => closeModal('customColumnModal'));
 
+        // Delete column button handler
+        const deleteColumnBtn = document.getElementById('deleteColumnBtn');
+        if (deleteColumnBtn) {
+            deleteColumnBtn.addEventListener('click', async () => {
+                // Only protect the primary identifier columns (title for tasks, leadName for leads)
+                const protectedColumns = ['title', 'leadName'];
+                if (!editingColumnId || protectedColumns.includes(editingColumnId)) {
+                    showToast('Cannot delete the primary identifier column', 'error');
+                    return;
+                }
+                
+                // Check permissions
+                if (appState.currentTeamData && !isAdmin(appState.currentTeamData)) {
+                    showToast('Only team owners and admins can delete columns', 'error');
+                    return;
+                }
+                
+                const columnName = nameInput?.value || editingColumnId;
+                
+                // Show confirmation
+                const confirmed = await showConfirmModal(
+                    `Are you sure you want to delete the column "${columnName}"? This will permanently remove the column and all its data from tasks. This action cannot be undone.`, 
+                    {
+                        title: 'Delete Column',
+                        confirmText: 'Delete Permanently',
+                        type: 'danger'
+                    }
+                );
+                
+                if (!confirmed) return;
+                
+                try {
+                    const spreadsheet = appState.currentSpreadsheet;
+                    if (!spreadsheet) {
+                        showToast('No spreadsheet selected', 'error');
+                        return;
+                    }
+                    
+                    const isCustomColumn = editingColumnId.startsWith('custom_');
+                    
+                    if (isCustomColumn) {
+                        // Remove from customColumns array
+                        if (spreadsheet.customColumns) {
+                            spreadsheet.customColumns = spreadsheet.customColumns.filter(c => c.id !== editingColumnId);
+                        }
+                        
+                        // Remove custom field data from all tasks
+                        appState.tasks.forEach(task => {
+                            if (task.customFields && task.customFields[editingColumnId] !== undefined) {
+                                delete task.customFields[editingColumnId];
+                            }
+                        });
+                    } else {
+                        // For built-in columns, remove any custom settings
+                        if (spreadsheet.columnSettings && spreadsheet.columnSettings[editingColumnId]) {
+                            delete spreadsheet.columnSettings[editingColumnId];
+                        }
+                        
+                        // Clear field data from tasks for this built-in column
+                        appState.tasks.forEach(task => {
+                            if (task[editingColumnId] !== undefined) {
+                                delete task[editingColumnId];
+                            }
+                        });
+                    }
+                    
+                    // Remove from active columns
+                    spreadsheet.columns = spreadsheet.columns.filter(c => c !== editingColumnId);
+                    
+                    // Save to Firestore
+                    await saveSpreadsheetToFirestore(spreadsheet);
+                    
+                    // Re-render
+                    populateColumnToggles(spreadsheet);
+                    renderSpreadsheetTable(spreadsheet);
+                    
+                    closeModal('customColumnModal');
+                    showToast(`Column "${columnName}" deleted permanently`, 'success');
+                } catch (error) {
+                    console.error('Error deleting column:', error);
+                    showToast('Failed to delete column', 'error');
+                }
+            });
+        }
+
         // Type selector - supports both old and new class names
         if (typeSelector) {
             typeSelector.querySelectorAll('.type-option, .unified-segmented-option').forEach(btn => {
@@ -6236,12 +6322,22 @@ function initTasks() {
                     ? '<i class="fas fa-check"></i> Save' 
                     : '<i class="fas fa-plus"></i> Create';
             }
+            
+            // Show/hide delete button (only for custom columns in edit mode)
+            const deleteBtn = document.getElementById('deleteColumnBtn');
+            if (deleteBtn) {
+                deleteBtn.style.display = (editingColumnId && !editingColumnIsBuiltIn) ? 'inline-flex' : 'none';
+            }
         }
 
         // Reset modal to defaults (for create mode)
         function resetCustomColumnModal() {
             if (nameInput) nameInput.value = '';
             if (nameError) nameError.textContent = '';
+            
+            // Hide delete button in create mode
+            const deleteBtn = document.getElementById('deleteColumnBtn');
+            if (deleteBtn) deleteBtn.style.display = 'none';
             
             // Enable type selector
             if (typeSelector) {
@@ -6593,11 +6689,12 @@ function initTasks() {
         if (tasks.length === 0 && spreadsheetTasks.length === 0) {
             tableContainer.innerHTML = `
                 <div class="spreadsheet-empty">
-                    <i class="fas fa-${isLeadsTable ? 'user-plus' : 'clipboard-list'}"></i>
+                    <i class="fas fa-${isLeadsTable ? 'user-plus' : 'clipboard-list'} empty-state-icon"></i>
                     <h4>No ${itemNamePlural} yet</h4>
                     <p>Create your first ${itemName} to get started</p>
-                    <button class="btn-primary empty-state-btn" onclick="openAddItemModal()">
-                        <i class="fas fa-plus"></i> Add ${itemName.charAt(0).toUpperCase() + itemName.slice(1)}
+                    <button class="btn-primary" onclick="openAddItemModal()">
+                        <i class="fas fa-plus"></i>
+                        Add ${itemName.charAt(0).toUpperCase() + itemName.slice(1)}
                     </button>
                 </div>
             `;
@@ -8633,6 +8730,16 @@ function initTasks() {
         updateTaskStatus(taskId, isComplete ? 'done' : 'todo');
     };
 
+    // View task details - opens task in edit modal
+    window.viewTaskDetails = function(taskId) {
+        const task = appState.tasks.find(t => t.id === taskId || String(t.id) === String(taskId));
+        if (task) {
+            window.editTask(task);
+        } else {
+            console.warn('Task not found for viewTaskDetails:', taskId);
+        }
+    };
+
     // Edit task function
     window.editTask = function(task) {
         // Populate modal with task data for editing
@@ -8641,7 +8748,13 @@ function initTasks() {
         
         if (task.dueDate) {
             const date = new Date(task.dueDate);
-            document.getElementById('taskDueDate').value = date.toISOString().split('T')[0];
+            // Check if date is valid before calling toISOString
+            if (!isNaN(date.getTime())) {
+                document.getElementById('taskDueDate').value = date.toISOString().split('T')[0];
+            } else {
+                document.getElementById('taskDueDate').value = '';
+                console.warn('Invalid dueDate value:', task.dueDate);
+            }
         }
         
         document.getElementById('taskBudget').value = task.budget || '';
@@ -9052,14 +9165,28 @@ function initTasks() {
                     
                 } else {
                     // CREATE MODE - New spreadsheet
-                    const name = document.getElementById('spreadsheetName').value;
+                    const name = document.getElementById('spreadsheetName').value.trim();
                     const icon = document.getElementById('spreadsheetIcon').value;
                     const color = document.getElementById('spreadsheetColor').value;
                     const visibility = document.querySelector('input[name="spreadsheetVisibility"]:checked').value;
                     const type = document.getElementById('spreadsheetType').value || 'tasks';
 
+                    if (!name) {
+                        showToast('Please enter a spreadsheet name', 'error');
+                        return;
+                    }
+
                     if (!appState.spreadsheets) {
                         appState.spreadsheets = [];
+                    }
+
+                    // Check for duplicate names (to avoid metrics conflicts)
+                    const existingWithSameName = appState.spreadsheets.find(s => 
+                        s.name.toLowerCase() === name.toLowerCase()
+                    );
+                    if (existingWithSameName) {
+                        showToast('A spreadsheet with this name already exists. Please choose a different name.', 'warning');
+                        return;
                     }
 
                     // Use preset based on type
@@ -27313,6 +27440,640 @@ window.editTransaction = editTransaction;
 window.openDeleteTransactionModal = openDeleteTransactionModal;
 
 // ===================================
+// SUBSCRIPTIONS MANAGEMENT
+// ===================================
+
+// Initialize subscriptions array in appState (if not done elsewhere)
+if (!appState.subscriptions) {
+    appState.subscriptions = [];
+}
+
+// Current subscription tab filter
+let currentSubscriptionTab = 'company';
+
+/**
+ * Load subscriptions from Firestore
+ */
+async function loadSubscriptions() {
+    if (!db || !appState.currentTeamId) {
+        appState.subscriptions = [];
+        return;
+    }
+    
+    try {
+        const { collection, query, orderBy, getDocs } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+        const subscriptionsRef = collection(db, 'teams', appState.currentTeamId, 'subscriptions');
+        const q = query(subscriptionsRef, orderBy('nextPayDate', 'asc'));
+        const snapshot = await getDocs(q);
+        
+        appState.subscriptions = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        }));
+        
+        debugLog('📅 Loaded subscriptions:', appState.subscriptions.length);
+        renderSubscriptions();
+        
+    } catch (error) {
+        console.error('Error loading subscriptions:', error);
+        appState.subscriptions = [];
+    }
+}
+
+/**
+ * Render subscriptions section
+ */
+function renderSubscriptions() {
+    const subscriptionsList = document.getElementById('subscriptionsList');
+    const subscriptionsEmptyState = document.getElementById('subscriptionsEmptyState');
+    const subscriptionsCount = document.getElementById('subscriptionsCount');
+    const companySubsCount = document.getElementById('companySubsCount');
+    const privateSubsCount = document.getElementById('privateSubsCount');
+    const upcomingSubscriptions = document.getElementById('upcomingSubscriptions');
+    
+    if (!subscriptionsList) return;
+    
+    // Count subscriptions by type
+    const companySubs = appState.subscriptions.filter(s => s.type === 'company');
+    const privateSubs = appState.subscriptions.filter(s => s.type === 'private');
+    
+    // Update counts
+    if (subscriptionsCount) subscriptionsCount.textContent = appState.subscriptions.length;
+    if (companySubsCount) companySubsCount.textContent = companySubs.length;
+    if (privateSubsCount) privateSubsCount.textContent = privateSubs.length;
+    
+    // Filter by current tab
+    const filteredSubs = currentSubscriptionTab === 'company' ? companySubs : privateSubs;
+    
+    if (filteredSubs.length === 0) {
+        subscriptionsList.innerHTML = '';
+        if (subscriptionsEmptyState) subscriptionsEmptyState.style.display = 'flex';
+    } else {
+        if (subscriptionsEmptyState) subscriptionsEmptyState.style.display = 'none';
+        subscriptionsList.innerHTML = filteredSubs.map(sub => renderSubscriptionRow(sub)).join('');
+    }
+    
+    // Render upcoming subscriptions (next 7 days)
+    renderUpcomingSubscriptions();
+    
+    // Recalculate finances (company subscriptions affect expenses)
+    updateFinancesWithSubscriptions();
+}
+
+/**
+ * Render a single subscription row
+ */
+function renderSubscriptionRow(sub) {
+    const nextPayDate = sub.nextPayDate?.toDate?.() || new Date(sub.nextPayDate);
+    const dateStr = nextPayDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const isPrivate = sub.type === 'private';
+    const currencySymbol = getCurrencySymbol(sub.currency || 'USD');
+    const frequencyLabel = getFrequencyLabel(sub.frequency);
+    
+    // Get icon based on category
+    const categoryIcon = getSubscriptionCategoryIcon(sub.category);
+    
+    return `
+        <div class="subscription-row ${isPrivate ? 'private' : ''}" data-id="${sub.id}">
+            <div class="subscription-info">
+                <div class="subscription-logo ${sub.type}">
+                    <i class="fas ${categoryIcon}"></i>
+                </div>
+                <div class="subscription-details">
+                    <div class="subscription-name">
+                        ${escapeHtml(sub.name)}
+                        ${isPrivate ? '<span class="private-badge">Private</span>' : ''}
+                    </div>
+                    <div class="subscription-meta">
+                        <span><i class="fas fa-calendar"></i> ${dateStr}</span>
+                        ${sub.category ? `<span><i class="fas fa-tag"></i> ${escapeHtml(sub.category)}</span>` : ''}
+                    </div>
+                </div>
+            </div>
+            <div class="subscription-amount-col">
+                <span class="subscription-amount">${currencySymbol}${formatNumber(sub.amount)}</span>
+                <span class="subscription-frequency">${frequencyLabel}</span>
+            </div>
+            <div class="subscription-actions">
+                ${sub.cancelLink ? `
+                <a href="${escapeHtml(sub.cancelLink)}" target="_blank" rel="noopener noreferrer" class="subscription-action-btn link" title="Manage Subscription">
+                    <i class="fas fa-external-link-alt"></i>
+                </a>
+                ` : ''}
+                <button class="subscription-action-btn edit" onclick="editSubscription('${sub.id}')" title="Edit">
+                    <i class="fas fa-pen"></i>
+                </button>
+                <button class="subscription-action-btn delete" onclick="openDeleteSubscriptionModal('${sub.id}')" title="Delete">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
+        </div>
+    `;
+}
+
+/**
+ * Render upcoming subscriptions (next 7 days)
+ */
+function renderUpcomingSubscriptions() {
+    const container = document.getElementById('upcomingSubscriptions');
+    if (!container) return;
+    
+    const now = new Date();
+    const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    
+    // Get subscriptions due in next 7 days
+    const upcoming = appState.subscriptions.filter(sub => {
+        const nextPayDate = sub.nextPayDate?.toDate?.() || new Date(sub.nextPayDate);
+        return nextPayDate >= now && nextPayDate <= sevenDaysFromNow;
+    }).sort((a, b) => {
+        const dateA = a.nextPayDate?.toDate?.() || new Date(a.nextPayDate);
+        const dateB = b.nextPayDate?.toDate?.() || new Date(b.nextPayDate);
+        return dateA - dateB;
+    });
+    
+    if (upcoming.length === 0) {
+        container.classList.remove('has-items');
+        container.innerHTML = '';
+        return;
+    }
+    
+    container.classList.add('has-items');
+    container.innerHTML = `
+        <div class="upcoming-header">
+            <i class="fas fa-bell"></i>
+            <span>Upcoming in next 7 days</span>
+        </div>
+        <div class="upcoming-list">
+            ${upcoming.map(sub => {
+                const nextPayDate = sub.nextPayDate?.toDate?.() || new Date(sub.nextPayDate);
+                const daysUntil = Math.ceil((nextPayDate - now) / (1000 * 60 * 60 * 24));
+                const dateLabel = daysUntil === 0 ? 'Today' : daysUntil === 1 ? 'Tomorrow' : `In ${daysUntil} days`;
+                const currencySymbol = getCurrencySymbol(sub.currency || 'USD');
+                
+                return `
+                    <div class="upcoming-item">
+                        <div class="upcoming-item-info">
+                            <span class="upcoming-item-name">${escapeHtml(sub.name)}</span>
+                            <span class="upcoming-item-date">${dateLabel}</span>
+                        </div>
+                        <span class="upcoming-item-amount">${currencySymbol}${formatNumber(sub.amount)}</span>
+                    </div>
+                `;
+            }).join('')}
+        </div>
+    `;
+}
+
+/**
+ * Update finances with company subscription data
+ * Company subscriptions should appear as recurring expenses
+ */
+function updateFinancesWithSubscriptions() {
+    // This function integrates company subscriptions into the expense totals
+    // For now, we'll just recalculate MRR to include subscription costs
+    const companySubs = appState.subscriptions.filter(s => s.type === 'company');
+    
+    let monthlySubsCost = 0;
+    companySubs.forEach(sub => {
+        const amount = sub.amount || 0;
+        switch (sub.frequency) {
+            case 'weekly':
+                monthlySubsCost += amount * 4.33; // avg weeks per month
+                break;
+            case 'monthly':
+                monthlySubsCost += amount;
+                break;
+            case 'quarterly':
+                monthlySubsCost += amount / 3;
+                break;
+            case 'yearly':
+                monthlySubsCost += amount / 12;
+                break;
+        }
+    });
+    
+    // Store for use in metrics calculations
+    appState.monthlySubscriptionCost = monthlySubsCost;
+}
+
+/**
+ * Open subscription modal for adding or editing
+ */
+function openSubscriptionModal(subscription = null) {
+    const modal = document.getElementById('subscriptionModal');
+    const form = document.getElementById('subscriptionForm');
+    const title = document.getElementById('subscriptionModalTitle');
+    const subtitle = document.getElementById('subscriptionModalSubtitle');
+    const typeHint = document.getElementById('subscriptionTypeHint');
+    
+    if (!modal || !form) return;
+    
+    // Reset form
+    form.reset();
+    document.getElementById('subscriptionId').value = '';
+    document.getElementById('subscriptionType').value = 'company';
+    
+    // Reset type buttons
+    const typeButtons = document.querySelectorAll('.subscription-type-toggle .type-btn');
+    typeButtons.forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.type === 'company');
+    });
+    
+    // Set default next payment date to today
+    const dateInput = document.getElementById('subscriptionNextPayDate');
+    if (dateInput) {
+        dateInput.value = new Date().toISOString().split('T')[0];
+    }
+    
+    // Update hint
+    if (typeHint) {
+        typeHint.textContent = 'Company subscriptions appear in expenses';
+    }
+    
+    if (subscription) {
+        // Edit mode
+        title.innerHTML = '<i class="fas fa-edit"></i> Edit Subscription';
+        subtitle.textContent = 'Update subscription details';
+        
+        // Fill form with subscription data
+        document.getElementById('subscriptionId').value = subscription.id;
+        document.getElementById('subscriptionType').value = subscription.type;
+        document.getElementById('subscriptionName').value = subscription.name || '';
+        document.getElementById('subscriptionAmount').value = subscription.amount || '';
+        document.getElementById('subscriptionCurrency').value = subscription.currency || 'USD';
+        document.getElementById('subscriptionFrequency').value = subscription.frequency || 'monthly';
+        document.getElementById('subscriptionCategory').value = subscription.category || '';
+        document.getElementById('subscriptionCancelLink').value = subscription.cancelLink || '';
+        document.getElementById('subscriptionNotes').value = subscription.notes || '';
+        
+        // Set next payment date
+        const nextPayDate = subscription.nextPayDate?.toDate?.() || new Date(subscription.nextPayDate);
+        document.getElementById('subscriptionNextPayDate').value = nextPayDate.toISOString().split('T')[0];
+        
+        // Update type buttons
+        typeButtons.forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.type === subscription.type);
+        });
+        
+        // Update hint based on type
+        if (typeHint) {
+            typeHint.textContent = subscription.type === 'company' 
+                ? 'Company subscriptions appear in expenses'
+                : 'Private subscriptions create personal calendar reminders';
+        }
+    } else {
+        // Add mode
+        title.innerHTML = '<i class="fas fa-calendar-check"></i> New Subscription';
+        subtitle.textContent = 'Track a recurring subscription';
+    }
+    
+    modal.classList.add('active');
+}
+
+/**
+ * Close subscription modal
+ */
+function closeSubscriptionModalFn() {
+    const modal = document.getElementById('subscriptionModal');
+    if (modal) {
+        modal.classList.remove('active');
+    }
+}
+
+/**
+ * Handle subscription form submission
+ */
+async function handleSubscriptionSave(event) {
+    event.preventDefault();
+    
+    if (!db || !appState.currentTeamId || !currentAuthUser) {
+        showToast('Unable to save subscription. Please try again.', 'error');
+        return;
+    }
+    
+    const subscriptionId = document.getElementById('subscriptionId').value;
+    const isEdit = !!subscriptionId;
+    
+    // Get form values
+    const subscriptionData = {
+        type: document.getElementById('subscriptionType').value,
+        name: document.getElementById('subscriptionName').value.trim(),
+        amount: parseFloat(document.getElementById('subscriptionAmount').value) || 0,
+        currency: document.getElementById('subscriptionCurrency').value,
+        frequency: document.getElementById('subscriptionFrequency').value,
+        nextPayDate: new Date(document.getElementById('subscriptionNextPayDate').value),
+        category: document.getElementById('subscriptionCategory').value,
+        cancelLink: document.getElementById('subscriptionCancelLink').value.trim(),
+        notes: document.getElementById('subscriptionNotes').value.trim(),
+        updatedAt: new Date()
+    };
+    
+    // Validate
+    if (!subscriptionData.name) {
+        showToast('Please enter a service name', 'error');
+        return;
+    }
+    if (subscriptionData.amount <= 0) {
+        showToast('Please enter a valid amount', 'error');
+        return;
+    }
+    
+    try {
+        const { doc, collection, addDoc, updateDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+        
+        if (isEdit) {
+            // Update existing subscription
+            const subscriptionRef = doc(db, 'teams', appState.currentTeamId, 'subscriptions', subscriptionId);
+            await updateDoc(subscriptionRef, {
+                ...subscriptionData,
+                updatedAt: serverTimestamp()
+            });
+            showToast('Subscription updated successfully', 'success');
+        } else {
+            // Add new subscription
+            const subscriptionsRef = collection(db, 'teams', appState.currentTeamId, 'subscriptions');
+            await addDoc(subscriptionsRef, {
+                ...subscriptionData,
+                createdBy: currentAuthUser.uid,
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp()
+            });
+            showToast('Subscription added successfully', 'success');
+            
+            // Create private calendar event if it's a private subscription
+            if (subscriptionData.type === 'private') {
+                await createSubscriptionCalendarEvent(subscriptionData);
+            }
+        }
+        
+        closeSubscriptionModalFn();
+        loadSubscriptions(); // Refresh the list
+        
+    } catch (error) {
+        console.error('Error saving subscription:', error);
+        showToast('Failed to save subscription', 'error');
+    }
+}
+
+/**
+ * Create a private calendar event for a subscription
+ */
+async function createSubscriptionCalendarEvent(subscription) {
+    try {
+        const { collection, addDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+        
+        const eventData = {
+            title: `💳 ${subscription.name} payment due`,
+            date: subscription.nextPayDate,
+            type: 'reminder',
+            visibility: 'private',
+            createdBy: currentAuthUser.uid,
+            isSubscriptionReminder: true,
+            subscriptionName: subscription.name,
+            subscriptionAmount: subscription.amount,
+            subscriptionCurrency: subscription.currency,
+            createdAt: serverTimestamp()
+        };
+        
+        const eventsRef = collection(db, 'teams', appState.currentTeamId, 'events');
+        await addDoc(eventsRef, eventData);
+        
+        debugLog('📅 Created calendar event for private subscription:', subscription.name);
+    } catch (error) {
+        console.error('Error creating subscription calendar event:', error);
+    }
+}
+
+/**
+ * Edit subscription
+ */
+function editSubscription(subscriptionId) {
+    const subscription = appState.subscriptions.find(s => s.id === subscriptionId);
+    if (subscription) {
+        openSubscriptionModal(subscription);
+    }
+}
+
+/**
+ * Open delete subscription confirmation modal
+ */
+function openDeleteSubscriptionModal(subscriptionId) {
+    const modal = document.getElementById('deleteSubscriptionModal');
+    const idInput = document.getElementById('deleteSubscriptionId');
+    
+    if (modal && idInput) {
+        idInput.value = subscriptionId;
+        modal.classList.add('active');
+    }
+}
+
+/**
+ * Close delete subscription modal
+ */
+function closeDeleteSubscriptionModalFn() {
+    const modal = document.getElementById('deleteSubscriptionModal');
+    if (modal) {
+        modal.classList.remove('active');
+    }
+}
+
+/**
+ * Delete subscription
+ */
+async function deleteSubscription(subscriptionId) {
+    if (!db || !appState.currentTeamId) {
+        showToast('Unable to delete subscription', 'error');
+        return;
+    }
+    
+    try {
+        const { doc, deleteDoc } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+        const subscriptionRef = doc(db, 'teams', appState.currentTeamId, 'subscriptions', subscriptionId);
+        await deleteDoc(subscriptionRef);
+        
+        showToast('Subscription deleted', 'success');
+        closeDeleteSubscriptionModalFn();
+        loadSubscriptions();
+        
+    } catch (error) {
+        console.error('Error deleting subscription:', error);
+        showToast('Failed to delete subscription', 'error');
+    }
+}
+
+/**
+ * Initialize subscription event listeners
+ */
+function initSubscriptionEventListeners() {
+    // Add subscription button
+    const addSubscriptionBtn = document.getElementById('addSubscriptionBtn');
+    const addFirstSubscriptionBtn = document.getElementById('addFirstSubscriptionBtn');
+    
+    if (addSubscriptionBtn) {
+        addSubscriptionBtn.addEventListener('click', () => openSubscriptionModal());
+    }
+    if (addFirstSubscriptionBtn) {
+        addFirstSubscriptionBtn.addEventListener('click', () => openSubscriptionModal());
+    }
+    
+    // Close modal buttons
+    const closeSubscriptionModal = document.getElementById('closeSubscriptionModal');
+    const cancelSubscriptionBtn = document.getElementById('cancelSubscriptionBtn');
+    
+    if (closeSubscriptionModal) {
+        closeSubscriptionModal.addEventListener('click', closeSubscriptionModalFn);
+    }
+    if (cancelSubscriptionBtn) {
+        cancelSubscriptionBtn.addEventListener('click', closeSubscriptionModalFn);
+    }
+    
+    // Form submission
+    const subscriptionForm = document.getElementById('subscriptionForm');
+    if (subscriptionForm) {
+        subscriptionForm.addEventListener('submit', handleSubscriptionSave);
+    }
+    
+    // Type toggle buttons
+    const typeToggle = document.querySelector('.subscription-type-toggle');
+    if (typeToggle) {
+        typeToggle.querySelectorAll('.type-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const type = btn.dataset.type;
+                typeToggle.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                document.getElementById('subscriptionType').value = type;
+                
+                // Update hint
+                const typeHint = document.getElementById('subscriptionTypeHint');
+                if (typeHint) {
+                    typeHint.textContent = type === 'company' 
+                        ? 'Company subscriptions appear in expenses'
+                        : 'Private subscriptions create personal calendar reminders';
+                }
+            });
+        });
+    }
+    
+    // Tab switching
+    const subscriptionsTabs = document.getElementById('subscriptionsTabs');
+    if (subscriptionsTabs) {
+        subscriptionsTabs.querySelectorAll('.sub-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                const tabType = tab.dataset.tab;
+                currentSubscriptionTab = tabType;
+                
+                subscriptionsTabs.querySelectorAll('.sub-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                
+                renderSubscriptions();
+            });
+        });
+    }
+    
+    // Delete modal
+    const closeDeleteSubscriptionModal = document.getElementById('closeDeleteSubscriptionModal');
+    const cancelDeleteSubscription = document.getElementById('cancelDeleteSubscription');
+    const confirmDeleteSubscription = document.getElementById('confirmDeleteSubscription');
+    
+    if (closeDeleteSubscriptionModal) {
+        closeDeleteSubscriptionModal.addEventListener('click', closeDeleteSubscriptionModalFn);
+    }
+    if (cancelDeleteSubscription) {
+        cancelDeleteSubscription.addEventListener('click', closeDeleteSubscriptionModalFn);
+    }
+    if (confirmDeleteSubscription) {
+        confirmDeleteSubscription.addEventListener('click', () => {
+            const subscriptionId = document.getElementById('deleteSubscriptionId').value;
+            if (subscriptionId) {
+                deleteSubscription(subscriptionId);
+            }
+        });
+    }
+    
+    // Close modal on backdrop click
+    const subscriptionModal = document.getElementById('subscriptionModal');
+    if (subscriptionModal) {
+        subscriptionModal.addEventListener('click', (e) => {
+            if (e.target === subscriptionModal) {
+                closeSubscriptionModalFn();
+            }
+        });
+    }
+    
+    const deleteSubModal = document.getElementById('deleteSubscriptionModal');
+    if (deleteSubModal) {
+        deleteSubModal.addEventListener('click', (e) => {
+            if (e.target === deleteSubModal) {
+                closeDeleteSubscriptionModalFn();
+            }
+        });
+    }
+}
+
+/**
+ * Get currency symbol from currency code
+ */
+function getCurrencySymbol(currencyCode) {
+    const symbols = {
+        'USD': '$',
+        'EUR': '€',
+        'GBP': '£',
+        'CAD': '$',
+        'AUD': '$',
+        'JPY': '¥',
+        'ILS': '₪'
+    };
+    return symbols[currencyCode] || '$';
+}
+
+/**
+ * Get frequency label
+ */
+function getFrequencyLabel(frequency) {
+    const labels = {
+        'weekly': '/week',
+        'monthly': '/month',
+        'quarterly': '/quarter',
+        'yearly': '/year'
+    };
+    return labels[frequency] || '/month';
+}
+
+/**
+ * Get subscription category icon
+ */
+function getSubscriptionCategoryIcon(category) {
+    const icons = {
+        'software': 'fa-code',
+        'streaming': 'fa-play-circle',
+        'cloud': 'fa-cloud',
+        'productivity': 'fa-tasks',
+        'communication': 'fa-comments',
+        'design': 'fa-palette',
+        'marketing': 'fa-bullhorn',
+        'storage': 'fa-database',
+        'security': 'fa-shield-alt',
+        'other': 'fa-box'
+    };
+    return icons[category] || 'fa-credit-card';
+}
+
+/**
+ * Format number with commas
+ */
+function formatNumber(num) {
+    return new Intl.NumberFormat('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    }).format(num || 0);
+}
+
+// Expose subscription functions to window for inline onclick handlers
+window.editSubscription = editSubscription;
+window.openDeleteSubscriptionModal = openDeleteSubscriptionModal;
+
+// ===================================
 // GLOBAL KEYBOARD SHORTCUTS
 // ===================================
 
@@ -27499,6 +28260,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     initJoinTeamModal(); // Initialize join team modal
     initLinkLobby(); // Initialize Link Lobby
     initFinances(); // Initialize Finances tab
+    initSubscriptionEventListeners(); // Initialize Subscriptions
     initDocsModule(); // Initialize Docs feature
     initGlobalKeyboardShortcuts(); // Initialize keyboard shortcuts (t/e/m//)
     startActivityRefreshTimer(); // Start periodic refresh of activity times
