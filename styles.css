@@ -294,11 +294,11 @@ body.dark-mode .calendar-day.today {
 }
 
 body.dark-mode .week-day-column.today-column {
-    background: rgba(10, 132, 255, 0.08);
+    background: transparent;
 }
 
 body.dark-mode .week-day-column.today-column .week-time-cell {
-    background: rgba(10, 132, 255, 0.04);
+    background: transparent;
 }
 
 /* Ensure icons have proper contrast in dark mode */
@@ -491,9 +491,9 @@ body {
    =================================== */
 .app-container {
     display: flex;
-    max-width: 1360px;
+    max-width: calc(100vw - 48px);
     height: calc(100vh - 48px);
-    max-height: calc(100vh - 48px);
+
     margin: 24px auto;
     background: var(--glass-bg);
     border-radius: var(--radius-xl);
@@ -615,6 +615,16 @@ body {
 .nav-item:hover i,
 .nav-item.active i {
     opacity: 1;
+}
+
+/* Hide sidebar icons when disabled */
+.hide-sidebar-icons .nav-item i {
+    display: none;
+}
+
+.hide-sidebar-icons .nav-item {
+    justify-content: flex-start;
+    padding-left: 20px;
 }
 
 .notification-badge {
@@ -880,7 +890,7 @@ body.dark-mode .teammate-card:hover {
     overflow: hidden;
     background: var(--bg-surface);
     border-radius: 0 var(--radius-xl) var(--radius-xl) 0;
-    min-height: 0; /* Critical: allows flex children to shrink and scroll */
+    min-height: 0; /* Critical: allows flex children to shrink properly */
 }
 
 /* Top Bar - UX Polish: Proper stacking context for dropdowns */
@@ -916,18 +926,16 @@ body.dark-mode .teammate-card:hover {
 .search-bar:focus-within {
     background: var(--bg-surface);
     border-color: var(--accent);
-    box-shadow: 0 0 0 3px var(--accent-soft);
 }
 
 body.dark-mode .search-bar {
-    background: rgba(255, 255, 255, 0.08);
+    background: transparent;
     border-color: var(--border-subtle);
 }
 
 body.dark-mode .search-bar:focus-within {
-    background: rgba(255, 255, 255, 0.1);
+    background: transparent;
     border-color: var(--accent);
-    box-shadow: 0 0 0 3px rgba(10, 132, 255, 0.2);
 }
 
 .search-bar i.fa-search {
@@ -1558,6 +1566,7 @@ body.dark-mode .search-highlight {
     overflow-x: hidden;
     padding: var(--spacing-xl);
     padding-bottom: var(--spacing-xl);
+    min-height: 0; /* Critical: allows flex child to shrink and scroll properly */
 }
 
 .content-section.active {
@@ -3153,7 +3162,7 @@ body.dark-mode .calendar-day-header {
 }
 
 body.dark-mode .calendar-day {
-    background: var(--bg-body);
+    background: var(--bg-surface);
     border-color: var(--border-subtle);
 }
 
@@ -3163,30 +3172,30 @@ body.dark-mode .calendar-day {
 }
 
 body.dark-mode .calendar-day:hover {
-    background: rgba(255, 255, 255, 0.04);
+    background: rgba(255, 255, 255, 0.08);
     border-color: var(--border-medium);
 }
 
 /* Today - Subtle highlight */
 .calendar-day.today {
-    background: rgba(0, 122, 255, 0.03);
+    background: var(--bg-surface);
 }
 
 body.dark-mode .calendar-day.today {
-    background: rgba(10, 132, 255, 0.06);
+    background: var(--bg-surface);
 }
 
 .calendar-day.today .day-number {
     background: var(--accent);
     color: white;
-    width: 24px;
-    height: 24px;
+    width: 28px;
+    height: 28px;
     border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
     font-weight: 600;
-    font-size: 12px;
+    font-size: 13px;
 }
 
 .calendar-day.other-month {
@@ -3195,7 +3204,7 @@ body.dark-mode .calendar-day.today {
 }
 
 body.dark-mode .calendar-day.other-month {
-    background: var(--bg-surface);
+    background: var(--bg-body);
     opacity: 0.3;
 }
 
@@ -3490,11 +3499,11 @@ body.dark-mode .week-time-header {
 }
 
 .week-day-column.today-column {
-    background: rgba(0, 122, 255, 0.03);
+    background: transparent;
 }
 
 body.dark-mode .week-day-column.today-column {
-    background: rgba(10, 132, 255, 0.06);
+    background: transparent;
 }
 
 /* Day header (sticky top) */
@@ -4072,11 +4081,11 @@ body.dark-mode .week-time-scaffold {
 }
 
 .week-day-column.today-column {
-    background: rgba(0, 122, 255, 0.03);
+    background: transparent;
 }
 
 body.dark-mode .week-day-column.today-column {
-    background: rgba(10, 132, 255, 0.06);
+    background: transparent;
 }
 
 /* Day header (sticky top) */
@@ -11766,7 +11775,7 @@ body.dark-mode .color-circle.selected {
 /* Dark mode support for notification preferences */
 body.dark-mode .notification-prefs-section {
     background: var(--dark-card-bg);
-    border-color: var(--dark-border);
+    border: none;
 }
 
 body.dark-mode .notification-prefs-header {
