@@ -1565,7 +1565,7 @@ body.dark-mode .search-highlight {
     overflow-y: auto;
     overflow-x: hidden;
     padding: var(--spacing-xl);
-    padding-bottom: var(--spacing-xl);
+    padding-bottom: 120px; /* Extra padding for calendar scrolling */
     min-height: 0; /* Critical: allows flex child to shrink and scroll properly */
 }
 
@@ -2989,11 +2989,13 @@ body.dark-mode .reaction-chip.user-reacted {
     box-shadow: none;
     border: none;
     height: auto;
-    min-height: calc(100vh - 180px);
-    max-height: calc(100vh - 120px);
+    min-height: 0;
+    max-height: none;
     display: flex;
     flex-direction: column;
+    flex: 1 1 auto;
     overflow: visible;
+    padding-bottom: 120px; /* Ensure bottom rows are visible */
 }
 
 body.dark-mode .calendar-container {
@@ -3031,56 +3033,55 @@ body.dark-mode .calendar-container {
 
 /* View Toggle - macOS Segmented Control */
 .calendar-view-toggle {
-    display: flex;
-    background: var(--light-gray);
-    border-radius: 6px;
-    padding: 2px;
-    gap: 1px;
+    display: inline-flex;
+    background: var(--bg-surface);
+    border-radius: 999px;
+    padding: 4px;
+    gap: 4px;
+    border: 1px solid var(--border-subtle);
 }
 
 body.dark-mode .calendar-view-toggle {
-    background: rgba(255, 255, 255, 0.08);
+    background: var(--bg-surface);
+    border-color: var(--border-subtle);
 }
 
 .view-toggle-btn {
-    padding: 5px 12px;
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 8px 16px;
     border: none;
     background: transparent;
-    border-radius: 5px;
-    cursor: pointer;
-    font-size: 12px;
-    font-weight: 500;
     color: var(--text-muted);
-    transition: all 0.15s ease;
+    font-size: 13px;
+    font-weight: 600;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: all 0.2s ease;
 }
 
 .view-toggle-btn:hover {
     color: var(--text-main);
+    background: var(--bg-body);
 }
 
 .view-toggle-btn.active {
-    background: var(--bg-surface);
-    color: var(--text-main);
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.06);
+    background: rgb(183, 183, 183);
+    color: white;
+    box-shadow: 0 2px 8px rgba(0, 122, 255, 0.25);
 }
 
 body.dark-mode .view-toggle-btn.active {
-    background: rgba(255, 255, 255, 0.12);
-    box-shadow: 0 1px 2px rgba(0, 0, 0, 0.2);
-}
-
-/* Navigation Section */
-.calendar-nav-section {
-    display: flex;
-    align-items: center;
-    gap: 4px;
+    background: var(--accent);
+    box-shadow: 0 2px 8px rgba(0, 122, 255, 0.3);
 }
 
 /* Navigation Buttons */
 .calendar-nav-btn {
-    width: 28px;
-    height: 28px;
-    border-radius: 6px;
+    width: 32px;
+    height: 32px;
+    border-radius: 8px;
     border: none;
     background: transparent;
     color: var(--text-secondary);
@@ -3089,7 +3090,7 @@ body.dark-mode .view-toggle-btn.active {
     align-items: center;
     justify-content: center;
     transition: all 0.15s ease;
-    font-size: 12px;
+    font-size: 14px;
 }
 
 .calendar-nav-btn:hover {
@@ -3110,57 +3111,29 @@ body.dark-mode .calendar-nav-btn:hover {
     color: var(--text-main);
 }
 
-/* Today Button */
-.calendar-today-btn {
-    padding: 5px 12px;
-    border: 1px solid var(--border-subtle);
-    background: var(--bg-surface);
-    border-radius: 6px;
-    cursor: pointer;
-    font-size: 12px;
-    font-weight: 500;
-    color: var(--text-main);
-    transition: all 0.15s ease;
-}
-
-.calendar-today-btn:hover {
-    background: var(--light-gray);
-    border-color: var(--border-medium);
-}
-
-body.dark-mode .calendar-today-btn {
-    background: transparent;
-    border-color: var(--border-subtle);
-}
-
-body.dark-mode .calendar-today-btn:hover {
-    background: rgba(255, 255, 255, 0.08);
-}
-
-/* Add Event Button */
+/* Add Event Button - Blue square like subscription button */
 .calendar-add-btn {
-    width: 28px;
-    height: 28px;
-    border-radius: 6px;
+    width: 36px;
+    height: 36px;
+    border-radius: 50px;
+    background: var(--accent);
+    color: white;
     border: none;
-    background: transparent;
-    color: var(--text-secondary);
     cursor: pointer;
     display: flex;
     align-items: center;
     justify-content: center;
-    transition: all 0.15s ease;
     font-size: 14px;
-    margin-left: 8px;
+    transition: all var(--transition-fast);
 }
 
 .calendar-add-btn:hover {
-    background: var(--light-gray);
-    color: var(--accent);
+    background: #0066dd;
+    transform: scale(1.05);
 }
 
-body.dark-mode .calendar-add-btn:hover {
-    background: rgba(255, 255, 255, 0.1);
+.calendar-add-btn:active {
+    transform: scale(0.95);
 }
 
 /* ===================================
@@ -3172,9 +3145,11 @@ body.dark-mode .calendar-add-btn:hover {
     flex: 1;
     border: none;
     border-radius: 0;
-    overflow: hidden;
+    overflow: visible;
+    min-height: calc(100vh - 280px); /* Ensure full month grid is visible */
     background: transparent;
-    gap: 0;
+    gap: 0px;
+    padding-bottom: 80px; /* Extra breathing room below calendar */
 }
 
 body.dark-mode .calendar-grid {
@@ -3199,13 +3174,11 @@ body.dark-mode .calendar-grid {
     font-size: 11px;
     text-transform: capitalize;
     letter-spacing: 0;
-    border-bottom: 1px solid var(--border-subtle);
 }
 
 body.dark-mode .calendar-day-header {
     background: var(--bg-body);
     color: var(--text-muted);
-    border-bottom-color: var(--border-subtle);
 }
 
 /* Weekend headers - subtle gray background */
@@ -3237,15 +3210,11 @@ body.dark-mode .calendar-day-header:nth-child(7) {
     display: flex;
     flex-direction: column;
     align-items: flex-end;
-    border-right: 1px solid var(--border-subtle);
-    border-bottom: 1px solid var(--border-subtle);
-    border-radius: 0;
+    border: 1px solid var(--border-subtle);
+    border-radius: 0px;
+    background-clip: padding-box;
+    overflow: hidden;
     position: relative;
-}
-
-/* Remove right border on last column */
-.calendar-day:nth-child(7n) {
-    border-right: none;
 }
 
 /* Weekend columns - subtle gray background */
@@ -3265,7 +3234,7 @@ body.dark-mode .calendar-day {
 }
 
 .calendar-day:hover {
-    background: rgba(0, 0, 0, 0.03);
+    background: rgba(0, 0, 0, 0.04);
 }
 
 body.dark-mode .calendar-day:hover {
@@ -4691,7 +4660,7 @@ body.dark-mode .day-event-time {
     .calendar-container {
         padding: 0;
         border-radius: 0;
-        height: calc(100vh - 100px);
+        min-height: calc(100vh - 100px);
     }
     
     .calendar-header {
@@ -5390,15 +5359,24 @@ body.dark-mode .day-event-time {
 /* Spreadsheet Header */
 .spreadsheet-header {
     display: flex;
-    justify-content: space-between;
     align-items: flex-start;
     margin-bottom: 28px;
 }
+.header-toggle-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    margin-top: 16px;
+    width: 100%;
+}
+
 
 .spreadsheet-header-left {
     display: flex;
     flex-direction: column;
     gap: 4px;
+    width: 100%;
 }
 
 .spreadsheet-header h3 {
@@ -9345,7 +9323,7 @@ body.dark-mode .dropdown-menu-option.active {
         overflow-y: auto;
         overflow-x: hidden;
         -webkit-overflow-scrolling: touch;
-        padding-bottom: 80px;
+        padding-bottom: 240px; /* Extra scroll room to avoid cutoff */
     }
     
     #calendar-section .calendar-container {
@@ -16847,6 +16825,7 @@ body.dark-mode .column-drag-handle:hover {
     display: flex;
     flex-direction: column;
     gap: 4px;
+    width: 100%;
 }
 
 .docs-header h3 {

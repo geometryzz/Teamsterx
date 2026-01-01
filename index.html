@@ -543,7 +543,15 @@
                 <div class="calendar-container">
                     <div class="calendar-header">
                         <div class="calendar-title-section">
-                            <h2 class="calendar-title" id="calendarTitle">October 2025</h2>
+                            <div style="display: flex; align-items: center; gap: 12px;">
+                                <button class="calendar-nav-btn" id="prevMonth">
+                                    <i class="fas fa-chevron-left"></i>
+                                </button>
+                                <h2 class="calendar-title" id="calendarTitle">October 2025</h2>
+                                <button class="calendar-nav-btn" id="nextMonth">
+                                    <i class="fas fa-chevron-right"></i>
+                                </button>
+                            </div>
                         </div>
                         
                         <div class="calendar-view-toggle">
@@ -551,18 +559,9 @@
                             <button class="view-toggle-btn active" data-view="month">Month</button>
                         </div>
                         
-                        <div class="calendar-nav-section">
-                            <button class="calendar-nav-btn" id="prevMonth">
-                                <i class="fas fa-chevron-left"></i>
-                            </button>
-                            <button class="calendar-today-btn" id="todayBtn">Today</button>
-                            <button class="calendar-nav-btn" id="nextMonth">
-                                <i class="fas fa-chevron-right"></i>
-                            </button>
-                            <button class="calendar-add-btn" id="addEventBtn" title="Add Event">
-                                <i class="fas fa-plus"></i>
-                            </button>
-                        </div>
+                        <button class="calendar-add-btn" id="addEventBtn" title="Add Event">
+                            <i class="fas fa-plus"></i>
+                        </button>
                     </div>
                     
                     <div class="calendar-grid">
@@ -586,19 +585,21 @@
                     <div class="spreadsheet-header-left">
                         <h3><i class="fas fa-table-cells"></i> Your Sheets</h3>
                         <p class="spreadsheet-subtitle">Organize and track your team's work</p>
-                        <!-- Workspace/Docs Toggle moved below header -->
-                        <div class="sheets-docs-toggle" style="margin-top: 16px;">
-                            <button class="toggle-btn active" data-view="sheets">
-                                <i class="fas fa-table-cells"></i> Workspace
-                            </button>
-                            <button class="toggle-btn" data-view="docs">
-                                <i class="fas fa-file-lines"></i> Docs
+                        <!-- Toggle + Add button on one line (button right-aligned) -->
+                        <div class="header-toggle-row">
+                            <div class="sheets-docs-toggle">
+                                <button class="toggle-btn active" data-view="sheets">
+                                    <i class="fas fa-table-cells"></i> Sheets
+                                </button>
+                                <button class="toggle-btn" data-view="docs">
+                                    <i class="fas fa-file-lines"></i> Docs
+                                </button>
+                            </div>
+                            <button class="btn-primary" id="addTaskBtn">
+                                <i class="fas fa-plus"></i> Add Row
                             </button>
                         </div>
                     </div>
-                    <button class="btn-primary" id="addTaskBtn">
-                        <i class="fas fa-plus"></i> Add Row
-                    </button>
                 </div>
 
                 <!-- Spreadsheet Cards Grid -->
@@ -615,19 +616,21 @@
                     <div class="docs-header-left">
                         <h3><i class="fas fa-file-lines"></i> Your Docs</h3>
                         <p class="docs-subtitle">Create and collaborate on documents</p>
-                        <!-- Workspace/Docs Toggle moved below header -->
-                        <div class="sheets-docs-toggle" style="margin-top: 16px;">
-                            <button class="toggle-btn" data-view="sheets">
-                                <i class="fas fa-table-cells"></i> Workspace
-                            </button>
-                            <button class="toggle-btn active" data-view="docs">
-                                <i class="fas fa-file-lines"></i> Docs
+                        <!-- Toggle + Add button on one line (button right-aligned) -->
+                        <div class="header-toggle-row">
+                            <div class="sheets-docs-toggle">
+                                <button class="toggle-btn" data-view="sheets">
+                                    <i class="fas fa-table-cells"></i> Sheets
+                                </button>
+                                <button class="toggle-btn active" data-view="docs">
+                                    <i class="fas fa-file-lines"></i> Docs
+                                </button>
+                            </div>
+                            <button class="btn-primary" id="createDocBtn">
+                                <i class="fas fa-plus"></i> New Doc
                             </button>
                         </div>
                     </div>
-                    <button class="btn-primary" id="createDocBtn">
-                        <i class="fas fa-plus"></i> New Doc
-                    </button>
                 </div>
 
                 <!-- Doc Cards Grid -->
