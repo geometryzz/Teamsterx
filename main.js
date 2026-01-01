@@ -10039,20 +10039,20 @@ function initTasks() {
                     const range = selection.getRangeAt(0);
                     // Only save if selection is inside the editor
                     if (editor.contains(range.commonAncestorContainer)) {
-                        window._savedRangeForLink = range.cloneRange();
+                        window._savedDocLinkRange = range.cloneRange();
                     } else {
                         // If not in editor, create range at end of editor
                         const newRange = document.createRange();
                         newRange.selectNodeContents(editor);
                         newRange.collapse(false);
-                        window._savedRangeForLink = newRange;
+                        window._savedDocLinkRange = newRange;
                     }
                 } else {
                     // No selection, create range at end of editor
                     const newRange = document.createRange();
                     newRange.selectNodeContents(editor);
                     newRange.collapse(false);
-                    window._savedRangeForLink = newRange;
+                    window._savedDocLinkRange = newRange;
                 }
                 
                 // Now open the modal with the saved range
@@ -11097,7 +11097,7 @@ function initTasks() {
         // CRITICAL: Use the range saved on mousedown (before focus was lost)
         // This is already captured by the button's mousedown handler
         const editor = document.getElementById('docEditor');
-        let range = window._savedRangeForLink;
+        let range = window._savedDocLinkRange;
         
         // If no saved range from mousedown, try current selection
         if (!range) {
@@ -11144,7 +11144,7 @@ function initTasks() {
         document.body.insertAdjacentHTML('beforeend', modalHTML);
         
         // Store range for later
-        window._savedRange = range;
+        window._savedDocLinkRange = range;
         
         // Focus text input
         setTimeout(() => {
@@ -11178,7 +11178,7 @@ function initTasks() {
     window.closeLinkModal = function() {
         document.getElementById('docLinkModal')?.remove();
         document.getElementById('linkModalOverlay')?.remove();
-        window._savedRange = null;
+        window._savedDocLinkRange = null;
     };
     
     window.insertLink = function() {
@@ -11186,6 +11186,12 @@ function initTasks() {
         const urlInput = document.getElementById('linkUrlInput');
         const linkText = textInput?.value.trim() || '';
         let url = urlInput?.value.trim() || '';
+
+        const savedRange = window._savedDocLinkRange;
+        if (!savedRange) {
+            console.error('[insertLink] Missing saved range for link insertion');
+            return;
+        }
         
         if (!url || !linkText) {
             closeLinkModal();
@@ -11197,10 +11203,12 @@ function initTasks() {
             url = 'https://' + url;
         }
         
-        closeLinkModal();
-        
         const editor = document.getElementById('docEditor');
-        if (!editor) return;
+        if (!editor) {
+            closeLinkModal();
+            window._savedDocLinkRange = null;
+            return;
+        }
         
         // Get favicon URL
         let faviconUrl = '';
@@ -11212,53 +11220,48 @@ function initTasks() {
         }
         
         editor.focus();
-        
+
         // Restore selection from saved range - MUST happen after focus
-        const savedRange = window._savedRange;
-        if (savedRange) {
-            try {
-                const selection = window.getSelection();
-                selection.removeAllRanges();
-                selection.addRange(savedRange);
-            } catch (e) {
-                console.warn('[DEBUG insertLink] Could not restore selection:', e);
-                // Fallback: insert at end of editor
-                const selection = window.getSelection();
-                const range = document.createRange();
-                range.selectNodeContents(editor);
-                range.collapse(false);
-                selection.removeAllRanges();
-                selection.addRange(range);
-            }
-        } else {
-            // No saved range - insert at end
-            const selection = window.getSelection();
-            const range = document.createRange();
-            range.selectNodeContents(editor);
-            range.collapse(false);
-            selection.removeAllRanges();
-            selection.addRange(range);
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(savedRange);
+
+        // Build link chip element and insert via the saved range
+        const chip = document.createElement('a');
+        chip.setAttribute('href', url);
+        chip.setAttribute('target', '_blank');
+        chip.setAttribute('rel', 'noopener noreferrer');
+        chip.className = 'doc-chip hydrated';
+        chip.dataset.chipType = 'link';
+        chip.contentEditable = 'false';
+        chip.draggable = true;
+
+        if (faviconUrl) {
+            const icon = document.createElement('img');
+            icon.className = 'chip-favicon';
+            icon.src = faviconUrl;
+            icon.alt = '';
+            icon.onerror = function() {
+                this.style.display = 'none';
+            };
+            chip.appendChild(icon);
         }
-        
-        // Create link chip HTML with a trailing space to allow typing after
-        const chipHTML = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="doc-chip" data-chip-type="link" contenteditable="false" draggable="true"><img src="${escapeHtml(faviconUrl)}" class="chip-favicon" onerror="this.style.display='none'" alt="">${escapeHtml(linkText)}</a>\u200B`;
-        
-        // Insert the chip at cursor position
-        document.execCommand('insertHTML', false, chipHTML);
-        
-        // Mark chip as hydrated and move caret after it
-        const insertedChip = editor.querySelector('.doc-chip[data-chip-type="link"]:not(.hydrated)');
-        if (insertedChip) {
-            insertedChip.classList.add('hydrated');
-            moveCaretAfterElement(insertedChip);
-        }
+
+        chip.appendChild(document.createTextNode(linkText));
+
+        // Insert at the saved range and keep a spacer for continued typing
+        savedRange.deleteContents();
+        savedRange.insertNode(chip);
+        const spacer = document.createTextNode('\u200B');
+        chip.parentNode?.insertBefore(spacer, chip.nextSibling);
+        moveCaretAfterElement(chip);
         
         appState.isDocDirty = true;
         scheduleDocSave();
-        
-        // Clear saved ranges
-        window._savedRange = null;
-        window._savedRangeForLink = null;
+
+        // Clear saved ranges and close modal after insertion
+        window._savedDocLinkRange = null;
+        closeLinkModal();
     };
     
     // ===================================
