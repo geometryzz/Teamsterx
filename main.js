@@ -1915,7 +1915,8 @@ window.switchTab = function(sectionName) {
     
     // Render metrics when navigating to metrics tab
     if (sectionName === 'metrics') {
-        renderMetrics();
+        // Load subscriptions first for MRR chart data
+        loadSubscriptions().then(() => renderMetrics());
     }
     
     // Render finances when navigating to finances tab
@@ -14027,6 +14028,7 @@ function generatePlaceholderTrendData(days, min, max) {
 
 /**
  * Generate MRR trend data (monthly view)
+ * Uses both subscriptions and recurring transactions for comprehensive MRR data
  */
 function generateMRRTrendData() {
     const now = new Date();
@@ -14035,16 +14037,16 @@ function generateMRRTrendData() {
     // Get last 6 months of MRR data
     for (let i = 5; i >= 0; i--) {
         const monthDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0);
         const monthLabel = monthDate.toLocaleDateString('en-US', { month: 'short' });
         
-        // Calculate MRR for that month based on subscriptions
-        const subs = appState.subscriptions || [];
         let monthlyMrr = 0;
         
+        // Calculate MRR from subscriptions
+        const subs = appState.subscriptions || [];
         subs.forEach(sub => {
-            // Check if subscription was active during that month
-            const startDate = sub.startDate?.toDate?.() || new Date(sub.startDate);
-            if (startDate <= monthDate) {
+            const startDate = sub.startDate?.toDate?.() || new Date(sub.startDate || 0);
+            if (startDate <= monthEnd) {
                 const amount = sub.amount || 0;
                 switch (sub.frequency) {
                     case 'monthly': monthlyMrr += amount; break;
@@ -14054,6 +14056,25 @@ function generateMRRTrendData() {
                 }
             }
         });
+        
+        // Also include recurring transactions if no subscriptions
+        if (subs.length === 0) {
+            const transactions = appState.transactions || [];
+            transactions.forEach(t => {
+                if (t.type === 'income' && t.isRecurring) {
+                    const transDate = t.date?.toDate?.() || new Date(t.date || 0);
+                    if (transDate <= monthEnd) {
+                        const amount = t.amount || 0;
+                        switch (t.frequency) {
+                            case 'monthly': monthlyMrr += amount; break;
+                            case 'quarterly': monthlyMrr += amount / 3; break;
+                            case 'yearly': monthlyMrr += amount / 12; break;
+                            default: monthlyMrr += amount;
+                        }
+                    }
+                }
+            });
+        }
         
         data.push({
             label: monthLabel,
@@ -14320,6 +14341,12 @@ let metricsHiddenSections = {
 };
 
 /**
+ * Hidden individual metrics (not removed, just hidden)
+ * Contains array of metric IDs that are hidden
+ */
+let hiddenMetricIds = [];
+
+/**
  * Load metrics section visibility from team settings
  */
 function loadMetricsSectionVisibility() {
@@ -14331,7 +14358,59 @@ function loadMetricsSectionVisibility() {
         teamCharts: visibility.teamCharts === false,
         businessMetrics: visibility.businessMetrics === false
     };
+    
+    // Load hidden metrics
+    hiddenMetricIds = appState.currentTeamData?.settings?.hiddenMetrics || [];
 }
+
+/**
+ * Check if a metric is hidden
+ */
+function isMetricHidden(metricId) {
+    return hiddenMetricIds.includes(metricId);
+}
+
+/**
+ * Toggle individual metric visibility
+ */
+async function toggleMetricVisibility(metricId) {
+    if (!canEditMetrics()) return;
+    
+    const isHidden = hiddenMetricIds.includes(metricId);
+    
+    if (isHidden) {
+        hiddenMetricIds = hiddenMetricIds.filter(id => id !== metricId);
+    } else {
+        hiddenMetricIds.push(metricId);
+    }
+    
+    // Save to Firestore
+    try {
+        const { doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+        const teamRef = doc(db, 'teams', appState.currentTeamId);
+        
+        await updateDoc(teamRef, {
+            'settings.hiddenMetrics': hiddenMetricIds
+        });
+        
+        // Update local state
+        if (!appState.currentTeamData.settings) {
+            appState.currentTeamData.settings = {};
+        }
+        appState.currentTeamData.settings.hiddenMetrics = hiddenMetricIds;
+        
+        const metric = CUSTOM_METRICS_CATALOG[metricId];
+        const metricName = metric?.name || metricId;
+        showToast(isHidden ? `Showing "${metricName}"` : `Hiding "${metricName}"`, 'info');
+        
+        renderMetrics();
+    } catch (error) {
+        console.error('Error toggling metric visibility:', error);
+        showToast('Failed to update visibility', 'error');
+    }
+}
+
+window.toggleMetricVisibility = toggleMetricVisibility;
 
 /**
  * Toggle section visibility
@@ -14882,9 +14961,17 @@ async function saveEnabledMetrics(enabledMetrics) {
  * @param {Object} metric - The metric config from CUSTOM_METRICS_CATALOG
  * @param {number} index - The index in the enabled list
  * @param {number} total - Total number of enabled metrics
+ * @param {boolean} showHidden - Whether to show hidden metrics (in edit mode)
  * @returns {string} HTML string
  */
-function renderCustomMetricCard(metric, index, total) {
+function renderCustomMetricCard(metric, index, total, showHidden = false) {
+    const metricIsHidden = isMetricHidden(metric.id);
+    
+    // If hidden and not in edit mode, don't render
+    if (metricIsHidden && !metricsEditMode) {
+        return '';
+    }
+    
     const data = metric.getValue();
     const hasChartOption = metric.hasChart;
     const currentMode = getMetricDisplayMode(metric.id);
@@ -14897,10 +14984,20 @@ function renderCustomMetricCard(metric, index, total) {
         </button>
     ` : '';
     
+    // Hide/show toggle button
+    const hideToggle = metricsEditMode ? `
+        <button class="metric-edit-btn ${metricIsHidden ? 'hidden-state' : ''}" 
+                onclick="toggleMetricVisibility('${metric.id}')" 
+                title="${metricIsHidden ? 'Show metric' : 'Hide metric'}">
+            <i class="fas fa-${metricIsHidden ? 'eye-slash' : 'eye'}"></i>
+        </button>
+    ` : '';
+    
     const editControls = metricsEditMode ? `
         <div class="metric-edit-overlay">
             <div class="metric-edit-actions">
                 ${displayModeToggle}
+                ${hideToggle}
                 <button class="metric-edit-btn" onclick="reorderCustomMetric('${metric.id}', 'up')" 
                         ${index === 0 ? 'disabled' : ''} title="Move up">
                     <i class="fas fa-chevron-up"></i>
@@ -14917,9 +15014,10 @@ function renderCustomMetricCard(metric, index, total) {
     ` : '';
     
     const tooltipAttr = data.tooltip ? `data-tooltip="${data.tooltip}"` : '';
+    const hiddenClass = metricIsHidden ? 'metric-hidden' : '';
     
     return `
-        <div class="metrics-stat-card custom-metric-card ${metric.color} ${metricsEditMode ? 'edit-mode' : ''}" ${tooltipAttr}>
+        <div class="metrics-stat-card custom-metric-card ${metric.color} ${metricsEditMode ? 'edit-mode' : ''} ${hiddenClass}" ${tooltipAttr}>
             ${editControls}
             <div class="metrics-stat-icon">
                 <i class="fas ${metric.icon}"></i>
@@ -16470,7 +16568,7 @@ function createPieChartFromTrend(data, options = {}) {
  * @param {Array} data - Graph data
  * @param {string} dataType - 'trend' | 'breakdown'
  */
-function createSwitchableGraphCard(graphId, title, icon, data, dataType = 'trend') {
+function createSwitchableGraphCard(graphId, title, icon, data, dataType = 'trend', options = {}) {
     const config = getChartConfig(graphId);
     const currentType = config.type || getGraphType(graphId);
     const graphContent = renderGraphByTypeWithConfig(data, currentType, dataType, config);
@@ -16487,6 +16585,10 @@ function createSwitchableGraphCard(graphId, title, icon, data, dataType = 'trend
         </button>
     ` : '';
     
+    // Get hide toggle from options (for custom metrics)
+    const hideToggle = options.hideToggle || '';
+    const hiddenClass = options.hiddenClass || '';
+    
     // Get the icon for the current graph type
     const graphTypeIcons = {
         'bar': 'fa-chart-bar',
@@ -16496,10 +16598,11 @@ function createSwitchableGraphCard(graphId, title, icon, data, dataType = 'trend
     const currentTypeIcon = graphTypeIcons[currentType] || 'fa-chart-bar';
     
     return `
-        <div class="metrics-card ${showSettings ? 'edit-mode' : ''}" data-graph-id="${graphId}" data-graph-data="${dataJson}" data-graph-data-type="${dataType}">
+        <div class="metrics-card ${showSettings ? 'edit-mode' : ''} ${hiddenClass}" data-graph-id="${graphId}" data-graph-data="${dataJson}" data-graph-data-type="${dataType}">
             <div class="metrics-card-header">
                 <h3><i class="fas ${icon}"></i> ${title}</h3>
                 <div class="graph-header-actions">
+                    ${hideToggle}
                     ${settingsToggleBtn}
                     <div class="graph-menu-container">
                         <button class="graph-menu-btn" onclick="toggleGraphMenu(event, '${graphId}')" aria-label="Change graph type" data-current-type="${currentType}">
@@ -17297,13 +17400,17 @@ function renderMetrics() {
         `;
         
         if (!businessMetricsHidden && enabledMetrics.length > 0) {
-            // Separate metrics by display mode
+            // Separate metrics by display mode, filtering hidden ones unless in edit mode
             const cardMetrics = enabledMetrics.filter(id => {
                 const metric = CUSTOM_METRICS_CATALOG[id];
+                const isHidden = isMetricHidden(id);
+                if (isHidden && !metricsEditMode) return false;
                 return !metric?.hasChart || getMetricDisplayMode(id) === 'card';
             });
             const graphMetrics = enabledMetrics.filter(id => {
                 const metric = CUSTOM_METRICS_CATALOG[id];
+                const isHidden = isMetricHidden(id);
+                if (isHidden && !metricsEditMode) return false;
                 return metric?.hasChart && getMetricDisplayMode(id) === 'graph';
             });
             
@@ -17329,12 +17436,25 @@ function renderMetrics() {
                     const metric = CUSTOM_METRICS_CATALOG[metricId];
                     if (metric && metric.hasChart) {
                         const chartData = metric.chartData();
+                        const metricIsHidden = isMetricHidden(metricId);
+                        const hiddenClass = metricIsHidden ? 'metric-hidden' : '';
+                        
+                        // Add hide toggle for graph cards in edit mode
+                        const graphHideToggle = metricsEditMode ? `
+                            <button class="metric-graph-hide-btn ${metricIsHidden ? 'hidden-state' : ''}" 
+                                    onclick="toggleMetricVisibility('${metricId}')" 
+                                    title="${metricIsHidden ? 'Show metric' : 'Hide metric'}">
+                                <i class="fas fa-${metricIsHidden ? 'eye-slash' : 'eye'}"></i>
+                            </button>
+                        ` : '';
+                        
                         html += createSwitchableGraphCard(
                             `custom-${metric.id || 'metric'}`,
                             `${metric.name}`,
                             metric.icon,
                             chartData,
-                            'trend'
+                            'trend',
+                            { hideToggle: graphHideToggle, hiddenClass }
                         );
                     }
                 });
@@ -17375,6 +17495,9 @@ function renderMetrics() {
     
     // Initialize line chart dot tooltips
     initLineChartTooltips(container);
+    
+    // Initialize pie chart hover effects
+    initPieChartHoverEffects(container);
 }
 
 /**
@@ -17414,6 +17537,66 @@ function initLineChartTooltips(container) {
                 if (tooltip) {
                     tooltip.classList.remove('visible');
                 }
+            });
+        });
+    });
+}
+
+/**
+ * Initialize pie chart hover interactions
+ * Highlights corresponding legend item when a segment is hovered
+ */
+function initPieChartHoverEffects(container) {
+    const pieCharts = container.querySelectorAll('.metrics-pie-chart');
+    
+    pieCharts.forEach(pieChart => {
+        const segments = pieChart.querySelectorAll('.pie-segment');
+        const legendItems = pieChart.querySelectorAll('.pie-legend-item');
+        
+        segments.forEach((segment, index) => {
+            segment.addEventListener('mouseenter', () => {
+                // Highlight corresponding legend item
+                if (legendItems[index]) {
+                    legendItems[index].classList.add('highlighted');
+                }
+            });
+            
+            segment.addEventListener('mouseleave', () => {
+                // Remove highlight from legend item
+                if (legendItems[index]) {
+                    legendItems[index].classList.remove('highlighted');
+                }
+            });
+        });
+        
+        // Also allow legend items to highlight segments
+        legendItems.forEach((legendItem, index) => {
+            legendItem.addEventListener('mouseenter', () => {
+                if (segments[index]) {
+                    segments[index].style.transform = 'scale(1.08)';
+                    segments[index].style.filter = 'brightness(1.15) drop-shadow(0 2px 8px rgba(0, 0, 0, 0.15))';
+                    // Dim other segments
+                    segments.forEach((seg, i) => {
+                        if (i !== index) {
+                            seg.style.opacity = '0.5';
+                            seg.style.filter = 'brightness(0.9)';
+                        }
+                    });
+                }
+                legendItem.classList.add('highlighted');
+            });
+            
+            legendItem.addEventListener('mouseleave', () => {
+                if (segments[index]) {
+                    segments[index].style.transform = '';
+                    segments[index].style.filter = '';
+                    // Restore other segments
+                    segments.forEach(seg => {
+                        seg.style.opacity = '';
+                        seg.style.filter = '';
+                    });
+                }
+                legendItem.classList.remove('highlighted');
             });
         });
     });
