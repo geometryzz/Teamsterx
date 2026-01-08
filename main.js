@@ -4001,9 +4001,10 @@ function initCalendar() {
     loadEventsFromFirestore();
 
     // View toggle handlers (buttons are now in HTML)
-    document.querySelectorAll('.view-toggle-btn').forEach(btn => {
+    const calendarViewButtons = document.querySelectorAll('#calendar-section .calendar-view-toggle .view-toggle-btn');
+    calendarViewButtons.forEach(btn => {
         btn.addEventListener('click', () => {
-            document.querySelectorAll('.view-toggle-btn').forEach(b => b.classList.remove('active'));
+            calendarViewButtons.forEach(b => b.classList.remove('active'));
             btn.classList.add('active');
             const view = btn.dataset.view;
             // Only support month and week for now
@@ -4073,7 +4074,7 @@ function renderCalendar() {
     }
     
     // Update view toggle button states
-    document.querySelectorAll('.view-toggle-btn').forEach(btn => {
+    document.querySelectorAll('#calendar-section .calendar-view-toggle .view-toggle-btn').forEach(btn => {
         btn.classList.toggle('active', btn.dataset.view === appState.calendarView);
     });
     
@@ -4898,11 +4899,20 @@ async function navigateToSpreadsheet(spreadsheetId, options = {}) {
         setTimeout(() => {
             const taskRow = document.querySelector(`tr[data-task-id="${highlightTaskId}"]`);
             if (taskRow) {
-                taskRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                // Scroll within the spreadsheet table container, not the whole page
+                const tableContainer = document.querySelector('.spreadsheet-table-area');
+                if (tableContainer) {
+                    const rowTop = taskRow.offsetTop;
+                    const containerHeight = tableContainer.clientHeight;
+                    const scrollTop = rowTop - (containerHeight / 2) + (taskRow.clientHeight / 2);
+                    tableContainer.scrollTo({ top: Math.max(0, scrollTop), behavior: 'smooth' });
+                } else {
+                    taskRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
                 taskRow.classList.add('highlight-row');
                 setTimeout(() => taskRow.classList.remove('highlight-row'), 2000);
             }
-        }, 300);
+        }, 400);
     }
 }
 
@@ -4912,6 +4922,11 @@ window.navigateToSpreadsheet = navigateToSpreadsheet;
  * Navigate to a task's sheet (calls navigateToSpreadsheet internally)
  */
 window.navigateToTaskSheet = async function(taskId) {
+    // Close search UI
+    if (window.clearSearchUI) {
+        window.clearSearchUI();
+    }
+    
     const task = appState.tasks.find(t => t.id === taskId);
     if (!task) {
         showToast('Task not found', 'error');
@@ -5657,14 +5672,8 @@ function initTasks() {
         document.getElementById('spreadsheetColor').value = spreadsheet.color || '#0070f3';
         
         // Set visibility
-        const visibilityOptions = modal.querySelectorAll('.unified-visibility-option');
-        visibilityOptions.forEach(opt => {
-            const visibility = opt.dataset.visibility;
-            const isSelected = visibility === (spreadsheet.visibility || 'team');
-            opt.classList.toggle('selected', isSelected);
-            const radio = opt.querySelector('input[type=\"radio\"]');
-            if (radio) radio.checked = isSelected;
-        });
+        const visibilityToggle = modal.querySelector('.visibility-toggle[data-target="spreadsheetVisibility"]');
+        setVisibilitySelection(visibilityToggle, spreadsheet.visibility || 'team');
         
         // Store spreadsheet ID for editing
         form.dataset.editingSpreadsheetId = spreadsheet.id;
@@ -9260,23 +9269,16 @@ function initTasks() {
                                     <label class="unified-form-label">
                                         <i class="fas fa-eye"></i> Visibility
                                     </label>
-                                    <div class="unified-visibility-options">
-                                        <label class="unified-visibility-option selected" data-visibility="team">
-                                            <input type="radio" name="spreadsheetVisibility" value="team" checked>
-                                            <div class="unified-visibility-icon"><i class="fas fa-users"></i></div>
-                                            <div class="unified-visibility-text">
-                                                <span class="unified-visibility-title">Team</span>
-                                                <span class="unified-visibility-desc">Visible to all team members</span>
-                                            </div>
-                                        </label>
-                                        <label class="unified-visibility-option" data-visibility="private">
-                                            <input type="radio" name="spreadsheetVisibility" value="private">
-                                            <div class="unified-visibility-icon"><i class="fas fa-lock"></i></div>
-                                            <div class="unified-visibility-text">
-                                                <span class="unified-visibility-title">Private</span>
-                                                <span class="unified-visibility-desc">Only visible to you</span>
-                                            </div>
-                                        </label>
+                                    <div class="calendar-view-toggle visibility-toggle" data-target="spreadsheetVisibility">
+                                        <input type="hidden" name="spreadsheetVisibility" value="team">
+                                        <button type="button" class="view-toggle-btn active" data-visibility="team">
+                                            <i class="fas fa-users"></i>
+                                            <span>Team</span>
+                                        </button>
+                                        <button type="button" class="view-toggle-btn" data-visibility="private">
+                                            <i class="fas fa-lock"></i>
+                                            <span>Private</span>
+                                        </button>
                                     </div>
                                 </div>
                             </div>
@@ -9345,13 +9347,7 @@ function initTasks() {
         }
 
         // Handle visibility selection
-        const visibilityOptions = document.querySelectorAll('.unified-visibility-option');
-        visibilityOptions.forEach(opt => {
-            opt.addEventListener('click', () => {
-                visibilityOptions.forEach(o => o.classList.remove('selected'));
-                opt.classList.add('selected');
-            });
-        });
+        initVisibilityToggles(document.querySelectorAll('#spreadsheetModal .visibility-toggle'));
 
         // Handle form submission
         const form = document.getElementById('spreadsheetForm');
@@ -9371,7 +9367,7 @@ function initTasks() {
                     
                     const icon = document.getElementById('spreadsheetIcon').value;
                     const color = document.getElementById('spreadsheetColor').value;
-                    const visibility = document.querySelector('input[name="spreadsheetVisibility"]:checked').value;
+                    const visibility = getActiveVisibilityValue('spreadsheetVisibility');
                     
                     // Update spreadsheet properties
                     spreadsheet.icon = icon;
@@ -9413,7 +9409,7 @@ function initTasks() {
                     const name = document.getElementById('spreadsheetName').value.trim();
                     const icon = document.getElementById('spreadsheetIcon').value;
                     const color = document.getElementById('spreadsheetColor').value;
-                    const visibility = document.querySelector('input[name="spreadsheetVisibility"]:checked').value;
+                    const visibility = getActiveVisibilityValue('spreadsheetVisibility');
                     const type = document.getElementById('spreadsheetType').value || 'tasks';
 
                     if (!name) {
@@ -11199,9 +11195,33 @@ function initTasks() {
             return;
         }
         
-        // Add https if no protocol
-        if (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('mailto:')) {
-            url = 'https://' + url;
+        // Normalize and validate URL (allow http/https/mailto)
+        const normalizeUrl = (raw) => {
+            if (!raw) return '';
+            const trimmed = raw.trim();
+            if (trimmed.toLowerCase().startsWith('mailto:')) return trimmed;
+            if (!/^https?:\/\//i.test(trimmed)) return `https://${trimmed}`;
+            return trimmed;
+        };
+        const isValidLink = (normalized) => {
+            if (!normalized) return false;
+            if (normalized.toLowerCase().startsWith('mailto:')) {
+                const email = normalized.slice(7);
+                return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+            }
+            try {
+                const parsed = new URL(normalized);
+                return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+            } catch {
+                return false;
+            }
+        };
+
+        url = normalizeUrl(url);
+        if (!isValidLink(url)) {
+            showToast('Please enter a valid link (http, https, or mailto).', 'error');
+            urlInput?.focus();
+            return;
         }
         
         const editor = document.getElementById('docEditor');
@@ -12305,7 +12325,8 @@ function initTasks() {
     window.openDocVisibilityModal = function(doc) {
         const modal = document.getElementById('docVisibilityModal');
         const subtitle = document.getElementById('docVisibilitySubtitle');
-        const options = modal?.querySelectorAll('.visibility-pill-compact');
+        const visibilityToggle = modal?.querySelector('.visibility-toggle');
+        const visibilityButtons = visibilityToggle?.querySelectorAll('.view-toggle-btn');
         const readOnlySection = document.getElementById('docReadOnlySection');
         const readOnlyToggle = document.getElementById('docReadOnlyToggle');
         
@@ -12320,12 +12341,7 @@ function initTasks() {
         
         // Set current visibility selection
         const currentVisibility = doc.visibility || 'team';
-        options?.forEach(option => {
-            const isSelected = option.dataset.visibility === currentVisibility;
-            option.classList.toggle('selected', isSelected);
-            const radio = option.querySelector('input[type=\"radio\"]');
-            if (radio) radio.checked = isSelected;
-        });
+        setVisibilitySelection(visibilityToggle, currentVisibility);
         
         // Show read-only toggle only for doc owner
         const isOwner = doc.createdBy === currentAuthUser?.uid;
@@ -12339,13 +12355,8 @@ function initTasks() {
         }
         
         // Click handlers for visibility options
-        options?.forEach(option => {
-            option.onclick = () => {
-                options.forEach(o => o.classList.remove('selected'));
-                option.classList.add('selected');
-                const radio = option.querySelector('input[type=\"radio\"]');
-                if (radio) radio.checked = true;
-            };
+        visibilityButtons?.forEach(btn => {
+            btn.onclick = () => setVisibilitySelection(visibilityToggle, btn.dataset.visibility || 'team');
         });
         
         modal.style.display = 'flex';
@@ -12362,8 +12373,7 @@ function initTasks() {
         
         if (!docId) return;
         
-        const selectedOption = modal?.querySelector('.visibility-pill-compact.selected');
-        const visibility = selectedOption?.dataset.visibility || 'team';
+        const visibility = getActiveVisibilityValue('docVisibility');
         const readOnlyToggle = document.getElementById('docReadOnlyToggle');
         const isReadOnly = readOnlyToggle?.checked || false;
         
@@ -18191,6 +18201,76 @@ function initModals() {
     const durationText = document.getElementById('durationText');
     const eventColorInput = document.getElementById('eventColor');
     
+    // Custom time dropdowns: hours (0-23) and minutes (0-59)
+    const startHourDropdown = document.getElementById('eventHourDropdown');
+    const startMinuteDropdown = document.getElementById('eventMinuteDropdown');
+    const endHourDropdown = document.getElementById('eventEndHourDropdown');
+    const endMinuteDropdown = document.getElementById('eventEndMinuteDropdown');
+    
+    // Sync start hour dropdown with input
+    if (startHourDropdown && startHourInput) {
+        startHourDropdown.addEventListener('change', function() {
+            if (this.value !== '') {
+                startHourInput.value = this.value;
+                calculateDuration();
+            }
+        });
+        startHourInput.addEventListener('input', function() {
+            const val = parseInt(this.value);
+            if (!isNaN(val) && val >= 0 && val <= 23) {
+                startHourDropdown.value = val.toString();
+            }
+        });
+    }
+    
+    // Sync start minute dropdown with input
+    if (startMinuteDropdown && startMinuteInput) {
+        startMinuteDropdown.addEventListener('change', function() {
+            if (this.value !== '') {
+                startMinuteInput.value = this.value;
+                calculateDuration();
+            }
+        });
+        startMinuteInput.addEventListener('input', function() {
+            const val = parseInt(this.value);
+            if (!isNaN(val) && val >= 0 && val <= 59) {
+                startMinuteDropdown.value = val.toString();
+            }
+        });
+    }
+    
+    // Sync end hour dropdown with input
+    if (endHourDropdown && endHourInput) {
+        endHourDropdown.addEventListener('change', function() {
+            if (this.value !== '') {
+                endHourInput.value = this.value;
+                calculateDuration();
+            }
+        });
+        endHourInput.addEventListener('input', function() {
+            const val = parseInt(this.value);
+            if (!isNaN(val) && val >= 0 && val <= 23) {
+                endHourDropdown.value = val.toString();
+            }
+        });
+    }
+    
+    // Sync end minute dropdown with input
+    if (endMinuteDropdown && endMinuteInput) {
+        endMinuteDropdown.addEventListener('change', function() {
+            if (this.value !== '') {
+                endMinuteInput.value = this.value;
+                calculateDuration();
+            }
+        });
+        endMinuteInput.addEventListener('input', function() {
+            const val = parseInt(this.value);
+            if (!isNaN(val) && val >= 0 && val <= 59) {
+                endMinuteDropdown.value = val.toString();
+            }
+        });
+    }
+    
     // Event color option buttons - updated for unified color picker
     const eventColorOptions = document.querySelectorAll('#eventModal .unified-color-option');
     eventColorOptions.forEach(option => {
@@ -18204,22 +18284,12 @@ function initModals() {
         });
     });
     
-    // Event visibility option buttons
-    const visibilityOptions = document.querySelectorAll('#eventModal .visibility-option');
-    visibilityOptions.forEach(option => {
-        option.addEventListener('click', () => {
-            // Update selected state
-            visibilityOptions.forEach(o => o.classList.remove('selected'));
-            option.classList.add('selected');
-            
-            // Check the corresponding radio
-            const radio = option.querySelector('input[type="radio"]');
-            if (radio) radio.checked = true;
-        });
-    });
+    // Event visibility toggle (calendar-style)
+    const visibilityToggles = document.querySelectorAll('#eventModal .visibility-toggle');
+    initVisibilityToggles(visibilityToggles);
     
     // Event repeat option buttons
-    const repeatOptions = document.querySelectorAll('#eventModal .repeat-option');
+    const repeatOptions = document.querySelectorAll('#eventModal .repeat-chip');
     const repeatHelper = document.getElementById('repeatHelper');
     const repeatHelperText = document.getElementById('repeatHelperText');
     
@@ -18367,8 +18437,7 @@ function initModals() {
         const endTimeStr = `${String(endHour).padStart(2, '0')}:${String(endMinute).padStart(2, '0')}`;
         
         // Get visibility setting
-        const visibilityRadio = document.querySelector('input[name="eventVisibility"]:checked');
-        const visibility = visibilityRadio ? visibilityRadio.value : 'team';
+        const visibility = getActiveVisibilityValue('eventVisibility');
         
         // Get repeat setting
         const repeatRadio = document.querySelector('input[name="eventRepeat"]:checked');
@@ -19026,31 +19095,72 @@ function closeModal(modalId) {
     modal.classList.remove('active');
 }
 
+// Shared visibility toggle helpers (calendar-style segmented control)
+function initVisibilityToggles(toggles) {
+    const targets = toggles ? Array.from(toggles) : Array.from(document.querySelectorAll('.visibility-toggle'));
+    targets.forEach(toggle => {
+        const targetName = toggle.dataset.target;
+        let hiddenInput = targetName ? toggle.querySelector(`input[name="${targetName}"]`) : null;
+        if (!hiddenInput && targetName) {
+            hiddenInput = document.createElement('input');
+            hiddenInput.type = 'hidden';
+            hiddenInput.name = targetName;
+            hiddenInput.value = 'team';
+            toggle.appendChild(hiddenInput);
+        }
+        const buttons = toggle.querySelectorAll('.view-toggle-btn');
+        const activate = (btn) => {
+            buttons.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            const value = btn.dataset.visibility || 'team';
+            if (hiddenInput) hiddenInput.value = value;
+        };
+        buttons.forEach(btn => btn.addEventListener('click', () => activate(btn)));
+        const preset = toggle.querySelector('.view-toggle-btn.active') || Array.from(buttons).find(b => b.dataset.visibility === (hiddenInput?.value || 'team')) || buttons[0];
+        if (preset) activate(preset);
+    });
+}
+
+function setVisibilitySelection(toggle, visibility) {
+    if (!toggle) return;
+    const buttons = toggle.querySelectorAll('.view-toggle-btn');
+    let applied = false;
+    buttons.forEach(btn => {
+        const isSelected = btn.dataset.visibility === visibility;
+        btn.classList.toggle('active', isSelected);
+        if (isSelected) applied = true;
+    });
+    if (!applied && buttons.length) {
+        buttons.forEach(btn => btn.classList.remove('active'));
+        buttons[0].classList.add('active');
+        visibility = buttons[0].dataset.visibility || 'team';
+    }
+    const hiddenInput = toggle.querySelector('input[type="hidden"]');
+    if (hiddenInput) hiddenInput.value = visibility;
+}
+
+function getActiveVisibilityValue(targetName, fallback = 'team') {
+    const toggle = document.querySelector(`.visibility-toggle[data-target="${targetName}"]`);
+    const active = toggle?.querySelector('.view-toggle-btn.active');
+    if (active?.dataset.visibility) return active.dataset.visibility;
+    const hidden = toggle?.querySelector('input[type="hidden"]');
+    return hidden?.value || fallback;
+}
+
 // Reset event visibility selector to default
 function resetEventVisibility() {
-    document.querySelectorAll('.visibility-option').forEach(opt => {
-        opt.classList.remove('selected');
-        if (opt.dataset.visibility === 'team') {
-            opt.classList.add('selected');
-            opt.querySelector('input[type="radio"]').checked = true;
-        } else {
-            opt.querySelector('input[type="radio"]').checked = false;
-        }
+    document.querySelectorAll('#eventModal .visibility-toggle').forEach(toggle => {
+        setVisibilitySelection(toggle, 'team');
     });
 }
 
 // Reset event repeat selector to default
 function resetEventRepeat() {
-    document.querySelectorAll('.repeat-option').forEach(opt => {
-        opt.classList.remove('selected');
-        if (opt.dataset.repeat === 'none') {
-            opt.classList.add('selected');
-            const radio = opt.querySelector('input[type="radio"]');
-            if (radio) radio.checked = true;
-        } else {
-            const radio = opt.querySelector('input[type="radio"]');
-            if (radio) radio.checked = false;
-        }
+    document.querySelectorAll('.repeat-chip').forEach(opt => {
+        const radio = opt.querySelector('input[type="radio"]');
+        const isDefault = opt.dataset.repeat === 'none';
+        opt.classList.toggle('selected', isDefault);
+        if (radio) radio.checked = isDefault;
     });
     const repeatHelper = document.getElementById('repeatHelper');
     if (repeatHelper) repeatHelper.style.display = 'none';
@@ -19058,29 +19168,18 @@ function resetEventRepeat() {
 
 // Set event repeat selector to specific value
 function setEventRepeat(repeat) {
-    document.querySelectorAll('.repeat-option').forEach(opt => {
-        opt.classList.remove('selected');
-        if (opt.dataset.repeat === repeat) {
-            opt.classList.add('selected');
-            const radio = opt.querySelector('input[type="radio"]');
-            if (radio) radio.checked = true;
-        } else {
-            const radio = opt.querySelector('input[type="radio"]');
-            if (radio) radio.checked = false;
-        }
+    document.querySelectorAll('.repeat-chip').forEach(opt => {
+        const radio = opt.querySelector('input[type="radio"]');
+        const isSelected = opt.dataset.repeat === repeat;
+        opt.classList.toggle('selected', isSelected);
+        if (radio) radio.checked = isSelected;
     });
 }
 
 // Set event visibility selector to specific value
 function setEventVisibility(visibility) {
-    document.querySelectorAll('.visibility-option').forEach(opt => {
-        opt.classList.remove('selected');
-        if (opt.dataset.visibility === visibility) {
-            opt.classList.add('selected');
-            opt.querySelector('input[type="radio"]').checked = true;
-        } else {
-            opt.querySelector('input[type="radio"]').checked = false;
-        }
+    document.querySelectorAll('#eventModal .visibility-toggle').forEach(toggle => {
+        setVisibilitySelection(toggle, visibility);
     });
 }
 
@@ -22298,7 +22397,9 @@ function initLeadModalDropdowns() {
     if (statusTrigger && statusMenu && statusInput) {
         statusTrigger.addEventListener('click', (e) => {
             e.stopPropagation();
-            statusMenu.classList.toggle('visible');
+            const show = !statusMenu.classList.contains('visible');
+            statusMenu.classList.toggle('visible', show);
+            statusMenu.style.display = show ? 'block' : 'none';
         });
         
         statusMenu.querySelectorAll('.dropdown-menu-option').forEach(opt => {
@@ -22322,6 +22423,7 @@ function initLeadModalDropdowns() {
                     opt.insertAdjacentHTML('beforeend', '<i class="fas fa-check"></i>');
                 }
                 statusMenu.classList.remove('visible');
+                statusMenu.style.display = 'none';
             });
         });
     }
@@ -22334,7 +22436,9 @@ function initLeadModalDropdowns() {
     if (sourceTrigger && sourceMenu && sourceInput) {
         sourceTrigger.addEventListener('click', (e) => {
             e.stopPropagation();
-            sourceMenu.classList.toggle('visible');
+            const show = !sourceMenu.classList.contains('visible');
+            sourceMenu.classList.toggle('visible', show);
+            sourceMenu.style.display = show ? 'block' : 'none';
         });
         
         sourceMenu.querySelectorAll('.dropdown-menu-option').forEach(opt => {
@@ -22358,6 +22462,7 @@ function initLeadModalDropdowns() {
                     opt.insertAdjacentHTML('beforeend', '<i class="fas fa-check"></i>');
                 }
                 sourceMenu.classList.remove('visible');
+                sourceMenu.style.display = 'none';
             });
         });
     }
@@ -22370,7 +22475,9 @@ function initLeadModalDropdowns() {
     if (spreadsheetTrigger && spreadsheetMenu && spreadsheetInput) {
         spreadsheetTrigger.addEventListener('click', (e) => {
             e.stopPropagation();
-            spreadsheetMenu.classList.toggle('visible');
+            const show = !spreadsheetMenu.classList.contains('visible');
+            spreadsheetMenu.classList.toggle('visible', show);
+            spreadsheetMenu.style.display = show ? 'block' : 'none';
         });
     }
     
@@ -22378,6 +22485,7 @@ function initLeadModalDropdowns() {
     document.addEventListener('click', () => {
         document.querySelectorAll('#leadModal .custom-dropdown-menu').forEach(m => {
             m.classList.remove('visible');
+            m.style.display = 'none';
         });
     });
 }
@@ -22425,6 +22533,7 @@ function populateLeadSpreadsheetDropdown() {
                 if (label) label.textContent = spreadsheet.name;
             }
             menu.classList.remove('visible');
+            menu.style.display = 'none';
         });
     });
 }
@@ -22686,7 +22795,7 @@ function performSearch(query) {
         html += '<div class="search-section-title"><i class="fas fa-table-list"></i> Sheets</div>';
         results.tasks.forEach(task => {
             html += `
-                <div class="search-result-item" data-index="${resultIndex}" data-type="navigation" onclick="executeSearchResult(null, 'navigation', 'tasks', 'tasks-section')">
+                <div class="search-result-item" data-index="${resultIndex}" data-type="navigation" onclick="navigateToTaskSheet('${task.id}')">
                     <div class="search-result-icon"><i class="fas fa-check-circle"></i></div>
                     <div class="search-result-content">
                         <div class="search-result-title">${escapeHtml(task.title)}</div>
@@ -28968,11 +29077,35 @@ function getCategoryLabel(value) {
  * Render the finances section with two-column layout
  */
 function renderFinances() {
-    const metrics = calculateFinanceMetrics(appState.transactions);
+    // Inject company subscriptions as virtual expense rows (private stays hidden)
+    const subscriptionExpenses = (appState.subscriptions || [])
+        .filter(sub => sub.type === 'company')
+        .map(sub => {
+            const subDate = sub.nextPayDate?.toDate?.() || new Date(sub.nextPayDate || Date.now());
+            return {
+            id: `sub-${sub.id}`,
+            type: 'expense',
+            amount: sub.amount || 0,
+            party: sub.vendor || sub.name || 'Subscription',
+            description: sub.name ? `Subscription · ${sub.name}` : 'Subscription',
+            category: sub.category || 'subscriptions',
+            date: subDate,
+            frequency: sub.frequency || 'monthly',
+            isRecurring: true,
+            notes: sub.notes || '',
+            createdBy: sub.createdBy,
+            createdAt: sub.createdAt,
+            isSubscription: true,
+            subscriptionId: sub.id
+            };
+        });
+
+    const combinedTransactions = [...appState.transactions, ...subscriptionExpenses];
+    const metrics = calculateFinanceMetrics(combinedTransactions);
     
     // Separate transactions by type
     const revenueTransactions = appState.transactions.filter(t => t.type === 'income');
-    const expenseTransactions = appState.transactions.filter(t => t.type === 'expense');
+    const expenseTransactions = combinedTransactions.filter(t => t.type === 'expense');
     
     // Sort by date descending
     revenueTransactions.sort((a, b) => {
@@ -29022,8 +29155,8 @@ function renderFinances() {
     if (addRevenueBtn) addRevenueBtn.style.display = canEditFinances ? 'inline-flex' : 'none';
     if (addExpenseBtn) addExpenseBtn.style.display = canEditFinances ? 'inline-flex' : 'none';
     
-    // Check if there are any transactions at all
-    const hasAnyTransactions = appState.transactions.length > 0;
+    // Check if there are any transactions (including subscription expenses)
+    const hasAnyTransactions = combinedTransactions.length > 0;
     const financesContent = document.getElementById('financesContent');
     const financesPlaceholder = document.getElementById('financesPlaceholder');
     
@@ -29129,6 +29262,25 @@ function renderFinances() {
     });
 }
 
+// Ensure dropdown clicks register and close properly (settings, notifications, custom selects)
+function initDropdownGuards() {
+    const closeDropdowns = () => {
+        document.querySelectorAll('.settings-dropdown, .notifications-dropdown, .custom-dropdown-options, .mention-dropdown, .doc-format-dropdown, .global-search-dropdown')
+            .forEach(dd => {
+                dd.classList.remove('active', 'visible');
+                dd.style.display = 'none';
+            });
+    };
+
+    document.addEventListener('click', (e) => {
+        const option = e.target.closest('.dropdown-item, .custom-dropdown-option, .settings-dropdown .dropdown-item, .notifications-dropdown .dropdown-item, .doc-format-option, .mention-option, .global-search-result, .dropdown-menu-option');
+        if (option) {
+            // Allow primary click handlers to run first
+            setTimeout(closeDropdowns, 0);
+        }
+    });
+}
+
 /**
  * Toggle See All/Show Less for finance transaction columns
  */
@@ -29152,6 +29304,7 @@ window.toggleSeeAll = function(column) {
  */
 function renderTransactionRow(transaction, canEdit = true) {
     const t = transaction;
+    const isSubscription = t.isSubscription === true;
     const transactionDate = t.date?.toDate?.() || new Date(t.date);
     // Short date format: Dec 13
     const shortDateStr = transactionDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -29181,11 +29334,12 @@ function renderTransactionRow(transaction, canEdit = true) {
         : escapeHtml(t.description);
     
     return `
-        <div class="transaction-row" data-id="${t.id}">
+        <div class="transaction-row ${isSubscription ? 'transaction-row-subscription' : ''}" data-id="${t.id}">
             <div class="transaction-row-main">
                 <div class="transaction-col-amount">
                     <span class="transaction-amount ${t.type}">${isIncome ? '+' : '-'}${formatCurrency(t.amount)}</span>
                     ${t.isRecurring ? `<span class="transaction-recurring-indicator" title="Recurring ${t.frequency}"><i class="fas fa-sync-alt"></i></span>` : ''}
+                    ${isSubscription ? '<span class="transaction-badge">Subscription</span>' : ''}
                 </div>
                 <div class="transaction-col-from-to">
                     <span class="transaction-from-to">${fromToDisplay}</span>
@@ -29243,12 +29397,21 @@ function renderTransactionRow(transaction, canEdit = true) {
                 </div>
                 ${canEdit ? `
                 <div class="transaction-row-actions">
-                    <button class="btn-sm btn-edit" onclick="event.stopPropagation(); editTransaction('${t.id}')">
-                        <i class="fas fa-pen"></i> Edit
-                    </button>
-                    <button class="btn-sm btn-delete" onclick="event.stopPropagation(); openDeleteTransactionModal('${t.id}')">
-                        <i class="fas fa-trash"></i> Delete
-                    </button>
+                    ${isSubscription ? `
+                        <button class="btn-sm btn-edit" onclick="event.stopPropagation(); editSubscription('${t.subscriptionId}')">
+                            <i class="fas fa-pen"></i> Manage
+                        </button>
+                        <button class="btn-sm btn-delete" onclick="event.stopPropagation(); openDeleteSubscriptionModal('${t.subscriptionId}')">
+                            <i class="fas fa-trash"></i> Delete
+                        </button>
+                    ` : `
+                        <button class="btn-sm btn-edit" onclick="event.stopPropagation(); editTransaction('${t.id}')">
+                            <i class="fas fa-pen"></i> Edit
+                        </button>
+                        <button class="btn-sm btn-delete" onclick="event.stopPropagation(); openDeleteTransactionModal('${t.id}')">
+                            <i class="fas fa-trash"></i> Delete
+                        </button>
+                    `}
                 </div>
                 ` : ''}
             </div>
@@ -29341,10 +29504,16 @@ async function loadSubscriptions() {
         const q = query(subscriptionsRef, orderBy('nextPayDate', 'asc'));
         const snapshot = await getDocs(q);
         
-        appState.subscriptions = snapshot.docs.map(doc => ({
+        const rawSubs = snapshot.docs.map(doc => ({
             id: doc.id,
             ...doc.data()
         }));
+        // Privacy: only show private subscriptions created by the current user
+        appState.subscriptions = rawSubs.filter(sub => {
+            if (sub.type !== 'private') return true;
+            if (!sub.createdBy) return false; // safest default for legacy records
+            return sub.createdBy === currentAuthUser?.uid;
+        });
         
         debugLog('📅 Loaded subscriptions:', appState.subscriptions.length);
         renderSubscriptions();
@@ -30136,6 +30305,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     initLinkLobby(); // Initialize Link Lobby
     initFinances(); // Initialize Finances tab
     initSubscriptionEventListeners(); // Initialize Subscriptions
+    initDropdownGuards(); // Ensure dropdown options close on selection
     initDocsModule(); // Initialize Docs feature
     initGlobalKeyboardShortcuts(); // Initialize keyboard shortcuts (t/e/m//)
     startActivityRefreshTimer(); // Start periodic refresh of activity times

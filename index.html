@@ -237,7 +237,7 @@
                     <div class="overview-section-header">
                         <h2><i class="fas fa-link"></i> Link Lobby</h2>
                         <button class="btn-primary btn-sm" id="addLinkGroupBtn">
-                            <i class="fas fa-plus"></i> + Group
+                            <i class="fas fa-plus"></i> Group
                         </button>
                     </div>
                     <div class="link-lobby-container" id="linkLobbyContainer">
@@ -249,7 +249,7 @@
                             <h3>No link groups yet</h3>
                             <p>Create a group to start organizing your links</p>
                             <button class="btn-primary" onclick="openAddGroupModal()">
-                                <i class="fas fa-plus"></i> + Group
+                                <i class="fas fa-plus"></i> Group
                             </button>
                         </div>
                     </div>
@@ -964,7 +964,7 @@
                             <i class="fas fa-coins"></i>
                             <p>No revenue recorded yet</p>
                             <button class="btn-text income" id="addFirstRevenueBtn">
-                                <i class="fas fa-plus"></i> + Revenue
+                                <i class="fas fa-plus"></i> Revenue
                             </button>
                         </div>
                     </div>
@@ -994,7 +994,7 @@
                             <i class="fas fa-receipt"></i>
                             <p>No expenses recorded yet</p>
                             <button class="btn-text expense" id="addFirstExpenseBtn">
-                                <i class="fas fa-plus"></i> + Expense
+                                <i class="fas fa-plus"></i> Expense
                             </button>
                         </div>
                     </div>
@@ -1040,7 +1040,7 @@
                         <i class="fas fa-calendar-check"></i>
                         <p>No subscriptions yet</p>
                         <button class="add-row-btn" id="addFirstSubscriptionBtn">
-                            <i class="fas fa-plus"></i> + Subscription
+                            <i class="fas fa-plus"></i> Subscription
                         </button>
                     </div>
                 </div>
@@ -1054,10 +1054,10 @@
                     <p>Start tracking your finances by adding your first transaction.</p>
                     <div class="placeholder-actions">
                         <button class="btn-primary income" id="addFirstTransactionBtnRevenue">
-                            <i class="fas fa-plus"></i> + Revenue
+                            <i class="fas fa-plus"></i> Revenue
                         </button>
                         <button class="btn-secondary expense" id="addFirstTransactionBtnExpense">
-                            <i class="fas fa-plus"></i> + Expense
+                            <i class="fas fa-plus"></i> Expense
                         </button>
                     </div>
                 </div>
@@ -1716,9 +1716,99 @@
                                 Start Time <span class="required">*</span>
                             </label>
                             <div class="unified-time-input">
-                                <input type="number" id="eventHour" min="0" max="23" placeholder="09" required>
+                                <input type="number" id="eventHour" min="0" max="23" placeholder="09" required style="width: 48px; display: inline-block;">
                                 <span>:</span>
-                                <input type="number" id="eventMinute" min="0" max="59" placeholder="00" required>
+                                <input type="number" id="eventMinute" min="0" max="59" placeholder="00" required style="width: 48px; display: inline-block;">
+                                <select id="eventHourDropdown" class="custom-time-select">
+                                    <option value="">hr</option>
+                                    <option value="0">00</option>
+                                    <option value="1">01</option>
+                                    <option value="2">02</option>
+                                    <option value="3">03</option>
+                                    <option value="4">04</option>
+                                    <option value="5">05</option>
+                                    <option value="6">06</option>
+                                    <option value="7">07</option>
+                                    <option value="8">08</option>
+                                    <option value="9">09</option>
+                                    <option value="10">10</option>
+                                    <option value="11">11</option>
+                                    <option value="12">12</option>
+                                    <option value="13">13</option>
+                                    <option value="14">14</option>
+                                    <option value="15">15</option>
+                                    <option value="16">16</option>
+                                    <option value="17">17</option>
+                                    <option value="18">18</option>
+                                    <option value="19">19</option>
+                                    <option value="20">20</option>
+                                    <option value="21">21</option>
+                                    <option value="22">22</option>
+                                    <option value="23">23</option>
+                                </select>
+                                <select id="eventMinuteDropdown" class="custom-time-select">
+                                    <option value="">min</option>
+                                    <option value="0">00</option>
+                                    <option value="1">01</option>
+                                    <option value="2">02</option>
+                                    <option value="3">03</option>
+                                    <option value="4">04</option>
+                                    <option value="5">05</option>
+                                    <option value="6">06</option>
+                                    <option value="7">07</option>
+                                    <option value="8">08</option>
+                                    <option value="9">09</option>
+                                    <option value="10">10</option>
+                                    <option value="11">11</option>
+                                    <option value="12">12</option>
+                                    <option value="13">13</option>
+                                    <option value="14">14</option>
+                                    <option value="15">15</option>
+                                    <option value="16">16</option>
+                                    <option value="17">17</option>
+                                    <option value="18">18</option>
+                                    <option value="19">19</option>
+                                    <option value="20">20</option>
+                                    <option value="21">21</option>
+                                    <option value="22">22</option>
+                                    <option value="23">23</option>
+                                    <option value="24">24</option>
+                                    <option value="25">25</option>
+                                    <option value="26">26</option>
+                                    <option value="27">27</option>
+                                    <option value="28">28</option>
+                                    <option value="29">29</option>
+                                    <option value="30">30</option>
+                                    <option value="31">31</option>
+                                    <option value="32">32</option>
+                                    <option value="33">33</option>
+                                    <option value="34">34</option>
+                                    <option value="35">35</option>
+                                    <option value="36">36</option>
+                                    <option value="37">37</option>
+                                    <option value="38">38</option>
+                                    <option value="39">39</option>
+                                    <option value="40">40</option>
+                                    <option value="41">41</option>
+                                    <option value="42">42</option>
+                                    <option value="43">43</option>
+                                    <option value="44">44</option>
+                                    <option value="45">45</option>
+                                    <option value="46">46</option>
+                                    <option value="47">47</option>
+                                    <option value="48">48</option>
+                                    <option value="49">49</option>
+                                    <option value="50">50</option>
+                                    <option value="51">51</option>
+                                    <option value="52">52</option>
+                                    <option value="53">53</option>
+                                    <option value="54">54</option>
+                                    <option value="55">55</option>
+                                    <option value="56">56</option>
+                                    <option value="57">57</option>
+                                    <option value="58">58</option>
+                                    <option value="59">59</option>
+                                </select>
                             </div>
                         </div>
                         
@@ -1728,9 +1818,99 @@
                                 End Time <span class="required">*</span>
                             </label>
                             <div class="unified-time-input">
-                                <input type="number" id="eventEndHour" min="0" max="23" placeholder="17" required>
+                                <input type="number" id="eventEndHour" min="0" max="23" placeholder="17" required style="width: 48px; display: inline-block;">
                                 <span>:</span>
-                                <input type="number" id="eventEndMinute" min="0" max="59" placeholder="00" required>
+                                <input type="number" id="eventEndMinute" min="0" max="59" placeholder="00" required style="width: 48px; display: inline-block;">
+                                <select id="eventEndHourDropdown" class="custom-time-select">
+                                    <option value="">hr</option>
+                                    <option value="0">00</option>
+                                    <option value="1">01</option>
+                                    <option value="2">02</option>
+                                    <option value="3">03</option>
+                                    <option value="4">04</option>
+                                    <option value="5">05</option>
+                                    <option value="6">06</option>
+                                    <option value="7">07</option>
+                                    <option value="8">08</option>
+                                    <option value="9">09</option>
+                                    <option value="10">10</option>
+                                    <option value="11">11</option>
+                                    <option value="12">12</option>
+                                    <option value="13">13</option>
+                                    <option value="14">14</option>
+                                    <option value="15">15</option>
+                                    <option value="16">16</option>
+                                    <option value="17">17</option>
+                                    <option value="18">18</option>
+                                    <option value="19">19</option>
+                                    <option value="20">20</option>
+                                    <option value="21">21</option>
+                                    <option value="22">22</option>
+                                    <option value="23">23</option>
+                                </select>
+                                <select id="eventEndMinuteDropdown" class="custom-time-select">
+                                    <option value="">min</option>
+                                    <option value="0">00</option>
+                                    <option value="1">01</option>
+                                    <option value="2">02</option>
+                                    <option value="3">03</option>
+                                    <option value="4">04</option>
+                                    <option value="5">05</option>
+                                    <option value="6">06</option>
+                                    <option value="7">07</option>
+                                    <option value="8">08</option>
+                                    <option value="9">09</option>
+                                    <option value="10">10</option>
+                                    <option value="11">11</option>
+                                    <option value="12">12</option>
+                                    <option value="13">13</option>
+                                    <option value="14">14</option>
+                                    <option value="15">15</option>
+                                    <option value="16">16</option>
+                                    <option value="17">17</option>
+                                    <option value="18">18</option>
+                                    <option value="19">19</option>
+                                    <option value="20">20</option>
+                                    <option value="21">21</option>
+                                    <option value="22">22</option>
+                                    <option value="23">23</option>
+                                    <option value="24">24</option>
+                                    <option value="25">25</option>
+                                    <option value="26">26</option>
+                                    <option value="27">27</option>
+                                    <option value="28">28</option>
+                                    <option value="29">29</option>
+                                    <option value="30">30</option>
+                                    <option value="31">31</option>
+                                    <option value="32">32</option>
+                                    <option value="33">33</option>
+                                    <option value="34">34</option>
+                                    <option value="35">35</option>
+                                    <option value="36">36</option>
+                                    <option value="37">37</option>
+                                    <option value="38">38</option>
+                                    <option value="39">39</option>
+                                    <option value="40">40</option>
+                                    <option value="41">41</option>
+                                    <option value="42">42</option>
+                                    <option value="43">43</option>
+                                    <option value="44">44</option>
+                                    <option value="45">45</option>
+                                    <option value="46">46</option>
+                                    <option value="47">47</option>
+                                    <option value="48">48</option>
+                                    <option value="49">49</option>
+                                    <option value="50">50</option>
+                                    <option value="51">51</option>
+                                    <option value="52">52</option>
+                                    <option value="53">53</option>
+                                    <option value="54">54</option>
+                                    <option value="55">55</option>
+                                    <option value="56">56</option>
+                                    <option value="57">57</option>
+                                    <option value="58">58</option>
+                                    <option value="59">59</option>
+                                </select>
                             </div>
                         </div>
                         
@@ -1757,26 +1937,31 @@
                             <label class="unified-form-label">
                                 <i class="fas fa-redo"></i> Repeat
                             </label>
-                            <div class="repeat-selector">
-                                <label class="repeat-option selected" data-repeat="none">
+                            <div class="repeat-selector repeat-grid">
+                                <label class="repeat-chip selected" data-repeat="none">
                                     <input type="radio" name="eventRepeat" value="none" checked>
-                                    <span class="repeat-label">Does not repeat</span>
+                                    <span class="repeat-chip-icon"><i class="fas fa-ban"></i></span>
+                                    <span class="repeat-chip-title">One-time</span>
                                 </label>
-                                <label class="repeat-option" data-repeat="daily">
+                                <label class="repeat-chip" data-repeat="daily">
                                     <input type="radio" name="eventRepeat" value="daily">
-                                    <span class="repeat-label">Daily</span>
+                                    <span class="repeat-chip-icon"><i class="fas fa-sun"></i></span>
+                                    <span class="repeat-chip-title">Daily</span>
                                 </label>
-                                <label class="repeat-option" data-repeat="weekly">
+                                <label class="repeat-chip" data-repeat="weekly">
                                     <input type="radio" name="eventRepeat" value="weekly">
-                                    <span class="repeat-label">Weekly</span>
+                                    <span class="repeat-chip-icon"><i class="fas fa-calendar-week"></i></span>
+                                    <span class="repeat-chip-title">Weekly</span>
                                 </label>
-                                <label class="repeat-option" data-repeat="monthly">
+                                <label class="repeat-chip" data-repeat="monthly">
                                     <input type="radio" name="eventRepeat" value="monthly">
-                                    <span class="repeat-label">Monthly</span>
+                                    <span class="repeat-chip-icon"><i class="fas fa-calendar-alt"></i></span>
+                                    <span class="repeat-chip-title">Monthly</span>
                                 </label>
-                                <label class="repeat-option" data-repeat="yearly">
+                                <label class="repeat-chip" data-repeat="yearly">
                                     <input type="radio" name="eventRepeat" value="yearly">
-                                    <span class="repeat-label">Yearly</span>
+                                    <span class="repeat-chip-icon"><i class="fas fa-infinity"></i></span>
+                                    <span class="repeat-chip-title">Yearly</span>
                                 </label>
                             </div>
                             <div class="repeat-helper" id="repeatHelper" style="display: none;">
@@ -1790,31 +1975,16 @@
                             <label class="unified-form-label">
                                 <i class="fas fa-eye"></i> Visibility
                             </label>
-                            <div class="visibility-selector">
-                                <label class="visibility-option selected" data-visibility="team">
-                                    <input type="radio" name="eventVisibility" value="team" checked>
-                                    <div class="visibility-icon"><i class="fas fa-users"></i></div>
-                                    <div class="visibility-text">
-                                        <span class="visibility-name">Team</span>
-                                        <span class="visibility-desc">All team members</span>
-                                    </div>
-                                </label>
-                                <label class="visibility-option" data-visibility="admins">
-                                    <input type="radio" name="eventVisibility" value="admins">
-                                    <div class="visibility-icon admins"><i class="fas fa-shield-alt"></i></div>
-                                    <div class="visibility-text">
-                                        <span class="visibility-name">Admins</span>
-                                        <span class="visibility-desc">Admins & owner only</span>
-                                    </div>
-                                </label>
-                                <label class="visibility-option" data-visibility="private">
-                                    <input type="radio" name="eventVisibility" value="private">
-                                    <div class="visibility-icon private"><i class="fas fa-lock"></i></div>
-                                    <div class="visibility-text">
-                                        <span class="visibility-name">Private</span>
-                                        <span class="visibility-desc">Only you</span>
-                                    </div>
-                                </label>
+                            <div class="calendar-view-toggle visibility-toggle" data-target="eventVisibility">
+                                <input type="hidden" name="eventVisibility" value="team">
+                                <button type="button" class="view-toggle-btn active" data-visibility="team">
+                                    <i class="fas fa-users"></i>
+                                    <span>Team</span>
+                                </button>
+                                <button type="button" class="view-toggle-btn" data-visibility="private">
+                                    <i class="fas fa-lock"></i>
+                                    <span>Private</span>
+                                </button>
                             </div>
                         </div>
                         
@@ -2862,19 +3032,16 @@
             </button>
             <h3 class="visibility-modal-title">Visibility</h3>
             <p class="visibility-modal-subtitle" id="docVisibilitySubtitle">Who can see this document</p>
-            <div class="visibility-pills-compact">
-                <label class="visibility-pill-compact selected" data-visibility="team">
-                    <input type="radio" name="docVisibility" value="team" checked>
-                    <div class="visibility-pill-icon-sm"><i class="fas fa-users"></i></div>
-                    <span class="visibility-pill-label">Team</span>
-                    <div class="visibility-pill-check-sm"><i class="fas fa-check"></i></div>
-                </label>
-                <label class="visibility-pill-compact" data-visibility="private">
-                    <input type="radio" name="docVisibility" value="private">
-                    <div class="visibility-pill-icon-sm"><i class="fas fa-lock"></i></div>
-                    <span class="visibility-pill-label">Private</span>
-                    <div class="visibility-pill-check-sm"><i class="fas fa-check"></i></div>
-                </label>
+            <div class="calendar-view-toggle visibility-toggle" data-target="docVisibility">
+                <input type="hidden" name="docVisibility" value="team">
+                <button type="button" class="view-toggle-btn active" data-visibility="team">
+                    <i class="fas fa-users"></i>
+                    <span>Team</span>
+                </button>
+                <button type="button" class="view-toggle-btn" data-visibility="private">
+                    <i class="fas fa-lock"></i>
+                    <span>Private</span>
+                </button>
             </div>
             <!-- Read-Only Toggle (owner only) -->
             <div class="doc-readonly-section" id="docReadOnlySection" style="display: none;">
