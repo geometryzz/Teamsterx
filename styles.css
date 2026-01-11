@@ -9223,6 +9223,7 @@ body.dark-mode .dropdown-menu-option.active {
    MOBILE LAYOUT (768px and below)
    =================================== */
 @media (max-width: 768px) {
+    /* FINANCE: Stack columns vertically on mobile */
     .finances-columns {
         grid-template-columns: 1fr;
         gap: 16px;
@@ -9233,6 +9234,117 @@ body.dark-mode .dropdown-menu-option.active {
     }
 
     .finance-column .column-icon {
+        display: none;
+    }
+
+    /* FINANCE METRICS: 2x2 grid on mobile, smaller cards */
+    .finances-metrics-row {
+        grid-template-columns: repeat(2, 1fr);
+        gap: 10px;
+        margin-bottom: 16px;
+    }
+
+    .finance-metric-card {
+        padding: 12px;
+        gap: 10px;
+        flex-direction: column;
+        align-items: flex-start;
+    }
+
+    .finance-metric-icon {
+        width: 32px;
+        height: 32px;
+        font-size: 14px;
+    }
+
+    .finance-metric-value {
+        font-size: 18px;
+    }
+
+    .finance-metric-label {
+        font-size: 10px;
+    }
+
+    .finance-metric-sub {
+        display: none;
+    }
+
+    /* SUBSCRIPTIONS: Simplified row on mobile */
+    .subscriptions-section {
+        padding: 12px;
+        margin-top: 16px;
+    }
+
+    .subscriptions-header {
+        margin-bottom: 12px;
+    }
+
+    .subscriptions-icon {
+        width: 32px;
+        height: 32px;
+        font-size: 14px;
+    }
+
+    .subscriptions-title h2 {
+        font-size: 15px;
+    }
+
+    .subscription-row {
+        padding: 12px;
+        gap: 10px;
+        border-radius: 12px;
+    }
+
+    .subscription-info {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .subscription-logo {
+        width: 32px;
+        height: 32px;
+        font-size: 14px;
+    }
+
+    .subscription-details {
+        flex: 1;
+        min-width: 0;
+    }
+
+    .subscription-name {
+        font-size: 13px;
+    }
+
+    /* Hide extra meta info on mobile subscriptions */
+    .subscription-meta {
+        display: none;
+    }
+
+    .subscription-amount-col {
+        gap: 4px;
+    }
+
+    .subscription-amount {
+        font-size: 14px;
+    }
+
+    .subscription-frequency {
+        font-size: 10px;
+    }
+
+    .subscription-actions {
+        margin-left: 8px;
+        gap: 2px;
+    }
+
+    .subscription-action-btn {
+        width: 28px;
+        height: 28px;
+        font-size: 12px;
+    }
+
+    /* Hide link button, keep only edit/delete */
+    .subscription-action-btn.link {
         display: none;
     }
 
@@ -9279,13 +9391,14 @@ body.dark-mode .dropdown-menu-option.active {
         border-radius: 0;
         padding: 0;
         padding-bottom: env(safe-area-inset-bottom); /* iOS home indicator safe area */
-        z-index: 1200;
+        z-index: 9000; /* High z-index to stay above content but below modals */
         background: var(--bg-surface-soft);
         backdrop-filter: blur(20px);
         -webkit-backdrop-filter: blur(20px);
         box-shadow: 0 -4px 24px rgba(0, 0, 0, 0.08);
         /* Always visible on mobile - no scroll-triggered visibility */
         display: flex !important;
+        transform: translateZ(0); /* Force GPU layer for smooth sticky behavior */
     }
     
     /* Hide sidebar header on mobile */
@@ -26618,30 +26731,7 @@ body.dark-mode .toggle-slider {
     margin-top: 6px;
 }
 
-/* Subscription Responsive */
-@media (max-width: 768px) {
-    .subscriptions-section {
-        padding: 16px;
-        margin-top: 20px;
-    }
-    
-    .subscription-row {
-        flex-wrap: wrap;
-        gap: 12px;
-    }
-    
-    .subscription-info {
-        width: 100%;
-    }
-    
-    .subscription-amount-col {
-        margin-left: auto;
-    }
-    
-    .subscription-actions {
-        margin-left: auto;
-    }
-}
+/* Subscription Responsive - handled in main mobile section */
 
 /* Dark Mode Subscriptions */
 body.dark-mode .subscriptions-section {
@@ -27529,5 +27619,268 @@ button span + i,
     .team-code-section button,
     .join-team-section button {
         width: 100%;
+    }
+}
+/* ===================================
+   MOBILE MODAL IMPROVEMENTS
+   Ensure CTAs visible above bottom navbar
+   =================================== */
+@media (max-width: 768px) {
+    /* Modal stays above bottom navbar */
+    .modal {
+        z-index: 99999;
+        padding-bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom) + 16px);
+    }
+
+    /* Modal content adjustment for mobile */
+    .modal-content,
+    .task-modal-content,
+    .unified-modal-container {
+        max-height: calc(100vh - var(--bottom-nav-height) - env(safe-area-inset-bottom) - 32px);
+        margin-bottom: auto;
+    }
+
+    /* Ensure modal footers/actions are always visible */
+    .modal-actions,
+    .task-modal-actions,
+    .unified-modal-footer,
+    .modal-footer {
+        position: sticky;
+        bottom: 0;
+        background: var(--bg-surface);
+        padding: 12px 16px;
+        margin: 0 -16px -16px -16px;
+        border-top: 1px solid var(--border-subtle);
+        z-index: 10;
+    }
+
+    /* Hide bottom navbar when modal is open */
+    body.modal-open .sidebar {
+        display: none !important;
+    }
+
+    /* Overview section compact spacing */
+    .overview-stats {
+        gap: 10px;
+        margin-bottom: 16px;
+    }
+
+    .stat-card {
+        padding: 12px;
+        gap: 10px;
+        border-radius: 12px;
+    }
+
+    .stat-icon {
+        width: 36px;
+        height: 36px;
+        font-size: 16px;
+    }
+
+    .stat-number {
+        font-size: 20px;
+    }
+
+    .stat-label {
+        font-size: 11px;
+    }
+
+    /* Overview two-column layout stacks on mobile */
+    .overview-two-col {
+        grid-template-columns: 1fr;
+        gap: 16px;
+    }
+
+    .overview-section {
+        padding: 14px;
+    }
+
+    .overview-section-header h3 {
+        font-size: 15px;
+    }
+
+    /* Activity feed compact */
+    .activity-item {
+        padding: 12px;
+        gap: 10px;
+    }
+
+    .activity-icon {
+        width: 36px;
+        height: 36px;
+        font-size: 14px;
+    }
+
+    .activity-content {
+        font-size: 13px;
+    }
+
+    .activity-time {
+        font-size: 11px;
+    }
+
+    /* Team section compact */
+    .teammate-card {
+        padding: 12px;
+        gap: 10px;
+    }
+
+    .teammate-avatar {
+        width: 36px;
+        height: 36px;
+        font-size: 14px;
+    }
+
+    .teammate-name {
+        font-size: 14px;
+    }
+
+    .teammate-role {
+        font-size: 11px;
+    }
+
+    /* Chat compact */
+    .chat-message {
+        padding: 10px 12px;
+        max-width: 85%;
+    }
+
+    .chat-message-content {
+        font-size: 14px;
+    }
+
+    .chat-input-container {
+        padding: 10px 12px;
+    }
+
+    /* Calendar compact */
+    .calendar-container {
+        padding: 12px;
+    }
+
+    .calendar-day {
+        min-height: 40px;
+        font-size: 13px;
+    }
+
+    .event-item {
+        padding: 10px;
+        gap: 8px;
+    }
+
+    /* Spreadsheet mobile improvements */
+    .spreadsheet-panel-header {
+        padding: 12px;
+    }
+
+    .sheet-title-input {
+        font-size: 16px;
+    }
+
+    /* Settings sections compact */
+    .settings-card {
+        padding: 16px;
+    }
+
+    .settings-card-header h3 {
+        font-size: 15px;
+    }
+
+    .form-group label {
+        font-size: 13px;
+    }
+
+    .form-group input,
+    .form-group select,
+    .form-group textarea {
+        font-size: 14px;
+        padding: 10px 12px;
+    }
+
+    /* Transaction rows compact */
+    .transaction-row {
+        padding: 10px 12px;
+    }
+
+    .transaction-info {
+        gap: 8px;
+    }
+
+    .transaction-icon {
+        width: 32px;
+        height: 32px;
+        font-size: 12px;
+    }
+
+    .transaction-name {
+        font-size: 13px;
+    }
+
+    .transaction-date {
+        font-size: 11px;
+    }
+
+    .transaction-amount {
+        font-size: 14px;
+    }
+
+    /* Prevent body scroll when modal open */
+    body.modal-open {
+        overflow: hidden;
+    }
+}
+
+/* Small mobile extra compactness */
+@media (max-width: 480px) {
+    .overview-stats {
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+    }
+
+    .stat-card {
+        padding: 10px;
+    }
+
+    .stat-icon {
+        width: 32px;
+        height: 32px;
+        font-size: 14px;
+    }
+
+    .stat-number {
+        font-size: 18px;
+    }
+
+    /* Finance metrics 2x2 on small screens */
+    .finances-metrics-row {
+        grid-template-columns: 1fr 1fr;
+        gap: 8px;
+    }
+
+    .finance-metric-card {
+        padding: 10px;
+    }
+
+    .finance-metric-value {
+        font-size: 16px;
+    }
+
+    /* Subscriptions even more compact */
+    .subscription-row {
+        padding: 10px;
+    }
+
+    .subscription-logo {
+        width: 28px;
+        height: 28px;
+        font-size: 12px;
+    }
+
+    .subscription-name {
+        font-size: 12px;
+    }
+
+    .subscription-amount {
+        font-size: 13px;
     }
 }

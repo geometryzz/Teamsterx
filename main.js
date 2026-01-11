@@ -19563,6 +19563,9 @@ function openModal(modalId) {
     if (!modal) return;
     modal.classList.add('active');
     
+    // Add modal-open class to body for mobile styling (hides bottom nav)
+    document.body.classList.add('modal-open');
+    
     // Bug fix 2: Reset event form duration display when opening event modal
     if (modalId === 'eventModal') {
         const eventForm = document.getElementById('eventForm');
@@ -19654,6 +19657,12 @@ function closeModal(modalId) {
     const modal = document.getElementById(modalId);
     if (!modal) return;
     modal.classList.remove('active');
+    
+    // Remove modal-open class from body if no modals are active
+    const anyModalActive = document.querySelector('.modal.active');
+    if (!anyModalActive) {
+        document.body.classList.remove('modal-open');
+    }
 }
 
 /**
