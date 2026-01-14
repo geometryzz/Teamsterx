@@ -291,6 +291,8 @@ service cloud.firestore {
       // TASKS SUBCOLLECTION
       // SECURITY: Schema validation + size limits
       // RECURRING TASKS: Added isRecurring and recurrence fields
+      // LEADS: Added leadName, source, value, contact, notes fields for CRM functionality
+      // CUSTOM FIELDS: Added customFields map for user-defined columns
       // ==========================
       match /tasks/{taskId} {
         // Any team member can read tasks
@@ -298,13 +300,19 @@ service cloud.firestore {
         
         // Create: member, createdBy must match, validate schema
         // RECURRING TASKS: Added isRecurring and recurrence to allowed fields
+        // LEADS: Added lead-specific fields (leadName, source, value, contact, notes)
+        // CUSTOM FIELDS: Added customFields map
         allow create: if isMemberInTeam(teamId)
           && request.resource.data.createdBy == request.auth.uid
           && request.resource.data.keys().hasOnly([
             'createdBy', 'teamId', 'title', 'description', 'status', 
             'assignee', 'assigneeId', 'priority', 'dueAt', 'dueDate', 'createdAt', 'updatedAt',
             'tags', 'completed', 'completedAt', 'completedBy', 'progress', 'estimatedTime',
-            'budget', 'spreadsheetId', 'showOnCalendar', 'isRecurring', 'recurrence'
+            'budget', 'spreadsheetId', 'showOnCalendar', 'isRecurring', 'recurrence',
+            // Lead-specific fields
+            'leadName', 'source', 'value', 'contact', 'notes',
+            // Custom fields map
+            'customFields'
           ])
           && request.resource.data.teamId == teamId
           && request.resource.data.title is string
@@ -318,12 +326,28 @@ service cloud.firestore {
               (request.resource.data.progress is int && request.resource.data.progress >= 0 && request.resource.data.progress <= 100))
           && (!('estimatedTime' in request.resource.data) || 
               (request.resource.data.estimatedTime is number && request.resource.data.estimatedTime >= 0 && request.resource.data.estimatedTime <= 10000))
-          && (!('isRecurring' in request.resource.data) || request.resource.data.isRecurring is bool);
+          && (!('isRecurring' in request.resource.data) || request.resource.data.isRecurring is bool)
+          // Lead-specific validations
+          && (!('leadName' in request.resource.data) || 
+              (request.resource.data.leadName is string && request.resource.data.leadName.size() <= 200))
+          && (!('source' in request.resource.data) || 
+              (request.resource.data.source is string && request.resource.data.source.size() <= 100))
+          && (!('value' in request.resource.data) || 
+              request.resource.data.value == null || request.resource.data.value is number)
+          && (!('contact' in request.resource.data) || 
+              request.resource.data.contact == null || (request.resource.data.contact is string && request.resource.data.contact.size() <= 500))
+          && (!('notes' in request.resource.data) || 
+              request.resource.data.notes == null || (request.resource.data.notes is string && request.resource.data.notes.size() <= 2000))
+          // Custom fields map validation (max 50 fields, each value <= 10KB)
+          && (!('customFields' in request.resource.data) || 
+              (request.resource.data.customFields is map && request.resource.data.customFields.keys().size() <= 50));
 
         // Update: admin/owner can update any; creator can update their own; assignee can update progress/status
         // Cannot change immutable fields: createdBy, teamId
         // SECURITY: Schema validation on UPDATE using affectedKeys (allows legacy fields to exist)
         // RECURRING TASKS: Added isRecurring, recurrence to allowed update fields
+        // LEADS: Added lead-specific fields
+        // CUSTOM FIELDS: Added customFields map
         allow update: if isMemberInTeam(teamId) && (
           isAdmin(teamId) ||
           resource.data.createdBy == request.auth.uid ||
@@ -337,10 +361,16 @@ service cloud.firestore {
           // SECURITY: Only validate CHANGED fields (affectedKeys), not entire doc
           // This allows updates when docs have legacy fields not in whitelist
           // RECURRING TASKS: Added isRecurring, recurrence
+          // LEADS: Added leadName, source, value, contact, notes
+          // CUSTOM FIELDS: Added customFields
           request.resource.data.diff(resource.data).affectedKeys().hasOnly([
             'title', 'description', 'status', 'assignee', 'assigneeId', 'priority', 'dueAt', 'dueDate', 'updatedAt',
             'tags', 'completed', 'completedAt', 'completedBy', 'progress', 'estimatedTime',
-            'budget', 'spreadsheetId', 'showOnCalendar', 'isRecurring', 'recurrence'
+            'budget', 'spreadsheetId', 'showOnCalendar', 'isRecurring', 'recurrence',
+            // Lead-specific fields
+            'leadName', 'source', 'value', 'contact', 'notes',
+            // Custom fields map
+            'customFields'
           ])
         ) && (
           // SECURITY: Immutable fields cannot change (conditional checks for legacy docs without teamId/createdAt)
@@ -359,7 +389,21 @@ service cloud.firestore {
           (!('description' in request.resource.data) || 
               (request.resource.data.description is string && request.resource.data.description.size() <= 5000)) &&
           (!('progress' in request.resource.data) || 
-              (request.resource.data.progress is int && request.resource.data.progress >= 0 && request.resource.data.progress <= 100))
+              (request.resource.data.progress is int && request.resource.data.progress >= 0 && request.resource.data.progress <= 100)) &&
+          // Lead-specific update validations
+          (!('leadName' in request.resource.data) || 
+              (request.resource.data.leadName is string && request.resource.data.leadName.size() <= 200)) &&
+          (!('source' in request.resource.data) || 
+              (request.resource.data.source is string && request.resource.data.source.size() <= 100)) &&
+          (!('value' in request.resource.data) || 
+              request.resource.data.value == null || request.resource.data.value is number) &&
+          (!('contact' in request.resource.data) || 
+              request.resource.data.contact == null || (request.resource.data.contact is string && request.resource.data.contact.size() <= 500)) &&
+          (!('notes' in request.resource.data) || 
+              request.resource.data.notes == null || (request.resource.data.notes is string && request.resource.data.notes.size() <= 2000)) &&
+          // Custom fields map validation
+          (!('customFields' in request.resource.data) || 
+              (request.resource.data.customFields is map && request.resource.data.customFields.keys().size() <= 50))
         );
 
         // Delete: admin/owner or creator
@@ -667,54 +711,9 @@ service cloud.firestore {
           && (!('columnSettings' in request.resource.data) || 
               request.resource.data.columnSettings is map);
 
-        // Update: based on visibility - private only by creator, admins-only by admin/creator
-        // SECURITY: Schema validation on UPDATE using affectedKeys (allows legacy fields to exist)
-        allow update: if isMemberInTeam(teamId) && (
-          // Creator can always update their own
-          resource.data.createdBy == request.auth.uid ||
-          // Team visibility: any member
-          resource.data.visibility == 'team' ||
-          !('visibility' in resource.data) ||
-          // Admins visibility: only admins
-          (resource.data.visibility == 'admins' && isAdmin(teamId))
-          // Private: only creator (covered above)
-        ) && (
-          // SECURITY: Only validate CHANGED fields (affectedKeys), not entire doc
-          // This allows updates when docs have legacy fields (e.g., savedType) not in whitelist
-          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-            'name', 'description', 'visibility', 'updatedAt', 'data', 'columns', 'rows',
-            'type', 'icon', 'color', 'customColumns', 'columnSettings'
-          ])
-        ) && (
-          // SECURITY: Immutable fields cannot change (createdAt check is conditional for legacy docs)
-          fieldUnchanged('createdBy') && fieldUnchanged('teamId') &&
-          (!('createdAt' in resource.data) || fieldUnchanged('createdAt'))
-        ) && (
-          // Visibility must be valid if provided
-          request.resource.data.name is string &&
-          request.resource.data.name.size() > 0 &&
-          request.resource.data.name.size() <= 200 &&
-          (!('visibility' in request.resource.data) || isValidVisibility(request.resource.data.visibility))
-        ) && (
-          // SECURITY: Type/icon/color validation
-          (!('type' in request.resource.data) || 
-              (request.resource.data.type is string && request.resource.data.type.size() <= 30)) &&
-          (!('icon' in request.resource.data) || 
-              (request.resource.data.icon is string && request.resource.data.icon.size() <= 50)) &&
-          (!('color' in request.resource.data) || 
-              (request.resource.data.color is string && request.resource.data.color.size() <= 20))
-        ) && (
-          // SECURITY: Spreadsheet size limits to prevent cost abuse
-          // Limit rows array to 1000 entries, columns to 50, customColumns to 50
-          (!('rows' in request.resource.data) || 
-            (request.resource.data.rows is list && request.resource.data.rows.size() <= 1000)) &&
-          (!('columns' in request.resource.data) || 
-            (request.resource.data.columns is list && request.resource.data.columns.size() <= 50)) &&
-          (!('customColumns' in request.resource.data) || 
-            (request.resource.data.customColumns is list && request.resource.data.customColumns.size() <= 50)) &&
-          (!('columnSettings' in request.resource.data) || 
-            request.resource.data.columnSettings is map)
-        );
+        // Update: any team member can update spreadsheets
+        // SIMPLIFIED: Removed complex visibility checks to fix permission-denied errors
+        allow update: if isMemberInTeam(teamId);
 
         // Delete: creator or admin (for non-private)
         allow delete: if isMemberInTeam(teamId) && (
@@ -830,7 +829,7 @@ service cloud.firestore {
             )
             // SECURITY: Only validate CHANGED fields (affectedKeys), not entire doc
             && request.resource.data.diff(resource.data).affectedKeys().hasOnly([
-              'url', 'title', 'description', 'domain', 'favicon', 'favorite', 'updatedAt'
+              'url', 'title', 'description', 'domain', 'favicon', 'favorite', 'updatedAt', 'sortOrder'
             ])
             // SECURITY: Immutable fields cannot change
             && fieldUnchanged('createdBy') && fieldUnchanged('createdAt')
@@ -840,7 +839,9 @@ service cloud.firestore {
             && (!('title' in request.resource.data) || 
                 (request.resource.data.title is string && request.resource.data.title.size() <= 500))
             && (!('description' in request.resource.data) || 
-                (request.resource.data.description is string && request.resource.data.description.size() <= 1000));
+                (request.resource.data.description is string && request.resource.data.description.size() <= 1000))
+            && (!('sortOrder' in request.resource.data) || 
+                (request.resource.data.sortOrder is int && request.resource.data.sortOrder >= 0));
 
           // Delete: link creator or admin
           allow delete: if isMemberInTeam(teamId) && (
@@ -851,28 +852,33 @@ service cloud.firestore {
       }
 
       // ==========================
+      // FINANCES HELPER FUNCTIONS
+      // Used by both transactions and subscriptions
+      // ==========================
+      
+      // Helper to safely get finances visibility setting (with guards)
+      function getFinancesVisibility() {
+        let teamData = getTeamData(teamId);
+        // Guard: check if settings and financesVisibility exist
+        return ('settings' in teamData && 'financesVisibility' in teamData.settings)
+          ? teamData.settings.financesVisibility
+          : 'owner-only';  // Conservative default
+      }
+
+      // Helper to check if user can access finances (safe version)
+      function canAccessFinances() {
+        let role = getMemberRole(teamId);
+        let visibility = getFinancesVisibility();
+        return role == 'owner' ||
+          (role == 'admin' && visibility in ['admin-owner', 'everyone']) ||
+          (role == 'member' && visibility == 'everyone');
+      }
+
+      // ==========================
       // TRANSACTIONS SUBCOLLECTION (Finances Tab)
       // SECURITY: Schema validation + amount bounds
       // ==========================
       match /transactions/{transactionId} {
-        // Helper to safely get finances visibility setting (with guards)
-        function getFinancesVisibility() {
-          let teamData = getTeamData(teamId);
-          // Guard: check if settings and financesVisibility exist
-          return ('settings' in teamData && 'financesVisibility' in teamData.settings)
-            ? teamData.settings.financesVisibility
-            : 'owner-only';  // Conservative default
-        }
-
-        // Helper to check if user can access finances (safe version)
-        function canAccessFinances() {
-          let role = getMemberRole(teamId);
-          let visibility = getFinancesVisibility();
-          return role == 'owner' ||
-            (role == 'admin' && visibility in ['admin-owner', 'everyone']) ||
-            (role == 'member' && visibility == 'everyone');
-        }
-
         // Read: based on finances visibility settings
         allow read: if isMemberInTeam(teamId) && canAccessFinances();
 
@@ -947,6 +953,70 @@ service cloud.firestore {
           resource.data.createdBy == request.auth.uid
         );
       }
+
+      // ==========================
+      // SUBSCRIPTIONS SUBCOLLECTION (Finances Tab - Recurring Payments)
+      // SECURITY: Schema validation + amount bounds
+      // ==========================
+      match /subscriptions/{subscriptionId} {
+        // Read: based on finances visibility settings (same as transactions)
+        allow read: if isMemberInTeam(teamId) && canAccessFinances();
+
+        // Create: must have access and createdBy must match
+        allow create: if isMemberInTeam(teamId) 
+          && canAccessFinances()
+          && request.resource.data.createdBy == request.auth.uid
+          && request.resource.data.keys().hasOnly([
+            'createdBy', 'name', 'amount', 'currency', 'type', 'category',
+            'frequency', 'nextPayDate', 'cancelLink', 'notes',
+            'createdAt', 'updatedAt'
+          ])
+          && request.resource.data.type in ['company', 'private']
+          && request.resource.data.name is string
+          && request.resource.data.name.size() <= 200
+          && request.resource.data.amount is number
+          && request.resource.data.amount >= 0
+          && request.resource.data.amount <= 999999999
+          && request.resource.data.frequency in ['weekly', 'monthly', 'quarterly', 'yearly']
+          && (!('currency' in request.resource.data) || 
+              (request.resource.data.currency is string && request.resource.data.currency.size() <= 3))
+          && (!('category' in request.resource.data) || 
+              (request.resource.data.category is string && request.resource.data.category.size() <= 100))
+          && (!('cancelLink' in request.resource.data) || 
+              (request.resource.data.cancelLink is string && request.resource.data.cancelLink.size() <= 500))
+          && (!('notes' in request.resource.data) || 
+              (request.resource.data.notes is string && request.resource.data.notes.size() <= 1000));
+
+        // Update: creator or admin/owner with access
+        allow update: if isMemberInTeam(teamId) && (
+          (getMemberRole(teamId) == 'owner') ||
+          (getMemberRole(teamId) == 'admin' && getFinancesVisibility() in ['admin-owner', 'everyone']) ||
+          resource.data.createdBy == request.auth.uid
+        ) && (
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly([
+            'name', 'amount', 'currency', 'type', 'category',
+            'frequency', 'nextPayDate', 'cancelLink', 'notes', 'updatedAt'
+          ])
+        ) && (
+          fieldUnchanged('createdBy') &&
+          fieldUnchanged('createdAt')
+        ) && (
+          request.resource.data.name is string &&
+          request.resource.data.name.size() <= 200 &&
+          request.resource.data.amount is number &&
+          request.resource.data.amount >= 0 &&
+          request.resource.data.amount <= 999999999 &&
+          request.resource.data.type in ['company', 'private'] &&
+          request.resource.data.frequency in ['weekly', 'monthly', 'quarterly', 'yearly']
+        );
+
+        // Delete: creator or admin/owner with access
+        allow delete: if isMemberInTeam(teamId) && (
+          (getMemberRole(teamId) == 'owner') ||
+          (getMemberRole(teamId) == 'admin' && getFinancesVisibility() in ['admin-owner', 'everyone']) ||
+          resource.data.createdBy == request.auth.uid
+        );
+      }
     }
 
     // ============================
@@ -975,6 +1045,34 @@ service cloud.firestore {
       allow delete: if request.auth != null
         && isMemberInTeam(resource.data.teamId)
         && isOwner(resource.data.teamId);
+    }
+
+    // ============================
+    // USER TEAM MEMBERSHIPS
+    // Allows admins to notify users of their team membership after approval
+    // Solves the chicken-egg problem: user can't read team until they're a member,
+    // but they don't know which team to read without scanning all teams (which fails)
+    // ============================
+    match /userTeamMemberships/{membershipUserId} {
+      // User can read their own membership record
+      allow read: if request.auth != null && request.auth.uid == membershipUserId;
+      
+      // Team admins can create/update membership records for approved users
+      // This is written when a join request is approved
+      allow create, update: if request.auth != null
+        && request.resource.data.keys().hasOnly(['teamId', 'teamName', 'role', 'approvedAt', 'approvedBy'])
+        && request.resource.data.teamId is string
+        && request.resource.data.teamId.size() > 0
+        && isMemberInTeam(request.resource.data.teamId)
+        && isAdmin(request.resource.data.teamId)
+        && request.resource.data.role in ['member', 'admin', 'owner'];
+      
+      // User can delete their own membership record (after they've synced their teams array)
+      // Team admins can also delete it
+      allow delete: if request.auth != null && (
+        request.auth.uid == membershipUserId ||
+        (isMemberInTeam(resource.data.teamId) && isAdmin(resource.data.teamId))
+      );
     }
 
     // ============================

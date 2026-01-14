@@ -96,20 +96,43 @@ function initializeRouting() {
     const path = window.location.pathname;
     const hash = window.location.hash;
     
-    // GITHUB PAGES / STATIC HOST DETECTION
-    // GitHub Pages and static hosts don't support server-side routing
-    // Use hash-based routing for compatibility
-    const isStaticHost = window.location.hostname.includes('github.io') || 
-                        window.location.hostname.includes('gitlab.io') ||
-                        window.location.hostname.includes('netlify.app') ||
-                        window.location.hostname.includes('vercel.app');
+    // GITHUB PAGES SPA REDIRECT HANDLER
+    // Check if we were redirected from 404.html and restore the original path
+    const ghRedirect = sessionStorage.getItem('ghPagesRedirect');
+    if (ghRedirect) {
+        sessionStorage.removeItem('ghPagesRedirect');
+        try {
+            const redirectData = JSON.parse(ghRedirect);
+            const originalPath = redirectData.path || '';
+            const originalHash = redirectData.hash || '';
+            
+            // Determine route from the original path
+            if (originalPath.includes('/app') || originalPath === '/app' || originalPath === '/app/') {
+                window.history.replaceState({}, '', originalHash || '#/app');
+                currentRoute = 'app';
+                showAppContainer();
+                return 'app';
+            }
+            
+            if (originalPath.includes('/home') || originalPath === '/home') {
+                window.history.replaceState({}, '', originalHash || '#/home');
+                currentRoute = 'home';
+                showHomePage();
+                return 'home';
+            }
+            
+            // For other paths like /account, /team - just go to app
+            // Those pages have their own HTML files
+            window.history.replaceState({}, '', '#/app');
+            currentRoute = 'app';
+            showAppContainer();
+            return 'app';
+        } catch (e) {
+            console.warn('Failed to parse GitHub Pages redirect data:', e);
+        }
+    }
     
-    // LOCAL DEVELOPMENT FALLBACK
-    const isLocalhost = window.location.hostname === 'localhost' || 
-                       window.location.hostname === '127.0.0.1' ||
-                       window.location.hostname === '';
-    
-    // Handle hash-based routing (works on all static hosts including GitHub Pages)
+    // PREVENT INFINITE LOOP: If we already have a valid hash route, don't re-process
     if (hash === '#/app' || hash === '#app') {
         currentRoute = 'app';
         showAppContainer();
@@ -122,9 +145,23 @@ function initializeRouting() {
         return 'home';
     }
     
+    // GITHUB PAGES / STATIC HOST DETECTION
+    // GitHub Pages and static hosts don't support server-side routing
+    // Use hash-based routing for compatibility
+    const isStaticHost = window.location.hostname.includes('github.io') || 
+                        window.location.hostname.includes('gitlab.io') ||
+                        window.location.hostname.includes('netlify.app') ||
+                        window.location.hostname.includes('vercel.app') ||
+                        window.location.hostname.includes('teamsterx.com');
+    
+    // LOCAL DEVELOPMENT FALLBACK
+    const isLocalhost = window.location.hostname === 'localhost' || 
+                       window.location.hostname === '127.0.0.1' ||
+                       window.location.hostname === '';
+    
     // For static hosts, if no hash, default to app and update hash
     if (isStaticHost && !hash) {
-        window.history.replaceState({}, '', '#/app');
+        window.history.replaceState({}, '', window.location.pathname + '#/app');
         currentRoute = 'app';
         showAppContainer();
         return 'app';
@@ -150,25 +187,24 @@ function initializeRouting() {
         }
     }
     
-    // Handle /app path for servers that support it
+    // Handle /app path for servers that support server-side routing
     if (path === '/app' || path === '/app/' || path.startsWith('/app/')) {
-        // Redirect to hash-based for compatibility
-        window.history.replaceState({}, '', '#/app');
+        window.history.replaceState({}, '', window.location.pathname + '#/app');
         currentRoute = 'app';
         showAppContainer();
         return 'app';
     }
     
-    // Handle root path - TEMPORARILY redirect to app (homepage disabled)
+    // Handle root path - show app
     if (path === '/' || path === '' || path === '/index.html' || path.endsWith('/Teamster/')) {
-        window.history.replaceState({}, '', '#/app');
+        window.history.replaceState({}, '', window.location.pathname + '#/app');
         currentRoute = 'app';
         showAppContainer();
         return 'app';
     }
     
     // Default fallback: show app
-    window.history.replaceState({}, '', '#/app');
+    window.history.replaceState({}, '', window.location.pathname + '#/app');
     currentRoute = 'app';
     showAppContainer();
     return 'app';
@@ -583,8 +619,8 @@ window.generateJoinLink = function() {
         showToast('No team code available', 'error');
         return;
     }
-    const baseUrl = window.location.origin + window.location.pathname.replace(/\/[^\/]*$/, '');
-    const joinUrl = `${baseUrl}/index.html?join=${appState.currentTeamData.teamCode}`;
+    const baseUrl = window.location.origin;
+    const joinUrl = `${baseUrl}/app?join=${appState.currentTeamData.teamCode}`;
     
     navigator.clipboard.writeText(joinUrl).then(() => {
         showToast('Join link copied to clipboard!', 'success');
@@ -708,6 +744,11 @@ function applyThemeEarly() {
     } else {
         document.body.classList.remove('dark-mode');
     }
+
+    // Sync browser chrome color with chosen theme
+    if (window.__setThemeMeta) {
+        window.__setThemeMeta(shouldBeDark);
+    }
 }
 
 // Run immediately
@@ -722,6 +763,10 @@ if (window.matchMedia) {
                 document.body.classList.add('dark-mode');
             } else {
                 document.body.classList.remove('dark-mode');
+            }
+
+            if (window.__setThemeMeta) {
+                window.__setThemeMeta(e.matches);
             }
             // Update settings cards if they exist
             document.querySelectorAll('.settings-card').forEach(card => {
@@ -1187,7 +1232,11 @@ function updateNavVisibilityForMetrics() {
  * @returns {boolean} - Whether finances tab is enabled
  */
 function getFinancesEnabledSetting(teamData) {
-    return teamData?.settings?.financesEnabled || false;
+    // Default to true if not explicitly set (enabled by default, visible to owner)
+    if (teamData?.settings?.financesEnabled === undefined) {
+        return true;
+    }
+    return teamData.settings.financesEnabled;
 }
 
 /**
@@ -1439,7 +1488,7 @@ async function initializeFirebaseAuth() {
                 // Only redirect to login if user is trying to access the app (not homepage)
                 if (currentRoute === 'app') {
                     // Redirect to account page for authentication
-                    window.location.href = 'account.html';
+                    window.location.href = '/account';
                 } else if (currentRoute === 'home') {
                     // User on homepage without auth - this is fine, keep them there
                     // Don't redirect, homepage is public
@@ -1467,7 +1516,7 @@ async function initializeFirebaseAuth() {
         
         // Only redirect to login on Firebase error if on /app route
         if (currentRoute === 'app') {
-            window.location.href = 'account.html';
+            window.location.href = '/account';
         }
     }
 }
@@ -1778,7 +1827,7 @@ async function signOutUser() {
         localStorage.clear();
         
         // Redirect to login
-        window.location.href = 'account.html';
+        window.location.href = '/account';
     } catch (error) {
         console.error('Sign out error:', error.code || error.message);
         debugError('Full error:', error);
@@ -1811,10 +1860,11 @@ const appState = {
     graphTypes: {}, // Stores graph type per chart: { graphId: 'bar' | 'line' | 'pie' }
     metricsChartConfig: {}, // Stores per-chart config: { graphId: { yAxisMin, yAxisMax, primaryColor, ... } }
     // Finances state
-    financesEnabled: false, // Whether finances tab is enabled for this team
+    financesEnabled: true, // Whether finances tab is enabled for this team (default: true)
     financesVisibility: 'owner-only', // Current team's finances visibility setting
     financesAccess: { canAccess: false, mode: 'none' }, // Finances visibility access for current user
     transactions: [], // Cached transactions for current team
+    subscriptions: [], // Cached subscriptions for current team
     financesFilters: { type: 'all', category: 'all', date: 'all', search: '' }, // Current filter state
     // Docs state
     docs: [], // Team documents
@@ -1828,12 +1878,113 @@ const appState = {
 
 // ===================================
 // RATE LIMITING STATE
+// Prevents spam and abuse for all create operations
 // ===================================
 const rateLimitState = {
+    // Task creation
     lastTaskCreation: 0,
     taskCreationCooldown: 1500, // 1.5 second cooldown between task creations
-    isCreatingTask: false // Prevents double-submit
+    isCreatingTask: false, // Prevents double-submit
+    
+    // Message rate limiting
+    lastMessageSent: 0,
+    messageCooldown: 500, // 0.5 second between messages
+    messageCount: 0,
+    messageWindowStart: 0,
+    maxMessagesPerMinute: 30, // Max 30 messages per minute
+    
+    // Event creation rate limiting
+    lastEventCreation: 0,
+    eventCreationCooldown: 1000, // 1 second between events
+    eventCount: 0,
+    eventWindowStart: 0,
+    maxEventsPerHour: 50, // Max 50 events per hour
+    
+    // Document creation rate limiting
+    lastDocCreation: 0,
+    docCreationCooldown: 1000, // 1 second between documents
+    docCount: 0,
+    docWindowStart: 0,
+    maxDocsPerHour: 30 // Max 30 docs per hour
 };
+
+/**
+ * Check if message sending is allowed (rate limiting)
+ * @returns {Object} { allowed: boolean, reason?: string }
+ */
+function canSendMessage() {
+    const now = Date.now();
+    
+    // Check cooldown between messages
+    if (now - rateLimitState.lastMessageSent < rateLimitState.messageCooldown) {
+        return { allowed: false, reason: 'Sending too fast' };
+    }
+    
+    // Check messages per minute limit
+    if (now - rateLimitState.messageWindowStart > 60000) {
+        // Reset window
+        rateLimitState.messageWindowStart = now;
+        rateLimitState.messageCount = 0;
+    }
+    
+    if (rateLimitState.messageCount >= rateLimitState.maxMessagesPerMinute) {
+        return { allowed: false, reason: 'Message limit reached. Please wait a moment.' };
+    }
+    
+    return { allowed: true };
+}
+
+/**
+ * Check if event creation is allowed (rate limiting)
+ * @returns {Object} { allowed: boolean, reason?: string }
+ */
+function canCreateEvent() {
+    const now = Date.now();
+    
+    // Check cooldown between events
+    if (now - rateLimitState.lastEventCreation < rateLimitState.eventCreationCooldown) {
+        return { allowed: false, reason: 'Please wait before creating another event' };
+    }
+    
+    // Check events per hour limit
+    if (now - rateLimitState.eventWindowStart > 3600000) {
+        // Reset window
+        rateLimitState.eventWindowStart = now;
+        rateLimitState.eventCount = 0;
+    }
+    
+    if (rateLimitState.eventCount >= rateLimitState.maxEventsPerHour) {
+        return { allowed: false, reason: 'Event limit reached. Please wait an hour.' };
+    }
+    
+    return { allowed: true };
+}
+
+/**
+ * Check if document creation is allowed (rate limiting)
+ * @returns {Object} { allowed: boolean, reason?: string }
+ */
+function canCreateDocument() {
+    const now = Date.now();
+    
+    // Check cooldown between documents
+    if (now - rateLimitState.lastDocCreation < rateLimitState.docCreationCooldown) {
+        return { allowed: false, reason: 'Please wait before creating another document' };
+    }
+    
+    // Check docs per hour limit
+    if (now - rateLimitState.docWindowStart > 3600000) {
+        // Reset window
+        rateLimitState.docWindowStart = now;
+        rateLimitState.docCount = 0;
+    }
+    
+    if (rateLimitState.docCount >= rateLimitState.maxDocsPerHour) {
+        return { allowed: false, reason: 'Document limit reached. Please wait an hour.' };
+    }
+    
+    return { allowed: true };
+}
 
 /**
  * Check if task creation is allowed (rate limiting)
@@ -1914,12 +2065,14 @@ window.switchTab = function(sectionName) {
     
     // Render metrics when navigating to metrics tab
     if (sectionName === 'metrics') {
-        renderMetrics();
+        // Load subscriptions first for MRR chart data
+        loadSubscriptions().then(() => renderMetrics());
     }
     
     // Render finances when navigating to finances tab
     if (sectionName === 'finances') {
-        loadTransactions(); // This will also call renderFinances
+        // Load subscriptions first, then transactions (which calls renderFinances)
+        loadSubscriptions().then(() => loadTransactions());
     }
 };
 
@@ -1992,7 +2145,8 @@ function initNavigation() {
                     window.switchTab('activity');
                     return;
                 }
-                loadTransactions(); // This will also call renderFinances
+                // Load subscriptions first, then transactions
+                loadSubscriptions().then(() => loadTransactions());
             }
         });
     });
@@ -2267,6 +2421,13 @@ function initChat() {
         
         if (messageText === '') return;
 
+        // RATE LIMITING: Check if user can send message
+        const rateCheck = canSendMessage();
+        if (!rateCheck.allowed) {
+            showToast(rateCheck.reason, 'warning', 2000);
+            return;
+        }
+
         // TYPING INDICATOR: Clear typing status when message is sent
         clearTypingStatus();
 
@@ -2317,6 +2478,10 @@ function initChat() {
                 if (mentions.length > 0) {
                     sendMentionNotifications(mentions, messageText);
                 }
+                
+                // RATE LIMITING: Update rate limit state after successful send
+                rateLimitState.lastMessageSent = Date.now();
+                rateLimitState.messageCount++;
                 
             } catch (error) {
                 console.error('Message encryption failed:', error.code || error.message);
@@ -3991,35 +4156,25 @@ function initCalendar() {
     const prevMonthBtn = document.getElementById('prevMonth');
     const nextMonthBtn = document.getElementById('nextMonth');
     const addEventBtn = document.getElementById('addEventBtn');
+    const todayBtn = document.getElementById('todayBtn');
 
     // Load events from Firestore
     loadEventsFromFirestore();
 
-    // Create view toggle buttons
-    const calendarHeader = document.querySelector('.calendar-header');
-    if (calendarHeader && !document.querySelector('.calendar-view-toggle')) {
-        const viewToggle = document.createElement('div');
-        viewToggle.className = 'calendar-view-toggle';
-        viewToggle.innerHTML = `
-            <button class="view-toggle-btn active" data-view="month">
-                <i class="fas fa-calendar"></i> Month
-            </button>
-            <button class="view-toggle-btn" data-view="week">
-                <i class="fas fa-calendar-week"></i> Week
-            </button>
-        `;
-        calendarHeader.appendChild(viewToggle);
-
-        // View toggle handlers
-        document.querySelectorAll('.view-toggle-btn').forEach(btn => {
-            btn.addEventListener('click', () => {
-                document.querySelectorAll('.view-toggle-btn').forEach(b => b.classList.remove('active'));
-                btn.classList.add('active');
-                appState.calendarView = btn.dataset.view;
+    // View toggle handlers (buttons are now in HTML)
+    const calendarViewButtons = document.querySelectorAll('#calendar-section .calendar-view-toggle .view-toggle-btn');
+    calendarViewButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            calendarViewButtons.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            const view = btn.dataset.view;
+            // Only support month and week for now
+            if (view === 'month' || view === 'week') {
+                appState.calendarView = view;
                 renderCalendar();
-            });
+            }
         });
-    }
+    });
 
     // Navigation buttons
     if (prevMonthBtn) {
@@ -4040,6 +4195,14 @@ function initCalendar() {
             } else {
                 appState.currentDate.setDate(appState.currentDate.getDate() + 7);
             }
+            renderCalendar();
+        });
+    }
+
+    // Today button - jump to current date
+    if (todayBtn) {
+        todayBtn.addEventListener('click', () => {
+            appState.currentDate = new Date();
             renderCalendar();
         });
     }
@@ -4071,6 +4234,11 @@ function renderCalendar() {
         return;
     }
     
+    // Update view toggle button states
+    document.querySelectorAll('#calendar-section .calendar-view-toggle .view-toggle-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.view === appState.calendarView);
+    });
+    
     // Check if calendar section is currently active
     const isCalendarActive = calendarSection && calendarSection.classList.contains('active');
     console.log(`Rendering calendar in ${appState.calendarView} view with ${appState.events.length} events (active: ${isCalendarActive})`);
@@ -4086,28 +4254,72 @@ function renderCalendar() {
     }
 }
 
+// Helper function to render event items in month view
+function renderMonthEventItems(dayEvents) {
+    return dayEvents.slice(0, 2).map(evt => {
+        const color = evt.color || '#0078d4';
+        const startTime = evt.date instanceof Date ? evt.date : new Date(evt.date);
+        const timeStr = formatTime24(startTime.getHours(), startTime.getMinutes());
+        const isPrivate = evt.visibility === 'private' || evt.visibility === 'admins';
+        const lockIcon = isPrivate ? '<i class="fas fa-lock month-event-lock"></i>' : '';
+        const repeatIcon = evt.isRecurrence ? '<i class="fas fa-redo month-event-repeat"></i>' : '';
+        const eventId = evt.masterId || evt.id;
+        return `<div class="month-event-item" 
+            draggable="true"
+            data-event-id="${escapeHtml(eventId)}"
+            data-original-time="${timeStr}"
+            onclick="if(!monthDragStarted){viewEventDetails('${escapeHtml(eventId)}', '${evt.occurrenceDate ? evt.occurrenceDate.toISOString() : ''}');} event.stopPropagation();" 
+            style="background: ${escapeHtml(color)}15; border-left: 3px solid ${escapeHtml(color)};">
+            <span class="month-event-time" style="color: ${escapeHtml(color)};">${timeStr}</span>
+            <span class="month-event-title">${escapeHtml(evt.title)}</span>
+            ${lockIcon}${repeatIcon}
+        </div>`;
+    }).join('') + (dayEvents.length > 2 ? `<div class="month-event-more">+${dayEvents.length - 2} more</div>` : '');
+}
+
 function renderMonthView(titleEl, daysEl) {
     const year = appState.currentDate.getFullYear();
     const month = appState.currentDate.getMonth();
     
-    titleEl.textContent = new Date(year, month).toLocaleDateString('en-US', { 
-        month: 'long', 
-        year: 'numeric' 
-    });
+    // Format title like "August 2026" - month light, year bold
+    const monthName = new Date(year, month).toLocaleDateString('en-US', { month: 'long' });
+    titleEl.innerHTML = `${monthName} <span>${year}</span>`;
 
     let firstDayOfMonth = new Date(year, month, 1).getDay();
     // Adjust for Monday start: 0 (Sunday) becomes 6, 1 (Monday) becomes 0, etc.
     firstDayOfMonth = firstDayOfMonth === 0 ? 6 : firstDayOfMonth - 1;
     
     const daysInMonth = new Date(year, month + 1, 0).getDate();
+    const daysInPrevMonth = new Date(year, month, 0).getDate();
     
     let html = '';
     const today = new Date();
     
-    // Generate occurrences for the entire month
-    const rangeStart = new Date(year, month, 1, 0, 0, 0);
-    const rangeEnd = new Date(year, month + 1, 0, 23, 59, 59);
+    // Generate occurrences for the entire month (including overflow days)
+    const rangeStart = new Date(year, month - 1, daysInPrevMonth - firstDayOfMonth + 1, 0, 0, 0);
+    const rangeEnd = new Date(year, month + 1, 14, 23, 59, 59);
     const allOccurrences = getAllEventOccurrences(appState.events, rangeStart, rangeEnd);
+    
+    // Previous month days (to fill the first week)
+    for (let i = firstDayOfMonth - 1; i >= 0; i--) {
+        const day = daysInPrevMonth - i;
+        const date = new Date(year, month - 1, day);
+        
+        // Filter occurrences for this day
+        const dayEvents = allOccurrences.filter(e => {
+            const eventDate = e.date instanceof Date ? e.date : new Date(e.date);
+            return eventDate.toDateString() === date.toDateString();
+        });
+        
+        const eventItemsHtml = renderMonthEventItems(dayEvents);
+        
+        html += `
+            <div class="calendar-day other-month" data-date="${date.toISOString()}">
+                <div class="day-number">${day}</div>
+                ${dayEvents.length > 0 ? `<div class="month-events">${eventItemsHtml}</div>` : ''}
+            </div>
+        `;
+    }
     
     // Current month days
     for (let day = 1; day <= daysInMonth; day++) {
@@ -4120,50 +4332,117 @@ function renderMonthView(titleEl, daysEl) {
             return eventDate.toDateString() === date.toDateString();
         });
         
-        const eventItemsHtml = dayEvents.slice(0, 2).map(evt => {
-            const color = evt.color || '#0078d4';
-            const startTime = evt.date instanceof Date ? evt.date : new Date(evt.date);
-            const timeStr = formatTime24(startTime.getHours(), startTime.getMinutes());
-            const isPrivate = evt.visibility === 'private' || evt.visibility === 'admins';
-            const lockIcon = isPrivate ? '<i class="fas fa-lock month-event-lock"></i>' : '';
-            const repeatIcon = evt.isRecurrence ? '<i class="fas fa-redo month-event-repeat"></i>' : '';
-            const eventId = evt.masterId || evt.id;
-            return `<div class="month-event-item" onclick="viewEventDetails('${escapeHtml(eventId)}', '${evt.occurrenceDate ? evt.occurrenceDate.toISOString() : ''}'); event.stopPropagation();" style="background: ${escapeHtml(color)}15; border-left: 3px solid ${escapeHtml(color)};">
-                <span class="month-event-time" style="color: ${escapeHtml(color)};">${timeStr}</span>
-                <span class="month-event-title">${escapeHtml(evt.title)}</span>
-                ${lockIcon}${repeatIcon}
-            </div>`;
-        }).join('');
-        
-        // Add offset for the first week to align with correct day
-        const dayOffset = day === 1 ? `style="grid-column-start: ${firstDayOfMonth + 1};"` : '';
+        const eventItemsHtml = renderMonthEventItems(dayEvents);
         
         html += `
-            <div class="calendar-day ${isToday ? 'today' : ''}" data-date="${date.toISOString()}" ${dayOffset}>
+            <div class="calendar-day ${isToday ? 'today' : ''}" data-date="${date.toISOString()}">
                 <div class="day-number">${day}</div>
-                ${dayEvents.length > 0 ? `<div class="month-events">${eventItemsHtml}${dayEvents.length > 2 ? `<div class="month-event-more">+${dayEvents.length - 2} more</div>` : ''}</div>` : ''}
+                ${dayEvents.length > 0 ? `<div class="month-events">${eventItemsHtml}</div>` : ''}
             </div>
         `;
     }
     
-    // No next month days needed
+    // Next month days (to complete the grid - fill remaining cells to make 6 rows)
+    const totalCells = firstDayOfMonth + daysInMonth;
+    const cellsToAdd = totalCells <= 35 ? (35 - totalCells) : (42 - totalCells);
+    
+    for (let day = 1; day <= cellsToAdd; day++) {
+        const date = new Date(year, month + 1, day);
+        
+        // Filter occurrences for this day
+        const dayEvents = allOccurrences.filter(e => {
+            const eventDate = e.date instanceof Date ? e.date : new Date(e.date);
+            return eventDate.toDateString() === date.toDateString();
+        });
+        
+        const eventItemsHtml = renderMonthEventItems(dayEvents);
+        
+        // Show month indicator on first day of next month
+        const dayLabel = day === 1 ? `1.${month + 2 > 12 ? 1 : month + 2}.` : day;
+        
+        html += `
+            <div class="calendar-day other-month" data-date="${date.toISOString()}">
+                <div class="day-number">${dayLabel}</div>
+                ${dayEvents.length > 0 ? `<div class="month-events">${eventItemsHtml}</div>` : ''}
+            </div>
+        `;
+    }
     
     daysEl.innerHTML = html;
     
-    // Add click handlers
-    document.querySelectorAll('.calendar-day:not(.other-month)').forEach(day => {
-        day.addEventListener('click', () => {
-            const dateStr = day.dataset.date;
-            if (dateStr) {
-                appState.currentDate = new Date(dateStr);
-                appState.calendarView = 'week';
-                document.querySelector('[data-view="week"]').click();
+    // Add click handlers to open event modal with selected date using event delegation
+    setTimeout(() => {
+        const calendarDays = document.getElementById('calendarDays');
+        if (!calendarDays) return;
+        
+        // Remove any existing handlers
+        const oldMouseDown = calendarDays._monthDayMouseDownHandler;
+        const oldMouseUp = calendarDays._monthDayMouseUpHandler;
+        const oldMouseLeave = calendarDays._monthDayMouseLeaveHandler;
+        if (oldMouseDown) calendarDays.removeEventListener('mousedown', oldMouseDown);
+        if (oldMouseUp) calendarDays.removeEventListener('mouseup', oldMouseUp);
+        if (oldMouseLeave) calendarDays.removeEventListener('mouseleave', oldMouseLeave);
+        
+        // Track press-and-hold state
+        let pressTimer = null;
+        let pressedDay = null;
+        
+        // Mouse down - start the timer
+        const mouseDownHandler = (e) => {
+            const day = e.target.closest('.calendar-day:not(.other-month)');
+            if (!day) return;
+            
+            // Don't trigger if clicking on an event item
+            if (e.target.closest('.month-event-item')) {
+                return;
             }
-        });
-    });
+            
+            pressedDay = day;
+            
+            // Start 1-second timer
+            pressTimer = setTimeout(() => {
+                const dateStr = day.dataset.date;
+                if (dateStr) {
+                    const selectedDate = new Date(dateStr);
+                    openEventModalWithDate(selectedDate);
+                    pressedDay = null;
+                }
+            }, 1000);
+        };
+        
+        // Mouse up - cancel the timer if released too early
+        const mouseUpHandler = (e) => {
+            if (pressTimer) {
+                clearTimeout(pressTimer);
+                pressTimer = null;
+            }
+            pressedDay = null;
+        };
+        
+        // Mouse leave - cancel if mouse leaves the calendar area
+        const mouseLeaveHandler = (e) => {
+            if (pressTimer) {
+                clearTimeout(pressTimer);
+                pressTimer = null;
+            }
+            pressedDay = null;
+        };
+        
+        calendarDays.addEventListener('mousedown', mouseDownHandler);
+        calendarDays.addEventListener('mouseup', mouseUpHandler);
+        calendarDays.addEventListener('mouseleave', mouseLeaveHandler);
+        
+        calendarDays._monthDayMouseDownHandler = mouseDownHandler;
+        calendarDays._monthDayMouseUpHandler = mouseUpHandler;
+        calendarDays._monthDayMouseLeaveHandler = mouseLeaveHandler;
+        
+        // Initialize drag-and-drop for month view events
+        initCalendarDragDrop();
+    }, 100);
 }
 
 function renderWeekView(titleEl, daysEl) {
+    const isMobile = window.innerWidth < 900;
     const startOfWeek = getStartOfWeek(appState.currentDate);
     const endOfWeek = new Date(startOfWeek);
     endOfWeek.setDate(endOfWeek.getDate() + 6);
@@ -4173,7 +4452,21 @@ function renderWeekView(titleEl, daysEl) {
         console.log(`📋 Total events in appState: ${appState.events.length}`);
     }
     
-    titleEl.textContent = `${startOfWeek.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })} - ${endOfWeek.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`;
+    // Mobile: shortened format "Jan. 12-18", Desktop: full format
+    if (isMobile) {
+        const startMonth = startOfWeek.toLocaleDateString('en-US', { month: 'short' });
+        const endMonth = endOfWeek.toLocaleDateString('en-US', { month: 'short' });
+        const startDay = startOfWeek.getDate();
+        const endDay = endOfWeek.getDate();
+        // If same month: "Jan. 12-18", if different: "Jan. 28 - Feb. 3"
+        if (startMonth === endMonth) {
+            titleEl.textContent = `${startMonth} ${startDay}-${endDay}`;
+        } else {
+            titleEl.textContent = `${startMonth} ${startDay} - ${endMonth} ${endDay}`;
+        }
+    } else {
+        titleEl.textContent = `${startOfWeek.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })} - ${endOfWeek.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`;
+    }
     
     // Generate occurrences for the week range
     const rangeStart = new Date(startOfWeek);
@@ -4183,8 +4476,6 @@ function renderWeekView(titleEl, daysEl) {
     const allOccurrences = getAllEventOccurrences(appState.events, rangeStart, rangeEnd);
     
     // Check if mobile view
-    const isMobile = window.innerWidth < 900;
-    
     if (isMobile) {
         renderMobileDayAgenda(titleEl, daysEl, startOfWeek, allOccurrences);
     } else {
@@ -4312,9 +4603,12 @@ function renderDesktopColumnWeek(titleEl, daysEl, startOfWeek, allOccurrences) {
                      data-event-id="${escapeHtml(eventId)}"
                      data-occurrence-date="${occurrenceDateStr}"
                      data-time-range="${startTimeStr}–${endTimeStr}"
+                     data-start-minutes="${event.startMinutes}"
+                     data-end-minutes="${event.endMinutes}"
                      data-visibility="${event.visibility || 'team'}"
-                     onclick="event.stopPropagation(); viewEventDetails('${escapeHtml(eventId)}', '${occurrenceDateStr}')" 
+                     onclick="if(!event.target.closest('.week-event-resize-handle')){event.stopPropagation(); viewEventDetails('${escapeHtml(eventId)}', '${occurrenceDateStr}')}" 
                      style="top: ${topPosition}px; height: ${height}px; left: ${leftPercent}%; width: ${widthPercent}%; border-left: 4px solid ${escapeHtml(eventColor)};">
+                    <div class="week-event-resize-handle week-event-resize-top" data-resize="top" title="Drag to change start time"></div>
                     <div class="week-event-content">
                         <div class="week-event-title">${escapeHtml(event.title)}</div>
                         ${!shortEvent ? `<div class="week-event-time-inline">${startTimeStr}</div>` : ''}
@@ -4325,6 +4619,7 @@ function renderDesktopColumnWeek(titleEl, daysEl, startOfWeek, allOccurrences) {
                         ${isPrivate ? '<span class="hover-badge private-badge">Private</span>' : ''}
                         ${isAdmins ? '<span class="hover-badge admins-badge">Admins</span>' : ''}
                     </div>
+                    <div class="week-event-resize-handle week-event-resize-bottom" data-resize="bottom" title="Drag to change end time"></div>
                 </div>
             `;
         });
@@ -4360,6 +4655,43 @@ function renderDesktopColumnWeek(titleEl, daysEl, startOfWeek, allOccurrences) {
             scrollContainer.scrollTop = scrollTo;
         }
     });
+    
+    // Add click handlers to grid cells to create events
+    setTimeout(() => {
+        const gridCells = daysEl.querySelectorAll('.week-grid-cell');
+        console.log(`[Calendar] Attaching click handlers to ${gridCells.length} grid cells`);
+        
+        gridCells.forEach((cell, index) => {
+            const handler = function(e) {
+                e.preventDefault();
+                e.stopPropagation();
+                
+                const dayColumn = this.closest('.week-day-column');
+                const dateStr = dayColumn?.dataset.date;
+                const hour = parseInt(this.dataset.hour);
+                
+                console.log('[Calendar] Grid cell clicked:', { dateStr, hour, cell: this });
+                
+                if (dateStr && !isNaN(hour)) {
+                    const selectedDate = new Date(dateStr);
+                    selectedDate.setHours(hour, 0, 0, 0);
+                    console.log('[Calendar] Opening event modal for:', selectedDate);
+                    if (typeof window.openEventModalWithDate === 'function') {
+                        window.openEventModalWithDate(selectedDate, hour);
+                    } else if (typeof openEventModalWithDate === 'function') {
+                        openEventModalWithDate(selectedDate, hour);
+                    } else {
+                        console.error('[Calendar] openEventModalWithDate function not found!');
+                    }
+                }
+            };
+            
+            cell.addEventListener('click', handler);
+            if (index === 0) {
+                console.log('[Calendar] First cell data:', { date: cell.closest('.week-day-column')?.dataset.date, hour: cell.dataset.hour });
+            }
+        });
+    }, 100);
     
     // Initialize drag-and-drop for events
     initCalendarDragDrop();
@@ -4753,11 +5085,21 @@ async function navigateToSpreadsheet(spreadsheetId, options = {}) {
         setTimeout(() => {
             const taskRow = document.querySelector(`tr[data-task-id="${highlightTaskId}"]`);
             if (taskRow) {
-                taskRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                // Scroll within the nearest table container (not the whole page)
+                const scrollContainer = taskRow.closest('.table-container') || taskRow.closest('.spreadsheet-table-area') || document.querySelector('.table-container') || document.querySelector('.spreadsheet-table-area');
+                if (scrollContainer) {
+                    const rowRect = taskRow.getBoundingClientRect();
+                    const containerRect = scrollContainer.getBoundingClientRect();
+                    const currentScroll = scrollContainer.scrollTop;
+                    const targetScroll = currentScroll + (rowRect.top - containerRect.top) - (containerRect.height / 2) + (rowRect.height / 2);
+                    scrollContainer.scrollTo({ top: Math.max(0, targetScroll), behavior: 'smooth' });
+                } else {
+                    taskRow.scrollIntoView({ behavior: 'smooth', block: 'center' });
+                }
                 taskRow.classList.add('highlight-row');
-                setTimeout(() => taskRow.classList.remove('highlight-row'), 2000);
+                setTimeout(() => taskRow.classList.remove('highlight-row'), 2400);
             }
-        }, 300);
+        }, 400);
     }
 }
 
@@ -4767,6 +5109,11 @@ window.navigateToSpreadsheet = navigateToSpreadsheet;
  * Navigate to a task's sheet (calls navigateToSpreadsheet internally)
  */
 window.navigateToTaskSheet = async function(taskId) {
+    // Close search UI
+    if (window.clearSearchUI) {
+        window.clearSearchUI();
+    }
+    
     const task = appState.tasks.find(t => t.id === taskId);
     if (!task) {
         showToast('Task not found', 'error');
@@ -4814,9 +5161,27 @@ function initCalendarDragDrop() {
     const timeCells = document.querySelectorAll('.week-time-cell');
     const gridCells = document.querySelectorAll('.week-grid-cell'); // New column view cells
     
+    // Month view elements
+    const monthEventItems = document.querySelectorAll('.month-event-item[draggable="true"]');
+    const calendarDays = document.querySelectorAll('.calendar-day');
+    
+    console.log('[DragDrop] Initializing with', eventBlocks.length, 'week events,', monthEventItems.length, 'month events,', gridCells.length, 'grid cells');
+    
     eventBlocks.forEach(block => {
         block.addEventListener('dragstart', handleEventDragStart);
         block.addEventListener('dragend', handleEventDragEnd);
+    });
+    
+    // Month view drag and drop
+    monthEventItems.forEach(item => {
+        item.addEventListener('dragstart', handleMonthEventDragStart);
+        item.addEventListener('dragend', handleMonthEventDragEnd);
+    });
+    
+    calendarDays.forEach(day => {
+        day.addEventListener('dragover', handleMonthDayDragOver);
+        day.addEventListener('dragleave', handleMonthDayDragLeave);
+        day.addEventListener('drop', handleMonthDayDrop);
     });
     
     dayColumns.forEach(column => {
@@ -4833,27 +5198,451 @@ function initCalendarDragDrop() {
     });
     
     gridCells.forEach(cell => {
-        cell.addEventListener('dragover', handleCellDragOver);
-        cell.addEventListener('dragleave', handleCellDragLeave);
-        cell.addEventListener('drop', handleCellDrop);
+        cell.addEventListener('dragover', handleGridCellDragOver);
+        cell.addEventListener('dragleave', handleGridCellDragLeave);
+        cell.addEventListener('drop', handleGridCellDrop);
+    });
+    
+    // Initialize week view resize functionality
+    initWeekEventResize();
+}
+
+// ===================================
+// WEEK VIEW EVENT RESIZE
+// ===================================
+let resizingEvent = null;
+let resizeStartY = 0;
+let resizeStartHeight = 0;
+let resizeStartTop = 0;
+let resizeEventId = null;
+let resizeDirection = null; // 'top' or 'bottom'
+
+function initWeekEventResize() {
+    const resizeHandles = document.querySelectorAll('.week-event-resize-handle');
+    
+    resizeHandles.forEach(handle => {
+        handle.addEventListener('mousedown', startResize);
+    });
+    
+    // Also set up touch events for mobile
+    resizeHandles.forEach(handle => {
+        handle.addEventListener('touchstart', startResizeTouch, { passive: false });
     });
 }
 
+function startResize(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const handle = e.target.closest('.week-event-resize-handle');
+    const eventEl = e.target.closest('.week-col-event');
+    if (!eventEl || !handle) return;
+    
+    resizingEvent = eventEl;
+    resizeEventId = eventEl.dataset.eventId;
+    resizeStartY = e.clientY;
+    resizeStartHeight = eventEl.offsetHeight;
+    resizeStartTop = parseFloat(eventEl.style.top);
+    resizeDirection = handle.dataset.resize; // 'top' or 'bottom'
+    
+    // Disable dragging while resizing
+    eventEl.setAttribute('draggable', 'false');
+    eventEl.classList.add('resizing');
+    
+    document.addEventListener('mousemove', doResize);
+    document.addEventListener('mouseup', stopResize);
+}
+
+function startResizeTouch(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const touch = e.touches[0];
+    const handle = e.target.closest('.week-event-resize-handle');
+    const eventEl = e.target.closest('.week-col-event');
+    if (!eventEl || !handle) return;
+    
+    resizingEvent = eventEl;
+    resizeEventId = eventEl.dataset.eventId;
+    resizeStartY = touch.clientY;
+    resizeStartHeight = eventEl.offsetHeight;
+    resizeStartTop = parseFloat(eventEl.style.top);
+    resizeDirection = handle.dataset.resize;
+    
+    eventEl.setAttribute('draggable', 'false');
+    eventEl.classList.add('resizing');
+    
+    document.addEventListener('touchmove', doResizeTouch, { passive: false });
+    document.addEventListener('touchend', stopResizeTouch);
+}
+
+function doResize(e) {
+    if (!resizingEvent) return;
+    
+    const SLOT_HEIGHT = 60; // px per hour
+    const MIN_HEIGHT = 30; // minimum 30 minutes
+    const START_HOUR = 6;
+    
+    const deltaY = e.clientY - resizeStartY;
+    
+    if (resizeDirection === 'bottom') {
+        // Dragging bottom - change end time
+        let newHeight = resizeStartHeight + deltaY;
+        const snapInterval = SLOT_HEIGHT / 4; // 15px for 15 minutes
+        newHeight = Math.round(newHeight / snapInterval) * snapInterval;
+        newHeight = Math.max(MIN_HEIGHT, newHeight);
+        
+        resizingEvent.style.height = newHeight + 'px';
+    } else if (resizeDirection === 'top') {
+        // Dragging top - change start time (move top and adjust height)
+        const snapInterval = SLOT_HEIGHT / 4;
+        let newTop = resizeStartTop + deltaY;
+        newTop = Math.round(newTop / snapInterval) * snapInterval;
+        newTop = Math.max(0, newTop); // Can't go above 6:00
+        
+        // Adjust height to keep the same end position
+        const topDelta = newTop - resizeStartTop;
+        let newHeight = resizeStartHeight - topDelta;
+        newHeight = Math.max(MIN_HEIGHT, newHeight);
+        
+        // Recalculate top based on constrained height
+        if (newHeight === MIN_HEIGHT && topDelta > 0) {
+            newTop = resizeStartTop + resizeStartHeight - MIN_HEIGHT;
+        }
+        
+        resizingEvent.style.top = newTop + 'px';
+        resizingEvent.style.height = newHeight + 'px';
+    }
+    
+    // Update the time display
+    const topPosition = parseFloat(resizingEvent.style.top);
+    const height = parseFloat(resizingEvent.style.height);
+    const startMinutes = (topPosition / SLOT_HEIGHT) * 60 + START_HOUR * 60;
+    const durationMinutes = (height / SLOT_HEIGHT) * 60;
+    const endMinutes = startMinutes + durationMinutes;
+    
+    const startHour = Math.floor(startMinutes / 60);
+    const startMin = Math.round(startMinutes % 60);
+    const endHour = Math.floor(endMinutes / 60);
+    const endMin = Math.round(endMinutes % 60);
+    
+    const startTimeStr = formatTime24(startHour, startMin);
+    const endTimeStr = formatTime24(endHour, endMin);
+    
+    // Update the time range display
+    resizingEvent.dataset.timeRange = `${startTimeStr}–${endTimeStr}`;
+    const hoverTime = resizingEvent.querySelector('.hover-time');
+    if (hoverTime) {
+        hoverTime.textContent = `${startTimeStr}–${endTimeStr}`;
+    }
+    
+    // Update inline time display
+    const inlineTime = resizingEvent.querySelector('.week-event-time-inline');
+    if (inlineTime) {
+        inlineTime.textContent = startTimeStr;
+    }
+}
+
+function doResizeTouch(e) {
+    if (!resizingEvent) return;
+    e.preventDefault();
+    
+    // Create a fake mouse event with touch coordinates
+    const touch = e.touches[0];
+    const fakeEvent = { clientY: touch.clientY };
+    doResize(fakeEvent);
+}
+
+async function stopResize(e) {
+    if (!resizingEvent || !resizeEventId) {
+        cleanup();
+        return;
+    }
+    
+    const SLOT_HEIGHT = 60;
+    const START_HOUR = 6;
+    
+    const newHeight = resizingEvent.offsetHeight;
+    const topPosition = parseFloat(resizingEvent.style.top);
+    
+    // Calculate new start and end times
+    const startMinutes = (topPosition / SLOT_HEIGHT) * 60 + START_HOUR * 60;
+    const durationMinutes = (newHeight / SLOT_HEIGHT) * 60;
+    const endMinutes = startMinutes + durationMinutes;
+    
+    const startHour = Math.floor(startMinutes / 60);
+    const startMin = Math.round(startMinutes % 60);
+    const endHour = Math.floor(endMinutes / 60);
+    const endMin = Math.round(endMinutes % 60);
+    
+    // Update event in Firestore
+    await resizeEventTime(resizeEventId, startHour, startMin, endHour, endMin);
+    
+    cleanup();
+    
+    function cleanup() {
+        if (resizingEvent) {
+            resizingEvent.setAttribute('draggable', 'true');
+            resizingEvent.classList.remove('resizing');
+        }
+        resizingEvent = null;
+        resizeEventId = null;
+        resizeStartY = 0;
+        resizeStartHeight = 0;
+        resizeStartTop = 0;
+        resizeDirection = null;
+        document.removeEventListener('mousemove', doResize);
+        document.removeEventListener('mouseup', stopResize);
+    }
+}
+
+async function stopResizeTouch(e) {
+    await stopResize(e);
+    document.removeEventListener('touchmove', doResizeTouch);
+    document.removeEventListener('touchend', stopResizeTouch);
+}
+
+async function resizeEventTime(eventId, newStartHour, newStartMin, newEndHour, newEndMin) {
+    const event = appState.events.find(e => e.id === eventId);
+    if (!event) {
+        showToast('Event not found', 'error');
+        return;
+    }
+    
+    const oldStartDate = new Date(event.date);
+    
+    // Create new start date keeping the same day
+    const newStartDate = new Date(oldStartDate);
+    newStartDate.setHours(newStartHour, newStartMin, 0, 0);
+    
+    // Create new end date
+    const newEndDate = new Date(oldStartDate);
+    newEndDate.setHours(newEndHour, newEndMin, 0, 0);
+    
+    // Make sure end is after start
+    if (newEndDate <= newStartDate) {
+        newEndDate.setTime(newStartDate.getTime() + 30 * 60 * 1000); // Minimum 30 minutes
+    }
+    
+    // Update local state
+    event.date = newStartDate;
+    event.endDate = newEndDate;
+    event.time = newStartDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+    event.endTime = newEndDate.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit', hour12: false });
+    
+    // Update in Firestore
+    try {
+        await updateEventInFirestore(event);
+        showToast('Event time updated', 'success');
+        // Preserve scroll position when re-rendering after resize
+        const scrollContainer = document.querySelector('.week-view-scroll-container');
+        const scrollTop = scrollContainer ? scrollContainer.scrollTop : 0;
+        renderCalendar();
+        // Restore scroll position after render
+        requestAnimationFrame(() => {
+            const newScrollContainer = document.querySelector('.week-view-scroll-container');
+            if (newScrollContainer) {
+                newScrollContainer.scrollTop = scrollTop;
+            }
+        });
+    } catch (error) {
+        console.error('Error resizing event:', error);
+        showToast('Failed to update event', 'error');
+    }
+}
+
+// ===================================
+// MONTH VIEW DRAG AND DROP
+// ===================================
+let monthDraggedEventId = null;
+let monthDraggedElement = null;
+let monthDraggedOriginalTime = null;
+let monthDragStarted = false;
+
+function handleMonthEventDragStart(e) {
+    const eventItem = e.target.closest('.month-event-item');
+    if (!eventItem) return;
+    
+    monthDraggedEventId = eventItem.dataset.eventId;
+    monthDraggedElement = eventItem;
+    monthDraggedOriginalTime = eventItem.dataset.originalTime;
+    monthDragStarted = true;
+    
+    eventItem.classList.add('dragging');
+    e.dataTransfer.effectAllowed = 'move';
+    e.dataTransfer.setData('text/plain', monthDraggedEventId);
+    
+    // Create a drag image
+    const dragImage = eventItem.cloneNode(true);
+    dragImage.style.position = 'absolute';
+    dragImage.style.top = '-1000px';
+    document.body.appendChild(dragImage);
+    e.dataTransfer.setDragImage(dragImage, 0, 0);
+    setTimeout(() => dragImage.remove(), 0);
+    
+    console.log('[MonthDrag] Started dragging:', monthDraggedEventId, 'time:', monthDraggedOriginalTime);
+}
+
+function handleMonthEventDragEnd(e) {
+    const eventItem = e.target.closest('.month-event-item');
+    if (eventItem) {
+        eventItem.classList.remove('dragging');
+    }
+    
+    monthDraggedEventId = null;
+    monthDraggedElement = null;
+    monthDraggedOriginalTime = null;
+    
+    // Reset drag flag after a short delay to prevent click firing
+    setTimeout(() => {
+        monthDragStarted = false;
+    }, 100);
+    
+    // Remove all drag-over highlights
+    document.querySelectorAll('.calendar-day.drag-over').forEach(el => el.classList.remove('drag-over'));
+    console.log('[MonthDrag] Drag ended');
+}
+
+function handleMonthDayDragOver(e) {
+    // CRITICAL: Must call preventDefault FIRST to allow drop - browsers require this
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Set drop effect - must be done even if no event being dragged
+    // 'move' tells the browser this is a valid drop target
+    e.dataTransfer.dropEffect = monthDraggedEventId ? 'move' : 'none';
+    
+    // Only show visual feedback if we're dragging a month event
+    if (monthDraggedEventId) {
+        // Find the calendar-day element - could be currentTarget or need to traverse up
+        let day = e.currentTarget;
+        if (!day.classList.contains('calendar-day')) {
+            day = e.target.closest('.calendar-day');
+        }
+        if (day) {
+            day.classList.add('drag-over');
+        }
+    }
+}
+
+function handleMonthDayDragLeave(e) {
+    // Find the calendar-day element
+    let day = e.currentTarget;
+    if (!day.classList.contains('calendar-day')) {
+        day = e.target.closest('.calendar-day');
+    }
+    
+    // Only remove if we're actually leaving the day (not entering a child)
+    if (day && !day.contains(e.relatedTarget)) {
+        day.classList.remove('drag-over');
+    }
+}
+
+async function handleMonthDayDrop(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Find the calendar-day element - could be currentTarget or need to traverse up
+    let day = e.currentTarget;
+    if (!day.classList.contains('calendar-day')) {
+        day = e.target.closest('.calendar-day');
+    }
+    
+    if (!day) {
+        console.log('[MonthDrag] No calendar-day found');
+        return;
+    }
+    
+    day.classList.remove('drag-over');
+    
+    // Remove all drag-over states
+    document.querySelectorAll('.calendar-day.drag-over').forEach(el => el.classList.remove('drag-over'));
+    
+    if (!monthDraggedEventId) {
+        console.log('[MonthDrag] No dragged event ID');
+        return;
+    }
+    
+    const dateStr = day.dataset.date;
+    if (!dateStr) {
+        console.log('[MonthDrag] Invalid drop target - missing date');
+        return;
+    }
+    
+    const newDate = new Date(dateStr);
+    console.log('[MonthDrag] Dropping event:', monthDraggedEventId, 'onto date:', newDate.toDateString());
+    
+    // Store the event ID before it gets cleared
+    const eventIdToReschedule = monthDraggedEventId;
+    
+    // Clear drag state immediately
+    monthDraggedEventId = null;
+    monthDraggedElement = null;
+    monthDraggedOriginalTime = null;
+    
+    // Reschedule the event keeping the same time but changing the date
+    await rescheduleMonthEvent(eventIdToReschedule, newDate);
+}
+
+async function rescheduleMonthEvent(eventId, newDate) {
+    const event = appState.events.find(e => e.id === eventId);
+    if (!event) {
+        showToast('Event not found', 'error');
+        return;
+    }
+    
+    // Get the original times
+    const oldStartDate = new Date(event.date);
+    const oldEndDate = event.endDate ? new Date(event.endDate) : new Date(oldStartDate.getTime() + 60 * 60 * 1000);
+    const duration = oldEndDate.getTime() - oldStartDate.getTime();
+    
+    // Create new date keeping the same time
+    const newStartDate = new Date(newDate);
+    newStartDate.setHours(oldStartDate.getHours(), oldStartDate.getMinutes(), 0, 0);
+    const newEndDate = new Date(newStartDate.getTime() + duration);
+    
+    // Update local state
+    event.date = newStartDate;
+    event.endDate = newEndDate;
+    
+    // Update in Firestore
+    try {
+        await updateEventInFirestore(event);
+        showToast('Event moved to ' + newStartDate.toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' }), 'success');
+        renderCalendar();
+    } catch (error) {
+        console.error('Error moving event:', error);
+        showToast('Failed to move event', 'error');
+    }
+}
+
 let draggedEventId = null;
+let draggedEventElement = null;
+let dragOffsetY = 0; // Offset from top of event where user clicked
 
 function handleEventDragStart(e) {
     draggedEventId = e.target.dataset.eventId;
+    draggedEventElement = e.target;
+    
+    // Calculate offset from top of event element to mouse position
+    const rect = e.target.getBoundingClientRect();
+    dragOffsetY = e.clientY - rect.top;
+    
     e.target.classList.add('dragging');
     e.dataTransfer.effectAllowed = 'move';
     e.dataTransfer.setData('text/plain', draggedEventId);
+    console.log('[DragDrop] Started dragging event:', draggedEventId, 'offsetY:', dragOffsetY);
 }
 
 function handleEventDragEnd(e) {
     e.target.classList.remove('dragging');
     draggedEventId = null;
+    draggedEventElement = null;
+    dragOffsetY = 0;
     
     // Remove all drag-over highlights
     document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+    console.log('[DragDrop] Drag ended');
 }
 
 function handleEventDragOver(e) {
@@ -4873,6 +5662,81 @@ function handleCellDragOver(e) {
 
 function handleCellDragLeave(e) {
     e.target.classList.remove('drag-over');
+}
+
+// Dedicated handlers for week grid cells (column view)
+function handleGridCellDragOver(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    // Only highlight if we're dragging an event
+    if (!draggedEventId) return;
+    
+    e.currentTarget.classList.add('drag-over');
+    e.dataTransfer.dropEffect = 'move';
+}
+
+function handleGridCellDragLeave(e) {
+    e.currentTarget.classList.remove('drag-over');
+}
+
+async function handleGridCellDrop(e) {
+    e.preventDefault();
+    e.stopPropagation();
+    
+    const cell = e.currentTarget;
+    cell.classList.remove('drag-over');
+    
+    // Remove all drag-over states
+    document.querySelectorAll('.drag-over').forEach(el => el.classList.remove('drag-over'));
+    
+    if (!draggedEventId) {
+        console.log('[DragDrop] No dragged event ID');
+        return;
+    }
+    
+    // Get the day column for the date
+    const column = cell.closest('.week-day-column');
+    const dateStr = column?.dataset.date;
+    
+    if (!dateStr) {
+        console.log('[DragDrop] Invalid drop target - missing date');
+        return;
+    }
+    
+    // Calculate the drop position based on the TOP of the event (not mouse position)
+    // The top of the event = mouse position - drag offset
+    const eventTopY = e.clientY - dragOffsetY;
+    
+    // Find the grid container to calculate relative position
+    const gridContainer = column.querySelector('.week-day-grid');
+    const gridRect = gridContainer.getBoundingClientRect();
+    
+    // Calculate position relative to the grid (in pixels from top of grid)
+    const relativeY = eventTopY - gridRect.top;
+    
+    // Each cell is 60px (SLOT_HEIGHT), starting from hour 6 (START_HOUR)
+    const SLOT_HEIGHT = 60;
+    const START_HOUR = 6;
+    
+    // Calculate total minutes from the top of the grid
+    const totalMinutesFromStart = (relativeY / SLOT_HEIGHT) * 60;
+    
+    // Calculate hour and minute (snap to 30-minute intervals)
+    const hour = Math.floor(totalMinutesFromStart / 60) + START_HOUR;
+    const rawMinute = totalMinutesFromStart % 60;
+    const minute = Math.round(rawMinute / 30) * 30; // Snap to 0 or 30
+    
+    // Clamp values to valid range
+    const clampedHour = Math.max(START_HOUR, Math.min(22, hour));
+    const clampedMinute = Math.max(0, Math.min(30, minute));
+    
+    const newDate = new Date(dateStr);
+    newDate.setHours(clampedHour, clampedMinute, 0, 0);
+    
+    console.log('[DragDrop] Rescheduling to:', newDate, 'hour:', clampedHour, 'minute:', clampedMinute);
+    
+    await rescheduleEvent(draggedEventId, newDate, clampedHour, clampedMinute);
 }
 
 async function handleEventDrop(e) {
@@ -4971,7 +5835,17 @@ async function rescheduleEvent(eventId, newDate, newHour = null, newMinute = 0) 
     try {
         await updateEventInFirestore(event);
         showToast('Event rescheduled', 'success');
-        renderCalendar(); // Re-render to show changes
+        // Preserve scroll position when re-rendering after week drag-drop
+        const scrollContainer = document.querySelector('.week-view-scroll-container');
+        const scrollTop = scrollContainer ? scrollContainer.scrollTop : 0;
+        renderCalendar();
+        // Restore scroll position after render
+        requestAnimationFrame(() => {
+            const newScrollContainer = document.querySelector('.week-view-scroll-container');
+            if (newScrollContainer) {
+                newScrollContainer.scrollTop = scrollTop;
+            }
+        });
     } catch (error) {
         console.error('Error rescheduling event:', error);
         showToast('Failed to reschedule event', 'error');
@@ -5058,6 +5932,9 @@ function initTasks() {
         }
         if (progressBadge) {
             progressBadge.textContent = value + '%';
+        }
+        if (progressSlider) {
+            progressSlider.style.setProperty('--progress', value + '%');
         }
     }
     
@@ -5423,14 +6300,8 @@ function initTasks() {
         document.getElementById('spreadsheetColor').value = spreadsheet.color || '#0070f3';
         
         // Set visibility
-        const visibilityOptions = modal.querySelectorAll('.unified-visibility-option');
-        visibilityOptions.forEach(opt => {
-            const visibility = opt.dataset.visibility;
-            const isSelected = visibility === (spreadsheet.visibility || 'team');
-            opt.classList.toggle('selected', isSelected);
-            const radio = opt.querySelector('input[type=\"radio\"]');
-            if (radio) radio.checked = isSelected;
-        });
+        const visibilityToggle = modal.querySelector('.visibility-toggle[data-target="spreadsheetVisibility"]');
+        setVisibilitySelection(visibilityToggle, spreadsheet.visibility || 'team');
         
         // Store spreadsheet ID for editing
         form.dataset.editingSpreadsheetId = spreadsheet.id;
@@ -5769,41 +6640,37 @@ function initTasks() {
                     const isLeadsTable = spreadsheet?.type === 'leads';
                     const firstCol = isLeadsTable ? 'leadName' : 'title';
                     
-                    // Build new column order from current DOM order
-                    const allItems = Array.from(container.querySelectorAll('.column-toggle-item'));
-                    const activeIds = [];
+                    // Can't reorder the first column
+                    if (draggedId === firstCol) return;
                     
-                    // Always include first column at the beginning (can't be reordered)
-                    if (spreadsheet.columns.includes(firstCol)) {
-                        activeIds.push(firstCol);
+                    // Perform DOM move first for immediate visual feedback
+                    if (insertBefore) {
+                        container.insertBefore(draggedItem, item);
+                    } else {
+                        container.insertBefore(draggedItem, item.nextSibling);
                     }
                     
+                    // Now read the new order from DOM
+                    const allItems = Array.from(container.querySelectorAll('.column-toggle-item'));
+                    const newColumnOrder = [];
+                    
+                    // Always include first column at the beginning
+                    if (spreadsheet.columns.includes(firstCol)) {
+                        newColumnOrder.push(firstCol);
+                    }
+                    
+                    // Add columns in their new DOM order (only if they were active)
                     allItems.forEach(el => {
                         const id = el.dataset.columnId;
-                        // Skip first column (already added) and dragged column (will be inserted at target position)
-                        if (spreadsheet.columns.includes(id) && id !== draggedId && id !== firstCol) {
-                            activeIds.push(id);
+                        if (spreadsheet.columns.includes(id) && id !== firstCol) {
+                            newColumnOrder.push(id);
                         }
                     });
                     
-                    // Find where to insert dragged column (only if it's not the first column)
-                    if (spreadsheet.columns.includes(draggedId) && draggedId !== firstCol) {
-                        const targetIndex = activeIds.indexOf(targetId);
-                        if (targetIndex >= 0) {
-                            if (insertBefore) {
-                                activeIds.splice(targetIndex, 0, draggedId);
-                            } else {
-                                activeIds.splice(targetIndex + 1, 0, draggedId);
-                            }
-                        } else {
-                            activeIds.push(draggedId);
-                        }
-                        
-                        spreadsheet.columns = activeIds;
-                        saveSpreadsheetToFirestore(spreadsheet);
-                        populateColumnToggles(spreadsheet);
-                        renderSpreadsheetTable(spreadsheet);
-                    }
+                    // Update spreadsheet columns
+                    spreadsheet.columns = newColumnOrder;
+                    saveSpreadsheetToFirestore(spreadsheet);
+                    renderSpreadsheetTable(spreadsheet);
                 }
             });
 
@@ -5994,6 +6861,94 @@ function initTasks() {
         // Close modal
         if (closeBtn) closeBtn.addEventListener('click', () => closeModal('customColumnModal'));
         if (cancelBtn) cancelBtn.addEventListener('click', () => closeModal('customColumnModal'));
+
+        // Delete column button handler
+        const deleteColumnBtn = document.getElementById('deleteColumnBtn');
+        if (deleteColumnBtn) {
+            deleteColumnBtn.addEventListener('click', async () => {
+                // Only protect the primary identifier columns (title for tasks, leadName for leads)
+                const protectedColumns = ['title', 'leadName'];
+                if (!editingColumnId || protectedColumns.includes(editingColumnId)) {
+                    showToast('Cannot delete the primary identifier column', 'error');
+                    return;
+                }
+                
+                // Check permissions
+                if (appState.currentTeamData && !isAdmin(appState.currentTeamData)) {
+                    showToast('Only team owners and admins can delete columns', 'error');
+                    return;
+                }
+                
+                const columnName = nameInput?.value || editingColumnId;
+                
+                // Show confirmation
+                const confirmed = await showConfirmModal(
+                    `Are you sure you want to delete the column "${columnName}"? This will permanently remove the column and all its data from tasks. This action cannot be undone.`, 
+                    {
+                        title: 'Delete Column',
+                        confirmText: 'Delete Permanently',
+                        type: 'danger'
+                    }
+                );
+                
+                if (!confirmed) return;
+                
+                try {
+                    const spreadsheet = appState.currentSpreadsheet;
+                    if (!spreadsheet) {
+                        showToast('No spreadsheet selected', 'error');
+                        return;
+                    }
+                    
+                    const isCustomColumn = editingColumnId.startsWith('custom_');
+                    
+                    if (isCustomColumn) {
+                        // Remove from customColumns array
+                        if (spreadsheet.customColumns) {
+                            spreadsheet.customColumns = spreadsheet.customColumns.filter(c => c.id !== editingColumnId);
+                        }
+                        
+                        // Remove custom field data from all tasks
+                        appState.tasks.forEach(task => {
+                            if (task.customFields && task.customFields[editingColumnId] !== undefined) {
+                                delete task.customFields[editingColumnId];
+                            }
+                        });
+                    } else {
+                        // For built-in columns, remove any custom settings
+                        if (spreadsheet.columnSettings && spreadsheet.columnSettings[editingColumnId]) {
+                            delete spreadsheet.columnSettings[editingColumnId];
+                        }
+                        
+                        // Clear field data from tasks for this built-in column
+                        appState.tasks.forEach(task => {
+                            if (task[editingColumnId] !== undefined) {
+                                delete task[editingColumnId];
+                            }
+                        });
+                    }
+                    
+                    // Remove from active columns
+                    spreadsheet.columns = spreadsheet.columns.filter(c => c !== editingColumnId);
+                    
+                    // Save to Firestore
+                    await saveSpreadsheetToFirestore(spreadsheet);
+                    
+                    // Update currentSpreadsheet to ensure state is in sync
+                    appState.currentSpreadsheet = spreadsheet;
+                    
+                    // Re-render sidebar and table
+                    populateColumnToggles(spreadsheet);
+                    renderSpreadsheetTable(spreadsheet);
+                    
+                    closeModal('customColumnModal');
+                    showToast(`Column "${columnName}" deleted permanently`, 'success');
+                } catch (error) {
+                    console.error('Error deleting column:', error);
+                    showToast('Failed to delete column', 'error');
+                }
+            });
+        }
 
         // Type selector - supports both old and new class names
         if (typeSelector) {
@@ -6240,12 +7195,23 @@ function initTasks() {
                     ? '<i class="fas fa-check"></i> Save' 
                     : '<i class="fas fa-plus"></i> Create';
             }
+            
+            // Show/hide delete button (only in edit mode, hide for protected columns)
+            const deleteBtn = document.getElementById('deleteColumnBtn');
+            const protectedColumns = ['title', 'leadName'];
+            if (deleteBtn) {
+                deleteBtn.style.display = (editingColumnId && !protectedColumns.includes(editingColumnId)) ? 'inline-flex' : 'none';
+            }
         }
 
         // Reset modal to defaults (for create mode)
         function resetCustomColumnModal() {
             if (nameInput) nameInput.value = '';
             if (nameError) nameError.textContent = '';
+            
+            // Hide delete button in create mode
+            const deleteBtn = document.getElementById('deleteColumnBtn');
+            if (deleteBtn) deleteBtn.style.display = 'none';
             
             // Enable type selector
             if (typeSelector) {
@@ -6475,13 +7441,16 @@ function initTasks() {
                     // Populate dropdown options with colors
                     if (selectedType === 'dropdown' && optionsList) {
                         optionsList.innerHTML = '';
+                        // Always prioritize saved options from columnSettings over defaults
                         const opts = customSettings.options || colDef.defaultOptions || [];
-                        opts.forEach((opt, i) => {
-                            const label = typeof opt === 'string' ? opt : opt.label;
-                            const color = typeof opt === 'string' ? '#9CA3AF' : (opt.color || '#9CA3AF');
-                            optionsList.insertAdjacentHTML('beforeend', createDropdownOptionHTML(i + 1, label, color));
-                        });
-                        if (opts.length === 0) {
+                        if (opts.length > 0) {
+                            opts.forEach((opt, i) => {
+                                const label = typeof opt === 'string' ? opt : opt.label;
+                                const color = typeof opt === 'string' ? '#9CA3AF' : (opt.color || '#9CA3AF');
+                                optionsList.insertAdjacentHTML('beforeend', createDropdownOptionHTML(i + 1, label, color));
+                            });
+                        } else {
+                            // Only show default empty options if no saved options exist
                             optionsList.innerHTML = createDropdownOptionHTML(1) + createDropdownOptionHTML(2);
                         }
                     }
@@ -6578,12 +7547,16 @@ function initTasks() {
     // ===================================
     // SPREADSHEET TABLE RENDERING
     // =================================== 
+    // ===================================
+    // OPTIMIZED TABLE RENDERING
+    // Uses DocumentFragment and batch DOM operations for speed
+    // ===================================
     function renderSpreadsheetTable(spreadsheet) {
         const tableContainer = document.getElementById('tableContainer');
         if (!tableContainer) return;
 
         // Get filtered and sorted tasks for this spreadsheet
-        let tasks = getFilteredAndSortedTasks();
+        const tasks = getFilteredAndSortedTasks();
         
         // Get all tasks for this spreadsheet (without search/filter applied)
         const spreadsheetTasks = getTasksForSpreadsheet(spreadsheet);
@@ -6592,17 +7565,18 @@ function initTasks() {
         const isLeadsTable = spreadsheet.type === 'leads';
         const itemName = isLeadsTable ? 'lead' : 'task';
         const itemNamePlural = isLeadsTable ? 'leads' : 'tasks';
-        const addBtnId = isLeadsTable ? 'addLeadPanelBtn' : 'addTaskPanelBtn';
 
         if (tasks.length === 0 && spreadsheetTasks.length === 0) {
             tableContainer.innerHTML = `
-                <div class="spreadsheet-empty">
-                    <i class="fas fa-${isLeadsTable ? 'user-plus' : 'clipboard-list'}"></i>
-                    <h4>No ${itemNamePlural} yet</h4>
-                    <p>Create your first ${itemName} to get started</p>
-                    <button class="btn-primary empty-state-btn" onclick="openAddItemModal()">
-                        <i class="fas fa-plus"></i> Add ${itemName.charAt(0).toUpperCase() + itemName.slice(1)}
+                <div class="spreadsheet-empty-wrapper">
+                    <button class="add-row-btn empty-state-add-btn" onclick="openAddItemModal()">
+                        <i class="fas fa-plus"></i> Add new ${isLeadsTable ? 'lead' : 'task'}
                     </button>
+                    <div class="spreadsheet-empty">
+                        <i class="fas fa-${isLeadsTable ? 'user-plus' : 'clipboard-list'}"></i>
+                        <h4>No ${itemNamePlural} yet</h4>
+                        <p>Create your first ${itemName} to get started</p>
+                    </div>
                 </div>
             `;
             return;
@@ -6622,50 +7596,40 @@ function initTasks() {
             return;
         }
 
-        // Build table HTML - use spreadsheet.columns as the single source of truth for visible columns
-        // This array contains both built-in and custom column IDs that are currently visible
-        // Deduplicate columns and set proper defaults based on table type
+        // Deduplicate and set default columns
         let visibleColumns = spreadsheet.columns;
         if (!visibleColumns || visibleColumns.length === 0) {
             visibleColumns = isLeadsTable 
                 ? ['leadName', 'status', 'source', 'value', 'contact', 'createdAt', 'notes']
                 : ['title', 'status', 'assignee', 'priority', 'dueDate'];
         } else {
-            // Remove duplicates
             visibleColumns = [...new Set(visibleColumns)];
         }
         const firstColHeader = isLeadsTable ? 'Lead' : 'Task';
         
-        let tableHTML = `
-            <table class="spreadsheet-table">
-                <thead>
-                    <tr>
-                        ${visibleColumns.map(col => {
-                            // Column header - clickable icon to edit column settings (except title/leadName column)
-                            const isCustom = col.startsWith('custom_');
-                            const icon = getColumnIcon(col, spreadsheet);
-                            const label = getColumnLabel(col, spreadsheet);
-                            const isFirstCol = col === 'title' || col === 'leadName';
-                            const clickableClass = isFirstCol ? '' : 'column-header-clickable';
-                            return `<th title="${label}" class="${clickableClass}" data-column-id="${col}" data-is-custom="${isCustom}">
-                                ${isFirstCol ? firstColHeader : `<i class="fas ${icon} column-header-icon"></i>`}
-                            </th>`;
-                        }).join('')}
-                        <th title="Actions"><i class="fas fa-ellipsis-h"></i></th>
-                    </tr>
-                </thead>
-                <tbody>
-        `;
+        // Pre-compute column metadata once
+        const columnMeta = visibleColumns.map(col => ({
+            id: col,
+            isCustom: col.startsWith('custom_'),
+            icon: getColumnIcon(col, spreadsheet),
+            label: getColumnLabel(col, spreadsheet),
+            isFirstCol: col === 'title' || col === 'leadName'
+        }));
 
-        tasks.forEach(task => {
+        // Build header row efficiently
+        const headerCells = columnMeta.map(meta => {
+            const clickableClass = meta.isFirstCol ? '' : 'column-header-clickable';
+            return `<th title="${meta.label}" class="${clickableClass}" data-column-id="${meta.id}" data-is-custom="${meta.isCustom}">
+                ${meta.isFirstCol ? firstColHeader : `<i class="fas ${meta.icon} column-header-icon"></i>`}
+            </th>`;
+        }).join('');
+        
+        // Build all rows in a single pass using array join (faster than string concatenation)
+        const rowsHTML = tasks.map(task => {
             const isCompleted = task.status === 'done';
-            tableHTML += `<tr class="${isCompleted ? 'row-completed' : ''}" data-task-id="${task.id}">`;
-            
-            visibleColumns.forEach(col => {
-                tableHTML += renderTableCell(task, col, spreadsheet);
-            });
-
-            tableHTML += `
+            const cells = visibleColumns.map(col => renderTableCell(task, col, spreadsheet)).join('');
+            return `<tr class="${isCompleted ? 'row-completed' : ''}" data-task-id="${task.id}">
+                ${cells}
                 <td>
                     <div class="row-actions">
                         <button class="row-action-btn" onclick="editTask(appState.tasks.find(t => t.id === '${task.id}'))" data-tooltip="Edit">
@@ -6676,22 +7640,22 @@ function initTasks() {
                         </button>
                     </div>
                 </td>
-            `;
-            tableHTML += '</tr>';
-        });
+            </tr>`;
+        }).join('');
 
-        tableHTML += `
-                </tbody>
+        // Single DOM write
+        tableContainer.innerHTML = `
+            <table class="spreadsheet-table">
+                <thead><tr>${headerCells}<th title="Actions"><i class="fas fa-ellipsis-h"></i></th></tr></thead>
+                <tbody>${rowsHTML}</tbody>
             </table>
             <button class="add-row-btn" onclick="openAddItemModal()">
                 <i class="fas fa-plus"></i> Add new ${isLeadsTable ? 'lead' : 'task'}
             </button>
         `;
 
-        tableContainer.innerHTML = tableHTML;
-
-        // Add event listeners
-        initTableEventListeners(spreadsheet);
+        // Defer event listener initialization to next frame
+        requestAnimationFrame(() => initTableEventListeners(spreadsheet));
     }
 
     // Initialize table event listeners
@@ -7344,10 +8308,6 @@ function initTasks() {
         // Position dropdown
         positionInlineDropdown(dropdown, badge);
         
-        // Append to spreadsheet container for proper scrolling
-        const spreadsheetContainer = document.querySelector('.spreadsheet-table-area') || document.body;
-        spreadsheetContainer.appendChild(dropdown);
-        
         // Add animation class
         requestAnimationFrame(() => dropdown.classList.add('visible'));
         
@@ -7442,6 +8402,18 @@ function initTasks() {
             </div>
         `;
         
+        // Add Team option with team icon
+        const isTeamActive = task.assigneeId === 'team';
+        optionsHTML += `
+            <div class="inline-dropdown-option ${isTeamActive ? 'active' : ''}" data-value="team" data-name="Team">
+                <div class="assignee-option-avatar team-avatar">
+                    <i class="fas fa-users"></i>
+                </div>
+                <span>Team</span>
+                ${isTeamActive ? '<i class="fas fa-check"></i>' : ''}
+            </div>
+        `;
+        
         appState.teammates.forEach(member => {
             const isActive = task.assigneeId === member.id;
             // Use unified identity resolver for consistent display
@@ -7462,10 +8434,6 @@ function initTasks() {
         
         // Position dropdown
         positionInlineDropdown(dropdown, cell);
-        
-        // Append to spreadsheet container for proper scrolling
-        const spreadsheetContainer = document.querySelector('.spreadsheet-table-area') || document.body;
-        spreadsheetContainer.appendChild(dropdown);
         
         // Add animation class
         requestAnimationFrame(() => dropdown.classList.add('visible'));
@@ -7494,15 +8462,31 @@ function initTasks() {
         task.assigneeId = newAssigneeId || null;
         task.assignee = newAssigneeName || 'Unassigned';
         
-        // Update cell visual using unified identity resolver
-        const identity = newAssigneeId ? getIdentity(newAssigneeId, newAssigneeName) : { displayName: 'Unassigned', avatarColor: '#8E8E93', initials: '?' };
-        const fullName = identity.displayName;
-        const firstName = fullName.split(' ')[0];
-        const initials = identity.initials;
-        const color = identity.avatarColor;
+        // Handle Team assignee specially with team icon
+        let avatarHTML;
+        let fullName;
+        let firstName;
+        
+        if (newAssigneeId === 'team') {
+            fullName = 'Team';
+            firstName = 'Team';
+            avatarHTML = `<div class="assignee-avatar dropdown-assignee-avatar team-avatar"><i class="fas fa-users"></i></div>`;
+        } else if (newAssigneeId) {
+            // Update cell visual using unified identity resolver
+            const identity = getIdentity(newAssigneeId, newAssigneeName);
+            fullName = identity.displayName;
+            firstName = fullName.split(' ')[0];
+            const initials = identity.initials;
+            const color = identity.avatarColor;
+            avatarHTML = `<div class="assignee-avatar" style="background: ${color}">${initials}</div>`;
+        } else {
+            fullName = 'Unassigned';
+            firstName = 'Unassigned';
+            avatarHTML = `<div class="assignee-avatar" style="background: #8E8E93">?</div>`;
+        }
         
         cell.innerHTML = `
-            <div class="assignee-avatar" style="background: ${color}">${initials}</div>
+            ${avatarHTML}
             <span class="assignee-name">${escapeHtml(firstName)}</span>
         `;
         cell.title = fullName;
@@ -7543,45 +8527,54 @@ function initTasks() {
     function positionInlineDropdown(dropdown, trigger) {
         const triggerRect = trigger.getBoundingClientRect();
         
-        // Find the spreadsheet table area to get its scroll offset
-        const spreadsheetContainer = document.querySelector('.spreadsheet-table-area');
-        if (!spreadsheetContainer) return;
+        // Append dropdown to body for proper viewport-based positioning
+        // This prevents cutoff issues from container overflow
+        if (dropdown.parentElement !== document.body) {
+            document.body.appendChild(dropdown);
+        }
         
-        const containerRect = spreadsheetContainer.getBoundingClientRect();
+        // Use fixed positioning relative to viewport
+        dropdown.style.position = 'fixed';
+        dropdown.style.zIndex = '100001';
         
-        // Calculate position relative to the scrollable container
-        // Account for both the container's position and its scroll offset
-        const scrollTop = spreadsheetContainer.scrollTop;
-        const scrollLeft = spreadsheetContainer.scrollLeft;
+        // Get viewport dimensions
+        const viewportWidth = window.innerWidth;
+        const viewportHeight = window.innerHeight;
         
-        // Position relative to container's content (including scrolled area)
-        const relativeTop = triggerRect.top - containerRect.top + scrollTop;
-        const relativeLeft = triggerRect.left - containerRect.left + scrollLeft;
-        
-        // Estimated dropdown dimensions
-        const dropdownHeight = 200;
-        const dropdownWidth = 200;
+        // Get dropdown dimensions (render first to measure)
+        dropdown.style.visibility = 'hidden';
+        dropdown.style.display = 'block';
+        const dropdownRect = dropdown.getBoundingClientRect();
+        const dropdownHeight = dropdownRect.height || 200;
+        const dropdownWidth = dropdownRect.width || 200;
+        dropdown.style.visibility = '';
         
         // Default: position below the trigger
-        let top = relativeTop + triggerRect.height + 4;
+        let top = triggerRect.bottom + 4;
+        let left = triggerRect.left;
         
-        // Check if dropdown would go off bottom of visible area
-        const triggerBottomInViewport = triggerRect.bottom - containerRect.top;
-        if (triggerBottomInViewport + dropdownHeight > containerRect.height) {
+        // Check if dropdown would go off bottom of viewport
+        if (top + dropdownHeight > viewportHeight - 20) {
             // Position above the trigger instead
-            top = relativeTop - dropdownHeight - 4;
+            top = triggerRect.top - dropdownHeight - 4;
+            // If still off-screen (trigger near top), position at top of viewport
+            if (top < 20) {
+                top = 20;
+            }
         }
         
-        // Check if dropdown would go off right of container
-        let left = relativeLeft;
-        if (left + dropdownWidth > spreadsheetContainer.clientWidth + scrollLeft) {
-            left = spreadsheetContainer.clientWidth + scrollLeft - dropdownWidth - 20;
+        // Check if dropdown would go off right of viewport
+        if (left + dropdownWidth > viewportWidth - 20) {
+            left = viewportWidth - dropdownWidth - 20;
         }
         
-        dropdown.style.position = 'absolute';
+        // Check if dropdown would go off left of viewport
+        if (left < 20) {
+            left = 20;
+        }
+        
         dropdown.style.top = top + 'px';
         dropdown.style.left = left + 'px';
-        dropdown.style.zIndex = '100001';
     }
     
     function closeAllInlineDropdowns() {
@@ -7882,10 +8875,6 @@ function initTasks() {
         dropdown.innerHTML = optionsHTML;
         
         positionInlineDropdown(dropdown, cell);
-        
-        // Append to spreadsheet container for proper scrolling
-        const spreadsheetContainer = document.querySelector('.spreadsheet-table-area') || document.body;
-        spreadsheetContainer.appendChild(dropdown);
         
         requestAnimationFrame(() => dropdown.classList.add('visible'));
         
@@ -8223,7 +9212,7 @@ function initTasks() {
                     }
                     return `<td class="cell-editable">
                         <div class="custom-link-cell empty" data-task-id="${task.id}" data-column-id="${column}">
-                            <span class="link-placeholder">+ Add link</span>
+                            <span class="link-placeholder">+ Link</span>
                         </div>
                     </td>`;
                 
@@ -8271,7 +9260,11 @@ function initTasks() {
                 const firstName = fullName.split(' ')[0];
                 const initials = assigneeIdentity.initials;
                 const color = assigneeIdentity.avatarColor;
-                return `<td class="cell-editable"><div class="assignee-cell assignee-cell-inline" data-task-id="${task.id}" title="${escapeHtml(fullName)}"><div class="assignee-avatar" style="background: ${color}">${initials}</div><span class="assignee-name">${escapeHtml(firstName)}</span></div></td>`;
+                const isTeamAssignee = task.assigneeId === 'team';
+                const avatarClasses = isTeamAssignee ? 'assignee-avatar dropdown-assignee-avatar team-avatar' : 'assignee-avatar';
+                const avatarContent = isTeamAssignee ? '<i class="fas fa-users"></i>' : initials;
+                const avatarBg = isTeamAssignee ? '#000' : color;
+                return `<td class="cell-editable"><div class="assignee-cell assignee-cell-inline" data-task-id="${task.id}" title="${escapeHtml(fullName)}"><div class="${avatarClasses}" style="background: ${avatarBg}">${avatarContent}</div><span class="assignee-name">${escapeHtml(firstName)}</span></div></td>`;
             
             case 'priority':
                 // Check for custom settings with colors
@@ -8637,6 +9630,16 @@ function initTasks() {
         updateTaskStatus(taskId, isComplete ? 'done' : 'todo');
     };
 
+    // View task details - opens task in edit modal
+    window.viewTaskDetails = function(taskId) {
+        const task = appState.tasks.find(t => t.id === taskId || String(t.id) === String(taskId));
+        if (task) {
+            window.editTask(task);
+        } else {
+            console.warn('Task not found for viewTaskDetails:', taskId);
+        }
+    };
+
     // Edit task function
     window.editTask = function(task) {
         // Populate modal with task data for editing
@@ -8645,7 +9648,13 @@ function initTasks() {
         
         if (task.dueDate) {
             const date = new Date(task.dueDate);
-            document.getElementById('taskDueDate').value = date.toISOString().split('T')[0];
+            // Check if date is valid before calling toISOString
+            if (!isNaN(date.getTime())) {
+                document.getElementById('taskDueDate').value = date.toISOString().split('T')[0];
+            } else {
+                document.getElementById('taskDueDate').value = '';
+                console.warn('Invalid dueDate value:', task.dueDate);
+            }
         }
         
         document.getElementById('taskBudget').value = task.budget || '';
@@ -8667,6 +9676,7 @@ function initTasks() {
             progressInput.value = progress;
             if (progressSlider) {
                 progressSlider.value = progress;
+                progressSlider.style.setProperty('--progress', progress + '%');
             }
             if (progressFill) {
                 progressFill.style.width = progress + '%';
@@ -8906,23 +9916,16 @@ function initTasks() {
                                     <label class="unified-form-label">
                                         <i class="fas fa-eye"></i> Visibility
                                     </label>
-                                    <div class="unified-visibility-options">
-                                        <label class="unified-visibility-option selected" data-visibility="team">
-                                            <input type="radio" name="spreadsheetVisibility" value="team" checked>
-                                            <div class="unified-visibility-icon"><i class="fas fa-users"></i></div>
-                                            <div class="unified-visibility-text">
-                                                <span class="unified-visibility-title">Team</span>
-                                                <span class="unified-visibility-desc">Visible to all team members</span>
-                                            </div>
-                                        </label>
-                                        <label class="unified-visibility-option" data-visibility="private">
-                                            <input type="radio" name="spreadsheetVisibility" value="private">
-                                            <div class="unified-visibility-icon"><i class="fas fa-lock"></i></div>
-                                            <div class="unified-visibility-text">
-                                                <span class="unified-visibility-title">Private</span>
-                                                <span class="unified-visibility-desc">Only visible to you</span>
-                                            </div>
-                                        </label>
+                                    <div class="calendar-view-toggle visibility-toggle" data-target="spreadsheetVisibility">
+                                        <input type="hidden" name="spreadsheetVisibility" value="team">
+                                        <button type="button" class="view-toggle-btn active" data-visibility="team">
+                                            <i class="fas fa-users"></i>
+                                            <span>Team</span>
+                                        </button>
+                                        <button type="button" class="view-toggle-btn" data-visibility="private">
+                                            <i class="fas fa-lock"></i>
+                                            <span>Private</span>
+                                        </button>
                                     </div>
                                 </div>
                             </div>
@@ -8991,13 +9994,7 @@ function initTasks() {
         }
 
         // Handle visibility selection
-        const visibilityOptions = document.querySelectorAll('.unified-visibility-option');
-        visibilityOptions.forEach(opt => {
-            opt.addEventListener('click', () => {
-                visibilityOptions.forEach(o => o.classList.remove('selected'));
-                opt.classList.add('selected');
-            });
-        });
+        initVisibilityToggles(document.querySelectorAll('#spreadsheetModal .visibility-toggle'));
 
         // Handle form submission
         const form = document.getElementById('spreadsheetForm');
@@ -9017,7 +10014,7 @@ function initTasks() {
                     
                     const icon = document.getElementById('spreadsheetIcon').value;
                     const color = document.getElementById('spreadsheetColor').value;
-                    const visibility = document.querySelector('input[name="spreadsheetVisibility"]:checked').value;
+                    const visibility = getActiveVisibilityValue('spreadsheetVisibility');
                     
                     // Update spreadsheet properties
                     spreadsheet.icon = icon;
@@ -9056,14 +10053,28 @@ function initTasks() {
                     
                 } else {
                     // CREATE MODE - New spreadsheet
-                    const name = document.getElementById('spreadsheetName').value;
+                    const name = document.getElementById('spreadsheetName').value.trim();
                     const icon = document.getElementById('spreadsheetIcon').value;
                     const color = document.getElementById('spreadsheetColor').value;
-                    const visibility = document.querySelector('input[name="spreadsheetVisibility"]:checked').value;
+                    const visibility = getActiveVisibilityValue('spreadsheetVisibility');
                     const type = document.getElementById('spreadsheetType').value || 'tasks';
+
+                    if (!name) {
+                        showToast('Please enter a spreadsheet name', 'error');
+                        return;
+                    }
 
                     if (!appState.spreadsheets) {
                         appState.spreadsheets = [];
+                    }
+
+                    // Check for duplicate names (to avoid metrics conflicts)
+                    const existingWithSameName = appState.spreadsheets.find(s => 
+                        s.name.toLowerCase() === name.toLowerCase()
+                    );
+                    if (existingWithSameName) {
+                        showToast('A spreadsheet with this name already exists. Please choose a different name.', 'warning');
+                        return;
                     }
 
                     // Use preset based on type
@@ -9386,6 +10397,7 @@ function initTasks() {
                 console.log('Spreadsheet CREATED in Firestore:', spreadsheet.name);
             } else {
                 // UPDATE: Only mutable fields (rules use affectedKeys check)
+                // NOTE: teamId, createdBy, createdAt are NOT included - they're immutable
                 const updateData = {
                     name: spreadsheet.name,
                     type: spreadsheet.type || 'tasks',
@@ -9397,7 +10409,7 @@ function initTasks() {
                     customColumns: spreadsheet.customColumns || [],
                     columnSettings: spreadsheet.columnSettings || {}
                 };
-                // NOTE: createdBy, teamId, createdAt are NOT included - they're immutable
+                // NOTE: createdBy and createdAt are NOT included - they're immutable and not needed
                 
                 // DEBUG_PERMS logging
                 if (DEBUG_PERMS) {
@@ -9654,11 +10666,95 @@ function initTasks() {
             });
         }
         
-        // Insert Link button
+        // Insert Link button - focus editor and save selection before modal opens
         const insertLinkBtn = document.getElementById('insertLinkBtn');
         if (insertLinkBtn) {
-            insertLinkBtn.addEventListener('click', () => openLinkModal());
+            insertLinkBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const editor = document.getElementById('docEditor');
+                if (!editor) return;
+                
+                // Focus editor FIRST (like command button does)
+                editor.focus();
+                
+                // NOW capture the range (while editor is focused)
+                const selection = window.getSelection();
+                if (selection && selection.rangeCount > 0) {
+                    const range = selection.getRangeAt(0);
+                    // Only save if selection is inside the editor
+                    if (editor.contains(range.commonAncestorContainer)) {
+                        window._savedDocLinkRange = range.cloneRange();
+                    } else {
+                        // If not in editor, create range at end of editor
+                        const newRange = document.createRange();
+                        newRange.selectNodeContents(editor);
+                        newRange.collapse(false);
+                        window._savedDocLinkRange = newRange;
+                    }
+                } else {
+                    // No selection, create range at end of editor
+                    const newRange = document.createRange();
+                    newRange.selectNodeContents(editor);
+                    newRange.collapse(false);
+                    window._savedDocLinkRange = newRange;
+                }
+                
+                // Now open the modal with the saved range
+                openLinkModal();
+            });
         }
+        
+        // Export Document button
+        const exportDocBtn = document.getElementById('exportDocBtn');
+        if (exportDocBtn) {
+            exportDocBtn.addEventListener('click', (e) => {
+                e.preventDefault();
+                exportDocument();
+            });
+        }
+    }
+    
+    /**
+     * Export document as a downloadable text file
+     */
+    function exportDocument() {
+        const editor = document.getElementById('docEditor');
+        const titleInput = document.getElementById('docTitleInput');
+        
+        if (!editor) {
+            showToast('No document to export', 'error');
+            return;
+        }
+        
+        // Get document content as plain text
+        const content = editor.innerText || editor.textContent || '';
+        
+        if (!content.trim()) {
+            showToast('Document is empty', 'warning');
+            return;
+        }
+        
+        // Get document title for filename
+        let filename = (titleInput?.value || 'Untitled').trim();
+        // Sanitize filename: remove invalid characters
+        filename = filename.replace(/[<>:"/\\|?*]/g, '_').substring(0, 100);
+        filename = filename || 'Untitled';
+        
+        // Create blob and download
+        const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+        const url = URL.createObjectURL(blob);
+        
+        const link = document.createElement('a');
+        link.href = url;
+        link.download = `${filename}.txt`;
+        document.body.appendChild(link);
+        link.click();
+        document.body.removeChild(link);
+        
+        // Clean up
+        URL.revokeObjectURL(url);
+        
+        showToast('Document exported successfully', 'success');
     }
     
     /**
@@ -9670,13 +10766,193 @@ function initTasks() {
         
         if (!editor || !toolbar) return;
         
-        // Prevent caret from entering chips on mousedown
+        // Prevent caret from entering chips on mousedown (unless dragging)
         editor.addEventListener('mousedown', (e) => {
             const chip = e.target.closest('.doc-chip');
-            if (chip) {
+            if (chip && !chip.classList.contains('dragging')) {
                 e.preventDefault();
                 // Move caret after the chip instead of inside it
                 moveCaretAfterElement(chip);
+            }
+        });
+        
+        // ===================================
+        // CHIP DRAG AND DROP FUNCTIONALITY
+        // ===================================
+        
+        // Track the chip being dragged
+        let draggedChip = null;
+        let dropIndicator = null;
+        
+        // Create drop indicator element
+        function createDropIndicator() {
+            if (!dropIndicator) {
+                dropIndicator = document.createElement('span');
+                dropIndicator.className = 'chip-drop-indicator';
+                dropIndicator.style.cssText = `
+                    display: inline-block;
+                    width: 2px;
+                    height: 1.2em;
+                    background: var(--accent, #007AFF);
+                    vertical-align: middle;
+                    margin: 0 1px;
+                    border-radius: 1px;
+                    pointer-events: none;
+                    animation: chip-drop-blink 0.8s ease-in-out infinite;
+                `;
+            }
+            return dropIndicator;
+        }
+        
+        // Get the insertion point (text node and offset) at a position
+        function getInsertionPoint(x, y, editor) {
+            // Use caretPositionFromPoint or caretRangeFromPoint
+            let range;
+            if (document.caretPositionFromPoint) {
+                const pos = document.caretPositionFromPoint(x, y);
+                if (pos) {
+                    range = document.createRange();
+                    range.setStart(pos.offsetNode, pos.offset);
+                    range.collapse(true);
+                }
+            } else if (document.caretRangeFromPoint) {
+                range = document.caretRangeFromPoint(x, y);
+            }
+            
+            if (range && editor.contains(range.startContainer)) {
+                return range;
+            }
+            return null;
+        }
+        
+        // Handle dragstart on chips
+        editor.addEventListener('dragstart', (e) => {
+            const chip = e.target.closest('.doc-chip');
+            if (chip) {
+                draggedChip = chip;
+                chip.classList.add('dragging');
+                
+                // Set drag data
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/html', chip.outerHTML);
+                e.dataTransfer.setData('text/plain', chip.textContent);
+                
+                // Semi-transparent drag image
+                setTimeout(() => {
+                    chip.style.opacity = '0.4';
+                }, 0);
+            }
+        });
+        
+        // Handle dragover to show drop position
+        editor.addEventListener('dragover', (e) => {
+            if (!draggedChip) return;
+            
+            e.preventDefault();
+            e.dataTransfer.dropEffect = 'move';
+            
+            // Get insertion point
+            const insertionRange = getInsertionPoint(e.clientX, e.clientY, editor);
+            if (insertionRange) {
+                // Remove existing indicator
+                const existingIndicator = editor.querySelector('.chip-drop-indicator');
+                if (existingIndicator) {
+                    existingIndicator.remove();
+                }
+                
+                // Insert indicator at the caret position
+                const indicator = createDropIndicator();
+                insertionRange.insertNode(indicator);
+            }
+        });
+        
+        // Handle dragleave
+        editor.addEventListener('dragleave', (e) => {
+            // Only remove indicator if leaving the editor entirely
+            if (!editor.contains(e.relatedTarget)) {
+                const indicator = editor.querySelector('.chip-drop-indicator');
+                if (indicator) {
+                    indicator.remove();
+                }
+            }
+        });
+        
+        // Handle drop
+        editor.addEventListener('drop', (e) => {
+            if (!draggedChip) return;
+            
+            e.preventDefault();
+            e.stopPropagation();
+            
+            // Remove drop indicator
+            const indicator = editor.querySelector('.chip-drop-indicator');
+            const indicatorParent = indicator?.parentNode;
+            const indicatorNextSibling = indicator?.nextSibling;
+            if (indicator) {
+                indicator.remove();
+            }
+            
+            // Get the insertion point
+            let insertionRange = getInsertionPoint(e.clientX, e.clientY, editor);
+            
+            // If we had an indicator, use its position
+            if (indicatorParent && indicatorParent !== draggedChip) {
+                insertionRange = document.createRange();
+                if (indicatorNextSibling) {
+                    insertionRange.setStartBefore(indicatorNextSibling);
+                } else {
+                    insertionRange.setStartAfter(indicatorParent.lastChild || indicatorParent);
+                }
+                insertionRange.collapse(true);
+            }
+            
+            if (insertionRange && !draggedChip.contains(insertionRange.startContainer)) {
+                // Remove chip from original position
+                const chipClone = draggedChip.cloneNode(true);
+                chipClone.classList.remove('dragging');
+                chipClone.style.opacity = '';
+                chipClone.setAttribute('draggable', 'true');
+                
+                // Insert at new position
+                insertionRange.insertNode(chipClone);
+                
+                // Add a zero-width space after the chip for caret positioning
+                const spacer = document.createTextNode('\\u200B');
+                if (chipClone.nextSibling) {
+                    chipClone.parentNode.insertBefore(spacer, chipClone.nextSibling);
+                } else {
+                    chipClone.parentNode.appendChild(spacer);
+                }
+                
+                // Remove original chip
+                draggedChip.remove();
+                
+                // Mark as dirty and schedule save
+                appState.isDocDirty = true;
+                scheduleDocSave();
+            }
+            
+            // Reset drag state
+            if (draggedChip) {
+                draggedChip.classList.remove('dragging');
+                draggedChip.style.opacity = '';
+            }
+            draggedChip = null;
+        });
+        
+        // Handle dragend (cleanup)
+        editor.addEventListener('dragend', (e) => {
+            // Remove any leftover indicators
+            const indicator = editor.querySelector('.chip-drop-indicator');
+            if (indicator) {
+                indicator.remove();
+            }
+            
+            // Reset dragged chip
+            if (draggedChip) {
+                draggedChip.classList.remove('dragging');
+                draggedChip.style.opacity = '';
+                draggedChip = null;
             }
         });
         
@@ -9772,6 +11048,37 @@ function initTasks() {
                                 return;
                             }
                         }
+                    }
+                }
+            }
+            
+            // Handle Tab key for list indentation
+            if (e.key === 'Tab') {
+                const selection = window.getSelection();
+                if (selection.rangeCount > 0) {
+                    const range = selection.getRangeAt(0);
+                    const listItem = range.startContainer.nodeType === Node.TEXT_NODE 
+                        ? range.startContainer.parentElement?.closest('li')
+                        : range.startContainer.closest?.('li');
+                    
+                    if (listItem) {
+                        e.preventDefault();
+                        
+                        if (e.shiftKey) {
+                            // Shift+Tab: Outdent - move list item to parent level
+                            document.execCommand('outdent', false, null);
+                        } else {
+                            // Tab: Indent - make this a child of the previous sibling
+                            const prevSibling = listItem.previousElementSibling;
+                            if (prevSibling && prevSibling.tagName === 'LI') {
+                                // Use execCommand for better browser compatibility
+                                document.execCommand('indent', false, null);
+                            }
+                        }
+                        
+                        appState.isDocDirty = true;
+                        scheduleDocSave();
+                        return;
                     }
                 }
             }
@@ -10081,6 +11388,13 @@ function initTasks() {
             return;
         }
         
+        // RATE LIMITING: Check if user can create document
+        const rateCheck = canCreateDocument();
+        if (!rateCheck.allowed) {
+            showToast(rateCheck.reason, 'warning', 3000);
+            return;
+        }
+        
         try {
             const { collection, addDoc, serverTimestamp } = 
                 await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
@@ -10099,6 +11413,10 @@ function initTasks() {
             };
             
             const docRef = await addDoc(docsRef, docData);
+            
+            // RATE LIMITING: Update rate limit state after successful creation
+            rateLimitState.lastDocCreation = Date.now();
+            rateLimitState.docCount++;
             
             closeCreateDocModal();
             showToast('Document created', 'success');
@@ -10149,7 +11467,15 @@ function initTasks() {
         }
         
         if (editor) {
-            editor.innerHTML = doc.contentHtml || '<p></p>';
+            // SECURITY: Sanitize HTML with DOMPurify to prevent XSS
+            const sanitizedHtml = typeof DOMPurify !== 'undefined' 
+                ? DOMPurify.sanitize(doc.contentHtml || '<p></p>', {
+                    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 's', 'a', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'blockquote', 'code', 'pre', 'span', 'div'],
+                    ALLOWED_ATTR: ['href', 'target', 'rel', 'class', 'style', 'data-task-id', 'data-spreadsheet-id', 'data-type', 'contenteditable'],
+                    ALLOW_DATA_ATTR: true
+                })
+                : doc.contentHtml || '<p></p>';
+            editor.innerHTML = sanitizedHtml;
             editor.contentEditable = !isReadOnly;
             editor.classList.toggle('read-only', isReadOnly);
         }
@@ -10514,9 +11840,28 @@ function initTasks() {
      * Open link insertion modal
      */
     function openLinkModal() {
-        // Save selection before opening modal
-        const selection = window.getSelection();
-        const range = selection && selection.rangeCount > 0 ? selection.getRangeAt(0).cloneRange() : null;
+        // CRITICAL: Use the range saved on mousedown (before focus was lost)
+        // This is already captured by the button's mousedown handler
+        const editor = document.getElementById('docEditor');
+        let range = window._savedDocLinkRange;
+        
+        // If no saved range from mousedown, try current selection
+        if (!range) {
+            const selection = window.getSelection();
+            if (selection && selection.rangeCount > 0) {
+                const currentRange = selection.getRangeAt(0);
+                if (editor && editor.contains(currentRange.commonAncestorContainer)) {
+                    range = currentRange.cloneRange();
+                }
+            }
+        }
+        
+        // If still no valid range, create one at the end
+        if (!range && editor) {
+            range = document.createRange();
+            range.selectNodeContents(editor);
+            range.collapse(false); // Collapse to end
+        }
         
         // Get selected text to pre-fill
         let selectedText = '';
@@ -10545,7 +11890,7 @@ function initTasks() {
         document.body.insertAdjacentHTML('beforeend', modalHTML);
         
         // Store range for later
-        window._savedRange = range;
+        window._savedDocLinkRange = range;
         
         // Focus text input
         setTimeout(() => {
@@ -10579,7 +11924,7 @@ function initTasks() {
     window.closeLinkModal = function() {
         document.getElementById('docLinkModal')?.remove();
         document.getElementById('linkModalOverlay')?.remove();
-        window._savedRange = null;
+        window._savedDocLinkRange = null;
     };
     
     window.insertLink = function() {
@@ -10587,21 +11932,53 @@ function initTasks() {
         const urlInput = document.getElementById('linkUrlInput');
         const linkText = textInput?.value.trim() || '';
         let url = urlInput?.value.trim() || '';
+
+        const savedRange = window._savedDocLinkRange;
+        if (!savedRange) {
+            console.error('[insertLink] Missing saved range for link insertion');
+            return;
+        }
         
         if (!url || !linkText) {
             closeLinkModal();
             return;
         }
         
-        // Add https if no protocol
-        if (!url.startsWith('http://') && !url.startsWith('https://') && !url.startsWith('mailto:')) {
-            url = 'https://' + url;
+        // Normalize and validate URL (allow http/https/mailto)
+        const normalizeUrl = (raw) => {
+            if (!raw) return '';
+            const trimmed = raw.trim();
+            if (trimmed.toLowerCase().startsWith('mailto:')) return trimmed;
+            if (!/^https?:\/\//i.test(trimmed)) return `https://${trimmed}`;
+            return trimmed;
+        };
+        const isValidLink = (normalized) => {
+            if (!normalized) return false;
+            if (normalized.toLowerCase().startsWith('mailto:')) {
+                const email = normalized.slice(7);
+                return /^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(email);
+            }
+            try {
+                const parsed = new URL(normalized);
+                return parsed.protocol === 'http:' || parsed.protocol === 'https:';
+            } catch {
+                return false;
+            }
+        };
+
+        url = normalizeUrl(url);
+        if (!isValidLink(url)) {
+            showToast('Please enter a valid link (http, https, or mailto).', 'error');
+            urlInput?.focus();
+            return;
         }
         
-        closeLinkModal();
-        
         const editor = document.getElementById('docEditor');
-        if (!editor) return;
+        if (!editor) {
+            closeLinkModal();
+            window._savedDocLinkRange = null;
+            return;
+        }
         
         // Get favicon URL
         let faviconUrl = '';
@@ -10612,32 +11989,49 @@ function initTasks() {
             console.warn('Invalid URL for favicon:', url);
         }
         
-        // Restore selection
-        if (window._savedRange) {
-            const selection = window.getSelection();
-            selection.removeAllRanges();
-            selection.addRange(window._savedRange);
-        }
-        
         editor.focus();
-        
-        // Create link chip HTML
-        const chipHTML = `<a href="${escapeHtml(url)}" target="_blank" rel="noopener noreferrer" class="doc-chip" data-chip-type="link" contenteditable="false"><img src="${escapeHtml(faviconUrl)}" class="chip-favicon" onerror="this.style.display='none'" alt="">${escapeHtml(linkText)}</a>`;
-        
-        // Insert the chip
-        document.execCommand('insertHTML', false, chipHTML);
-        
-        // Move caret after the chip so typing happens on same line
-        const insertedChip = editor.querySelector('.doc-chip[data-chip-type="link"]:not(.hydrated)');
-        if (insertedChip) {
-            moveCaretAfterElement(insertedChip);
+
+        // Restore selection from saved range - MUST happen after focus
+        const selection = window.getSelection();
+        selection.removeAllRanges();
+        selection.addRange(savedRange);
+
+        // Build link chip element and insert via the saved range
+        const chip = document.createElement('a');
+        chip.setAttribute('href', url);
+        chip.setAttribute('target', '_blank');
+        chip.setAttribute('rel', 'noopener noreferrer');
+        chip.className = 'doc-chip hydrated';
+        chip.dataset.chipType = 'link';
+        chip.contentEditable = 'false';
+        chip.draggable = true;
+
+        if (faviconUrl) {
+            const icon = document.createElement('img');
+            icon.className = 'chip-favicon';
+            icon.src = faviconUrl;
+            icon.alt = '';
+            icon.onerror = function() {
+                this.style.display = 'none';
+            };
+            chip.appendChild(icon);
         }
+
+        chip.appendChild(document.createTextNode(linkText));
+
+        // Insert at the saved range and keep a spacer for continued typing
+        savedRange.deleteContents();
+        savedRange.insertNode(chip);
+        const spacer = document.createTextNode('\u200B');
+        chip.parentNode?.insertBefore(spacer, chip.nextSibling);
+        moveCaretAfterElement(chip);
         
         appState.isDocDirty = true;
         scheduleDocSave();
-        
-        // Clear saved range
-        window._savedRange = null;
+
+        // Clear saved ranges and close modal after insertion
+        window._savedDocLinkRange = null;
+        closeLinkModal();
     };
     
     // ===================================
@@ -10745,6 +12139,7 @@ function initTasks() {
         window._commandRange = null;
         window._commandTriggerInfo = null;
         window._slashInsertRange = null;
+        window._referenceInsertRange = null; // Dedicated range for reference picker modal
         
         // Show popover on / key
         editor.addEventListener('keydown', (e) => {
@@ -10889,6 +12284,12 @@ function initTasks() {
                 e.stopPropagation();
                 
                 const command = option.dataset.command;
+                
+                // CRITICAL: Save the range to dedicated variable BEFORE any other operations
+                // This ensures the range survives modal interactions
+                if (window._commandRange) {
+                    window._referenceInsertRange = window._commandRange.cloneRange();
+                }
                 
                 // Remove slash if triggered by '/' key
                 if (window._commandTriggerInfo?.type === 'slash') {
@@ -11312,7 +12713,9 @@ function initTasks() {
         
         // Item clicks
         list.querySelectorAll('.reference-picker-item').forEach(item => {
-            item.addEventListener('click', () => {
+            item.addEventListener('click', (e) => {
+                console.log('[DEBUG Modal Click] Item clicked:', item.dataset.id, 'type:', type);
+                e.stopPropagation(); // Prevent modal backdrop close
                 const id = item.dataset.id;
                 insertReference(type, id);
                 closeReferencePickerModal();
@@ -11331,25 +12734,58 @@ function initTasks() {
      * Insert reference chip or embed into editor
      */
     function insertReference(type, id) {
+        console.log('[DEBUG insertReference] Called with type:', type, 'id:', id);
+        
         const editor = document.getElementById('docEditor');
-        if (!editor) return;
+        if (!editor) {
+            console.error('[DEBUG insertReference] Editor not found!');
+            return;
+        }
         
         editor.focus();
         
         // Restore selection from stored range
-        if (window._commandRange) {
+        // PRIORITY: Use dedicated _referenceInsertRange (survives modal interactions), 
+        // then fall back to _commandRange
+        const rangeToRestore = window._referenceInsertRange || window._commandRange;
+        console.log('[DEBUG insertReference] rangeToRestore:', rangeToRestore, '_referenceInsertRange:', window._referenceInsertRange, '_commandRange:', window._commandRange);
+        
+        if (rangeToRestore) {
             try {
                 const selection = window.getSelection();
                 selection.removeAllRanges();
-                selection.addRange(window._commandRange);
+                selection.addRange(rangeToRestore);
+                console.log('[DEBUG insertReference] Restored cursor range for chip insertion');
             } catch (e) {
-                console.warn('Could not restore selection:', e);
+                console.warn('[DEBUG insertReference] Could not restore selection:', e);
+                // If range restoration fails, try to insert at end of editor
+                const selection = window.getSelection();
+                const range = document.createRange();
+                range.selectNodeContents(editor);
+                range.collapse(false); // Collapse to end
+                selection.removeAllRanges();
+                selection.addRange(range);
             }
+        } else {
+            console.warn('[DEBUG insertReference] No saved range - inserting at end of editor');
+            // If no range saved, insert at end of editor
+            const selection = window.getSelection();
+            const range = document.createRange();
+            range.selectNodeContents(editor);
+            range.collapse(false); // Collapse to end
+            selection.removeAllRanges();
+            selection.addRange(range);
         }
+        
+        // Verify selection is inside editor before insertion
+        const sel = window.getSelection();
+        const anchorInEditor = sel.rangeCount > 0 && editor.contains(sel.getRangeAt(0).commonAncestorContainer);
+        console.log('[DEBUG insertReference] Selection inside editor:', anchorInEditor);
         
         if (type === 'sheet-embed') {
             // Insert embed block
             const embedHTML = `<div class="doc-embed" data-embed-type="sheet" data-id="${escapeHtml(id)}"></div><p></p>`;
+            console.log('[DEBUG insertReference] Inserting embed HTML:', embedHTML);
             document.execCommand('insertHTML', false, embedHTML);
             
             // Hydrate embed immediately
@@ -11358,7 +12794,13 @@ function initTasks() {
             // Insert chip
             const chipType = type === 'task' ? 'task' : 'sheet';
             const chipHTML = `<span class="doc-chip" contenteditable="false" data-chip-type="${chipType}" data-id="${escapeHtml(id)}"></span>`;
-            document.execCommand('insertHTML', false, chipHTML);
+            console.log('[DEBUG insertReference] Inserting chip HTML:', chipHTML);
+            const result = document.execCommand('insertHTML', false, chipHTML);
+            console.log('[DEBUG insertReference] execCommand result:', result);
+            
+            // Check if chip was actually inserted
+            const allChips = editor.querySelectorAll('.doc-chip');
+            console.log('[DEBUG insertReference] All chips in editor after insert:', allChips.length);
             
             // Move caret after the chip so typing happens on same line
             const insertedChip = editor.querySelector(`.doc-chip[data-chip-type="${chipType}"][data-id="${escapeHtml(id)}"]:not(.hydrated)`);
@@ -11374,6 +12816,7 @@ function initTasks() {
         window._commandRange = null;
         window._commandTriggerInfo = null;
         window._slashInsertRange = null;
+        window._referenceInsertRange = null; // Clear dedicated range too
         
         appState.isDocDirty = true;
         scheduleDocSave();
@@ -11432,7 +12875,10 @@ function initTasks() {
             const chipType = chip.dataset.chipType;
             const id = chip.dataset.id;
             
-            // Skip link chips - they don't need hydration
+            // Make all chips draggable
+            chip.setAttribute('draggable', 'true');
+            
+            // Skip link chips - they don't need hydration (already have content)
             if (chipType === 'link') {
                 // Ensure link chip stays non-editable
                 chip.setAttribute('contenteditable', 'false');
@@ -11628,7 +13074,8 @@ function initTasks() {
     window.openDocVisibilityModal = function(doc) {
         const modal = document.getElementById('docVisibilityModal');
         const subtitle = document.getElementById('docVisibilitySubtitle');
-        const options = modal?.querySelectorAll('.visibility-pill-compact');
+        const visibilityToggle = modal?.querySelector('.visibility-toggle');
+        const visibilityButtons = visibilityToggle?.querySelectorAll('.view-toggle-btn');
         const readOnlySection = document.getElementById('docReadOnlySection');
         const readOnlyToggle = document.getElementById('docReadOnlyToggle');
         
@@ -11643,12 +13090,7 @@ function initTasks() {
         
         // Set current visibility selection
         const currentVisibility = doc.visibility || 'team';
-        options?.forEach(option => {
-            const isSelected = option.dataset.visibility === currentVisibility;
-            option.classList.toggle('selected', isSelected);
-            const radio = option.querySelector('input[type=\"radio\"]');
-            if (radio) radio.checked = isSelected;
-        });
+        setVisibilitySelection(visibilityToggle, currentVisibility);
         
         // Show read-only toggle only for doc owner
         const isOwner = doc.createdBy === currentAuthUser?.uid;
@@ -11662,13 +13104,8 @@ function initTasks() {
         }
         
         // Click handlers for visibility options
-        options?.forEach(option => {
-            option.onclick = () => {
-                options.forEach(o => o.classList.remove('selected'));
-                option.classList.add('selected');
-                const radio = option.querySelector('input[type=\"radio\"]');
-                if (radio) radio.checked = true;
-            };
+        visibilityButtons?.forEach(btn => {
+            btn.onclick = () => setVisibilitySelection(visibilityToggle, btn.dataset.visibility || 'team');
         });
         
         modal.style.display = 'flex';
@@ -11685,8 +13122,7 @@ function initTasks() {
         
         if (!docId) return;
         
-        const selectedOption = modal?.querySelector('.visibility-pill-compact.selected');
-        const visibility = selectedOption?.dataset.visibility || 'team';
+        const visibility = getActiveVisibilityValue('docVisibility');
         const readOnlyToggle = document.getElementById('docReadOnlyToggle');
         const isReadOnly = readOnlyToggle?.checked || false;
         
@@ -11974,7 +13410,15 @@ function populateTaskAssigneeDropdown() {
     let optionsHTML = '';
     let firstMember = null;
     
-    // Add current user first - use unified identity resolver
+    // Add "Team" option first - for tasks with no specific owner
+    optionsHTML += `
+        <div class="dropdown-menu-option" data-value="team" data-name="Team">
+            <div class="dropdown-assignee-avatar team-avatar"><i class="fas fa-users"></i></div>
+            <span>Team</span>
+        </div>
+    `;
+    
+    // Add current user - use unified identity resolver
     if (currentAuthUser) {
         const identity = getIdentity(currentAuthUser.uid, currentAuthUser.displayName || currentAuthUser.email);
         const displayName = identity.displayName;
@@ -12402,6 +13846,7 @@ function resetTaskModalDropdowns() {
         progressInput.value = 0;
         if (progressSlider) {
             progressSlider.value = 0;
+            progressSlider.style.setProperty('--progress', '0%');
         }
         if (progressFill) {
             progressFill.style.width = '0%';
@@ -13119,7 +14564,8 @@ const CUSTOM_METRICS_CATALOG = {
                 tooltip: 'Monthly recurring revenue from subscriptions'
             };
         },
-        hasChart: false
+        hasChart: true,
+        chartData: () => generateMRRTrendData()
     },
     topCustomer: {
         id: 'topCustomer',
@@ -13151,7 +14597,8 @@ const CUSTOM_METRICS_CATALOG = {
                 tooltip: 'Unique customers from revenue transactions'
             };
         },
-        hasChart: false
+        hasChart: true,
+        chartData: () => generateCustomerGrowthData()
     },
     leads: {
         id: 'leads',
@@ -13160,7 +14607,6 @@ const CUSTOM_METRICS_CATALOG = {
         icon: 'fa-user-plus',
         color: '',
         getValue: () => {
-            // Always pull from Leads sheets
             const allLeads = getAllLeadsFromTables();
             const leadCount = allLeads.length;
             return {
@@ -13182,7 +14628,6 @@ const CUSTOM_METRICS_CATALOG = {
             const leadCount = allLeads.length;
             const customerCount = getUniqueCustomerCount();
             
-            // Handle edge cases logically
             if (leadCount === 0 && customerCount === 0) {
                 return {
                     value: '—',
@@ -13208,34 +14653,69 @@ const CUSTOM_METRICS_CATALOG = {
         },
         hasChart: false
     },
-    support_tickets: {
-        id: 'support_tickets',
-        name: 'Support Tickets',
-        description: 'Track open support requests',
-        icon: 'fa-ticket-alt',
-        color: 'warning',
+    monthlyExpenses: {
+        id: 'monthlyExpenses',
+        name: 'Monthly Expenses',
+        description: 'Track monthly expenses from transactions',
+        icon: 'fa-calendar-minus',
+        color: 'danger',
         getValue: () => {
-            // Placeholder - could be connected to support system
+            const now = new Date();
+            const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+            const expenses = (appState.transactions || []).filter(t => t.type === 'expense');
+            const monthlyExpenses = expenses.filter(t => {
+                const transDate = t.date?.toDate?.() || new Date(t.date);
+                return transDate >= startOfMonth && transDate <= now;
+            });
+            const monthlyTotal = monthlyExpenses.reduce((sum, t) => sum + (t.amount || 0), 0);
             return {
-                value: '—',
-                subtitle: 'Not connected',
-                tooltip: 'Connect a support system to track tickets'
+                value: formatCurrency(monthlyTotal),
+                subtitle: `${monthlyExpenses.length} expense${monthlyExpenses.length === 1 ? '' : 's'} this month`,
+                tooltip: 'Total expenses recorded this month'
+            };
+        },
+        hasChart: true,
+        chartData: () => generateExpensesByCategoryData()
+    },
+    upcomingEvents: {
+        id: 'upcomingEvents',
+        name: 'Upcoming Events',
+        description: 'Events scheduled in the next 7 days',
+        icon: 'fa-calendar-day',
+        color: '',
+        getValue: () => {
+            const now = new Date();
+            const weekFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+            const upcoming = (appState.events || []).filter(e => {
+                const eventDate = e.date?.toDate?.() || new Date(e.date);
+                return eventDate >= now && eventDate <= weekFromNow;
+            });
+            return {
+                value: upcoming.length.toString(),
+                subtitle: upcoming.length === 0 ? 'No events this week' : `${upcoming.length} this week`,
+                tooltip: 'Number of events in the next 7 days'
             };
         },
         hasChart: false
     },
-    nps_score: {
-        id: 'nps_score',
-        name: 'NPS Score',
-        description: 'Net Promoter Score from surveys',
-        icon: 'fa-smile',
-        color: 'success',
+    totalTasks: {
+        id: 'totalTasks',
+        name: 'Active Tasks',
+        description: 'Total open tasks across all projects',
+        icon: 'fa-tasks',
+        color: 'warning',
         getValue: () => {
-            // Placeholder - could be connected to survey system
+            const openTasks = (appState.tasks || []).filter(t => t.status !== 'done');
+            const dueSoon = openTasks.filter(t => {
+                if (!t.dueDate) return false;
+                const due = t.dueDate?.toDate?.() || new Date(t.dueDate);
+                const threeDays = new Date(Date.now() + 3 * 24 * 60 * 60 * 1000);
+                return due <= threeDays;
+            });
             return {
-                value: '—',
-                subtitle: 'Not connected',
-                tooltip: 'Connect a survey system to track NPS'
+                value: openTasks.length.toString(),
+                subtitle: dueSoon.length > 0 ? `${dueSoon.length} due soon` : 'No urgent tasks',
+                tooltip: 'Number of incomplete tasks across the team'
             };
         },
         hasChart: false
@@ -13261,14 +14741,14 @@ function getUniqueCustomerCount() {
  */
 function generateFinanceTrendData(type = 'income') {
     if (!appState.transactions || appState.transactions.length === 0) {
-        return generatePlaceholderTrendData(7, 0, 0);
+        return generatePlaceholderTrendData(30, 0, 0);
     }
     
     const now = new Date();
     const data = [];
     
-    // Get last 7 days of data
-    for (let i = 6; i >= 0; i--) {
+    // Use last 30 days to ensure recent transactions appear in charts
+    for (let i = 29; i >= 0; i--) {
         const date = new Date(now);
         date.setDate(date.getDate() - i);
         const dayStart = new Date(date.setHours(0, 0, 0, 0));
@@ -13285,8 +14765,8 @@ function generateFinanceTrendData(type = 'income') {
         });
         
         data.push({
-            label: date.toLocaleDateString('en-US', { weekday: 'short' }),
-            value: dayTotal
+            label: date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
+            count: dayTotal
         });
     }
     
@@ -13315,6 +14795,123 @@ function generatePlaceholderTrendData(days, min, max) {
 }
 
 /**
+ * Generate MRR trend data (monthly view)
+ * Uses both subscriptions and recurring transactions for comprehensive MRR data
+ */
+function generateMRRTrendData() {
+    const now = new Date();
+    const data = [];
+    
+    // Get last 6 months of MRR data
+    for (let i = 5; i >= 0; i--) {
+        const monthDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0);
+        const monthLabel = monthDate.toLocaleDateString('en-US', { month: 'short' });
+        
+        let monthlyMrr = 0;
+        
+        // Calculate MRR from subscriptions
+        const subs = appState.subscriptions || [];
+        subs.forEach(sub => {
+            const startDate = sub.startDate?.toDate?.() || new Date(sub.startDate || 0);
+            if (startDate <= monthEnd) {
+                const amount = sub.amount || 0;
+                switch (sub.frequency) {
+                    case 'monthly': monthlyMrr += amount; break;
+                    case 'quarterly': monthlyMrr += amount / 3; break;
+                    case 'yearly': monthlyMrr += amount / 12; break;
+                    default: monthlyMrr += amount;
+                }
+            }
+        });
+        
+        // Also include recurring transactions if no subscriptions
+        if (subs.length === 0) {
+            const transactions = appState.transactions || [];
+            transactions.forEach(t => {
+                if (t.type === 'income' && t.isRecurring) {
+                    const transDate = t.date?.toDate?.() || new Date(t.date || 0);
+                    if (transDate <= monthEnd) {
+                        const amount = t.amount || 0;
+                        switch (t.frequency) {
+                            case 'monthly': monthlyMrr += amount; break;
+                            case 'quarterly': monthlyMrr += amount / 3; break;
+                            case 'yearly': monthlyMrr += amount / 12; break;
+                            default: monthlyMrr += amount;
+                        }
+                    }
+                }
+            });
+        }
+        
+        data.push({
+            label: monthLabel,
+            value: monthlyMrr
+        });
+    }
+    
+    return data;
+}
+
+/**
+ * Generate customer growth data (monthly cumulative)
+ */
+function generateCustomerGrowthData() {
+    const now = new Date();
+    const data = [];
+    
+    // Get last 6 months of customer data
+    for (let i = 5; i >= 0; i--) {
+        const monthDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0);
+        const monthLabel = monthDate.toLocaleDateString('en-US', { month: 'short' });
+        
+        // Count unique customers up to that month
+        const customers = new Set();
+        (appState.transactions || []).forEach(t => {
+            if (t.type === 'income' && t.party) {
+                const transDate = t.date?.toDate?.() || new Date(t.date);
+                if (transDate <= monthEnd) {
+                    customers.add(t.party.toLowerCase().trim());
+                }
+            }
+        });
+        
+        data.push({
+            label: monthLabel,
+            value: customers.size
+        });
+    }
+    
+    return data;
+}
+
+/**
+ * Generate expenses by category data
+ */
+function generateExpensesByCategoryData() {
+    const expenses = (appState.transactions || []).filter(t => t.type === 'expense');
+    const byCategory = {};
+    
+    expenses.forEach(exp => {
+        const category = exp.category || 'Other';
+        const amount = exp.amount || 0;
+        byCategory[category] = (byCategory[category] || 0) + amount;
+    });
+    
+    // Convert to chart data format
+    const data = Object.entries(byCategory)
+        .sort((a, b) => b[1] - a[1])
+        .slice(0, 6)
+        .map(([label, value]) => ({
+            label: label,
+            value: value
+        }));
+    
+    return data.length > 0 ? data : [{ label: 'No data', value: 0 }];
+}
+
+/**
  * State for metrics edit mode
  */
 let metricsEditMode = false;
@@ -13326,6 +14923,49 @@ let metricsEditMode = false;
 function getEnabledCustomMetrics() {
     return appState.currentTeamData?.settings?.enabledMetrics || [];
 }
+
+/**
+ * Get the display mode for a metric (card or graph)
+ * @param {string} metricId - The metric ID
+ * @returns {string} 'card' or 'graph'
+ */
+function getMetricDisplayMode(metricId) {
+    const modes = appState.currentTeamData?.settings?.metricsDisplayModes || {};
+    return modes[metricId] || 'card'; // Default to card view
+}
+
+/**
+ * Toggle the display mode for a metric
+ * @param {string} metricId - The metric ID
+ */
+async function toggleMetricDisplayMode(metricId) {
+    if (!canEditMetrics()) return;
+    
+    const currentMode = getMetricDisplayMode(metricId);
+    const newMode = currentMode === 'card' ? 'graph' : 'card';
+    
+    try {
+        const { doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+        const teamRef = doc(db, 'teams', appState.currentTeamId);
+        
+        const currentModes = appState.currentTeamData?.settings?.metricsDisplayModes || {};
+        currentModes[metricId] = newMode;
+        
+        await updateDoc(teamRef, {
+            'settings.metricsDisplayModes': currentModes
+        });
+        
+        // Update local state
+        if (!appState.currentTeamData.settings) appState.currentTeamData.settings = {};
+        appState.currentTeamData.settings.metricsDisplayModes = currentModes;
+        
+        renderMetrics();
+    } catch (error) {
+        console.error('Error toggling metric display mode:', error);
+    }
+}
+
+window.toggleMetricDisplayMode = toggleMetricDisplayMode;
 
 /**
  * Check if user can edit metrics (owner only)
@@ -13358,16 +14998,16 @@ window.toggleMetricsEditMode = toggleMetricsEditMode;
 
 /**
  * Available colors for chart customization
- * Apple-inspired palette
+ * Instagram-inspired palette
  */
 const CHART_COLOR_OPTIONS = [
+    { id: 'purple', label: 'Purple', value: '#833AB4', preview: '#833AB4' },
+    { id: 'pink', label: 'Pink', value: '#E1306C', preview: '#E1306C' },
     { id: 'accent', label: 'Blue', value: 'var(--accent)', preview: '#007AFF' },
     { id: 'green', label: 'Green', value: '#34C759', preview: '#34C759' },
     { id: 'orange', label: 'Orange', value: '#FF9F0A', preview: '#FF9F0A' },
-    { id: 'purple', label: 'Purple', value: '#AF52DE', preview: '#AF52DE' },
     { id: 'red', label: 'Red', value: '#FF3B30', preview: '#FF3B30' },
     { id: 'teal', label: 'Teal', value: '#5AC8FA', preview: '#5AC8FA' },
-    { id: 'pink', label: 'Pink', value: '#FF2D55', preview: '#FF2D55' },
     { id: 'indigo', label: 'Indigo', value: '#5856D6', preview: '#5856D6' }
 ];
 
@@ -13379,7 +15019,12 @@ const PIE_PALETTE_OPTIONS = [
     { 
         id: 'default', 
         label: 'Default', 
-        colors: ['var(--accent)', '#34C759', '#FF9F0A', '#AF52DE', '#FF3B30', '#5AC8FA', '#FF2D55', '#64D2FF']
+        colors: ['#E040FB', '#7C4DFF', '#536DFE', '#40C4FF', '#69F0AE', '#FFD740', '#FF6E40', '#FF4081']
+    },
+    { 
+        id: 'instagram', 
+        label: 'Instagram', 
+        colors: ['#E1306C', '#833AB4', '#5851DB', '#405DE6', '#C13584', '#F77737', '#FCAF45', '#FFDC80']
     },
     { 
         id: 'ocean', 
@@ -13431,6 +15076,7 @@ const DATA_SOURCE_OPTIONS = [
  */
 const DEFAULT_CHART_CONFIG = {
     type: 'bar',
+    visible: true, // Whether the chart/section is visible
     yAxis: {
         mode: 'auto', // 'auto' | 'custom'
         min: 0,
@@ -13449,6 +15095,124 @@ const DEFAULT_CHART_CONFIG = {
         metricKey: null
     }
 };
+
+/**
+ * Metrics section visibility state
+ * Tracks which sections are hidden
+ */
+let metricsHiddenSections = {
+    personalStats: false,
+    teamStats: false,
+    personalTrend: false,
+    teamCharts: false,
+    businessMetrics: false
+};
+
+/**
+ * Hidden individual metrics (not removed, just hidden)
+ * Contains array of metric IDs that are hidden
+ */
+let hiddenMetricIds = [];
+
+/**
+ * Load metrics section visibility from team settings
+ */
+function loadMetricsSectionVisibility() {
+    const visibility = appState.currentTeamData?.settings?.metricsVisibility || {};
+    metricsHiddenSections = {
+        personalStats: visibility.personalStats === false,
+        teamStats: visibility.teamStats === false,
+        personalTrend: visibility.personalTrend === false,
+        teamCharts: visibility.teamCharts === false,
+        businessMetrics: visibility.businessMetrics === false
+    };
+    
+    // Load hidden metrics
+    hiddenMetricIds = appState.currentTeamData?.settings?.hiddenMetrics || [];
+}
+
+/**
+ * Check if a metric is hidden
+ */
+function isMetricHidden(metricId) {
+    return hiddenMetricIds.includes(metricId);
+}
+
+/**
+ * Toggle individual metric visibility
+ */
+async function toggleMetricVisibility(metricId) {
+    if (!canEditMetrics()) return;
+    
+    const isHidden = hiddenMetricIds.includes(metricId);
+    
+    if (isHidden) {
+        hiddenMetricIds = hiddenMetricIds.filter(id => id !== metricId);
+    } else {
+        hiddenMetricIds.push(metricId);
+    }
+    
+    // Save to Firestore
+    try {
+        const { doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+        const teamRef = doc(db, 'teams', appState.currentTeamId);
+        
+        await updateDoc(teamRef, {
+            'settings.hiddenMetrics': hiddenMetricIds
+        });
+        
+        // Update local state
+        if (!appState.currentTeamData.settings) {
+            appState.currentTeamData.settings = {};
+        }
+        appState.currentTeamData.settings.hiddenMetrics = hiddenMetricIds;
+        
+        const metric = CUSTOM_METRICS_CATALOG[metricId];
+        const metricName = metric?.name || metricId;
+        showToast(isHidden ? `Showing "${metricName}"` : `Hiding "${metricName}"`, 'info');
+        
+        renderMetrics();
+    } catch (error) {
+        console.error('Error toggling metric visibility:', error);
+        showToast('Failed to update visibility', 'error');
+    }
+}
+
+window.toggleMetricVisibility = toggleMetricVisibility;
+
+/**
+ * Toggle section visibility
+ */
+async function toggleMetricsSectionVisibility(sectionId) {
+    if (!canEditMetrics()) return;
+    
+    metricsHiddenSections[sectionId] = !metricsHiddenSections[sectionId];
+    
+    // Save to Firestore
+    try {
+        const { doc, updateDoc } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+        const teamRef = doc(db, 'teams', appState.currentTeamId);
+        
+        const visibilitySettings = {
+            personalStats: !metricsHiddenSections.personalStats,
+            teamStats: !metricsHiddenSections.teamStats,
+            personalTrend: !metricsHiddenSections.personalTrend,
+            teamCharts: !metricsHiddenSections.teamCharts,
+            businessMetrics: !metricsHiddenSections.businessMetrics
+        };
+        
+        await updateDoc(teamRef, {
+            'settings.metricsSectionVisibility': visibilitySettings
+        });
+        
+        renderMetrics();
+    } catch (error) {
+        console.error('Error saving section visibility:', error);
+        showToast('Failed to save visibility settings', 'error');
+    }
+}
+
+window.toggleMetricsSectionVisibility = toggleMetricsSectionVisibility;
 
 /**
  * Debounce timer for saving chart config
@@ -13965,13 +15729,43 @@ async function saveEnabledMetrics(enabledMetrics) {
  * @param {Object} metric - The metric config from CUSTOM_METRICS_CATALOG
  * @param {number} index - The index in the enabled list
  * @param {number} total - Total number of enabled metrics
+ * @param {boolean} showHidden - Whether to show hidden metrics (in edit mode)
  * @returns {string} HTML string
  */
-function renderCustomMetricCard(metric, index, total) {
+function renderCustomMetricCard(metric, index, total, showHidden = false) {
+    const metricIsHidden = isMetricHidden(metric.id);
+    
+    // If hidden and not in edit mode, don't render
+    if (metricIsHidden && !metricsEditMode) {
+        return '';
+    }
+    
     const data = metric.getValue();
+    const hasChartOption = metric.hasChart;
+    const currentMode = getMetricDisplayMode(metric.id);
+    
+    // Display mode toggle (only in edit mode and for metrics that support charts)
+    const displayModeToggle = (metricsEditMode && hasChartOption) ? `
+        <button class="metric-display-toggle" onclick="toggleMetricDisplayMode('${metric.id}')" 
+                title="Switch to ${currentMode === 'card' ? 'graph' : 'card'} view">
+            <i class="fas fa-${currentMode === 'card' ? 'chart-line' : 'th-large'}"></i>
+        </button>
+    ` : '';
+    
+    // Hide/show toggle button
+    const hideToggle = metricsEditMode ? `
+        <button class="metric-edit-btn ${metricIsHidden ? 'hidden-state' : ''}" 
+                onclick="toggleMetricVisibility('${metric.id}')" 
+                title="${metricIsHidden ? 'Show metric' : 'Hide metric'}">
+            <i class="fas fa-${metricIsHidden ? 'eye-slash' : 'eye'}"></i>
+        </button>
+    ` : '';
+    
     const editControls = metricsEditMode ? `
         <div class="metric-edit-overlay">
             <div class="metric-edit-actions">
+                ${displayModeToggle}
+                ${hideToggle}
                 <button class="metric-edit-btn" onclick="reorderCustomMetric('${metric.id}', 'up')" 
                         ${index === 0 ? 'disabled' : ''} title="Move up">
                     <i class="fas fa-chevron-up"></i>
@@ -13988,9 +15782,10 @@ function renderCustomMetricCard(metric, index, total) {
     ` : '';
     
     const tooltipAttr = data.tooltip ? `data-tooltip="${data.tooltip}"` : '';
+    const hiddenClass = metricIsHidden ? 'metric-hidden' : '';
     
     return `
-        <div class="metrics-stat-card custom-metric-card ${metric.color} ${metricsEditMode ? 'edit-mode' : ''}" ${tooltipAttr}>
+        <div class="metrics-stat-card custom-metric-card ${metric.color} ${metricsEditMode ? 'edit-mode' : ''} ${hiddenClass}" ${tooltipAttr}>
             ${editControls}
             <div class="metrics-stat-icon">
                 <i class="fas ${metric.icon}"></i>
@@ -14137,7 +15932,7 @@ function computePersonalMetrics(state, userId) {
     
     // Daily breakdown based on time filter (for trend chart)
     const timeBounds = getMetricsTimeBoundaries();
-    const daysToShow = metricsTimeFilter === '7days' ? 7 : (metricsTimeFilter === '30days' ? 30 : 14);
+    const daysToShow = metricsTimeFilter === '7days' ? 7 : (metricsTimeFilter === '30days' ? 30 : 90);
     
     const dailyCompletions = [];
     for (let i = daysToShow - 1; i >= 0; i--) {
@@ -14171,6 +15966,9 @@ function computePersonalMetrics(state, userId) {
             open: myOpenTasks.length,
             completedLast7Days: completedLast7Days.length,
             completedLast30Days: completedLast30Days.length,
+            // Time-filtered stats based on current filter
+            completedInPeriod: metricsTimeFilter === '7days' ? completedLast7Days.length : 
+                              (metricsTimeFilter === '30days' ? completedLast30Days.length : myCompletedTasks.length),
             completionRate
         },
         events: {
@@ -14180,7 +15978,12 @@ function computePersonalMetrics(state, userId) {
         },
         messages: {
             total: myMessages.length,
-            last7Days: messagesLast7Days.length
+            last7Days: messagesLast7Days.length,
+            inPeriod: metricsTimeFilter === '7days' ? messagesLast7Days.length : 
+                     (metricsTimeFilter === '30days' ? myMessages.filter(m => {
+                         const createdAt = parseMetricsDate(m.createdAt);
+                         return createdAt && createdAt >= thirtyDaysAgo;
+                     }).length : myMessages.length)
         },
         activities: {
             total: myActivities.length,
@@ -14250,7 +16053,7 @@ function computeTeamMetrics(state) {
     });
     
     // Daily breakdown for team based on time filter
-    const daysToShow = metricsTimeFilter === '7days' ? 7 : (metricsTimeFilter === '30days' ? 30 : 14);
+    const daysToShow = metricsTimeFilter === '7days' ? 7 : (metricsTimeFilter === '30days' ? 30 : 90);
     
     const dailyCompletions = [];
     for (let i = daysToShow - 1; i >= 0; i--) {
@@ -14284,16 +16087,25 @@ function computeTeamMetrics(state) {
             open: openTasks.length,
             completedLast7Days: completedLast7Days.length,
             completedLast30Days: completedLast30Days.length,
+            // Time-filtered stats based on current filter
+            completedInPeriod: metricsTimeFilter === '7days' ? completedLast7Days.length : 
+                              (metricsTimeFilter === '30days' ? completedLast30Days.length : completedTasks.length),
             completionRate: teamCompletionRate
         },
         memberBreakdown: memberTaskBreakdown,
         events: {
             total: state.events.length,
-            upcomingThisWeek: upcomingEventsThisWeek.length
+            upcomingThisWeek: upcomingEventsThisWeek.length,
+            inPeriod: upcomingEventsThisWeek.length // Events in the upcoming week
         },
         messages: {
             total: state.messages.length,
-            last7Days: messagesLast7Days.length
+            last7Days: messagesLast7Days.length,
+            inPeriod: metricsTimeFilter === '7days' ? messagesLast7Days.length : 
+                     (metricsTimeFilter === '30days' ? state.messages.filter(m => {
+                         const createdAt = parseMetricsDate(m.createdAt);
+                         return createdAt && createdAt >= thirtyDaysAgo;
+                     }).length : state.messages.length)
         },
         memberCount: state.teammates.length,
         trends: {
@@ -14461,22 +16273,26 @@ window.computeLeadsMetrics = computeLeadsMetrics;
 
 /**
  * Render a progress ring (circular progress indicator)
- * Apple-inspired thin stroke with smooth animation
+ * Instagram-inspired vibrant gradient with smooth animation
  */
-function createProgressRing(percent, size = 72, strokeWidth = 4, color = 'var(--accent)') {
+function createProgressRing(percent, size = 60, strokeWidth = 5, color = '#833AB4') {
     const radius = (size - strokeWidth) / 2;
     const circumference = radius * 2 * Math.PI;
     const offset = circumference - (percent / 100) * circumference;
     
-    // Subtle gradient ID for uniqueness
+    // Vibrant gradient ID for uniqueness
     const gradientId = `ring-gradient-${Math.random().toString(36).substr(2, 9)}`;
+    
+    // Use a pink-to-purple gradient for modern look
+    const gradientStart = color === '#833AB4' ? '#E1306C' : color;
+    const gradientEnd = color === '#833AB4' ? '#833AB4' : color;
     
     return `
         <svg class="progress-ring" width="${size}" height="${size}" viewBox="0 0 ${size} ${size}">
             <defs>
                 <linearGradient id="${gradientId}" x1="0%" y1="0%" x2="100%" y2="100%">
-                    <stop offset="0%" style="stop-color:${color};stop-opacity:1" />
-                    <stop offset="100%" style="stop-color:${color};stop-opacity:0.7" />
+                    <stop offset="0%" style="stop-color:${gradientStart};stop-opacity:1" />
+                    <stop offset="100%" style="stop-color:${gradientEnd};stop-opacity:1" />
                 </linearGradient>
             </defs>
             <circle
@@ -14487,7 +16303,7 @@ function createProgressRing(percent, size = 72, strokeWidth = 4, color = 'var(--
                 r="${radius}"
                 cx="${size / 2}"
                 cy="${size / 2}"
-                opacity="0.4"
+                opacity="0.3"
             />
             <circle
                 class="progress-ring-progress"
@@ -14933,8 +16749,8 @@ function renderGraphByTypeWithConfig(data, type, dataType = 'trend', config = {}
     
     // Build options from config
     const options = {
-        primaryColor: config.primaryColor || 'var(--accent)',
-        secondaryColor: config.secondaryColor || '#34C759',
+        primaryColor: config.primaryColor || '#833AB4',
+        secondaryColor: config.secondaryColor || '#E1306C',
         showSecondaryAxis: config.showSecondaryAxis || false,
         yAxisMin: config.yAxisMode === 'auto' ? 0 : (config.yAxisMin ?? 0),
         yAxisMax: config.yAxisMode === 'auto' ? null : (config.yAxisMax ?? null),
@@ -15118,7 +16934,7 @@ function createSmoothPath(points, yMax = null, yMin = null) {
 
 /**
  * Create a modern line chart with dual-axis support
- * Clean, minimal Apple-style design
+ * Clean, minimal Instagram-style design
  * Clamps Y-axis to always start at 0 (no negative values)
  * Supports custom Y-axis config via options
  * @param {Array} data - Array of { label, count } objects
@@ -15134,8 +16950,8 @@ function createLineChart(data, options = {}) {
     const {
         showSecondaryAxis = false,
         secondaryData = null,
-        primaryColor = 'var(--accent)',
-        secondaryColor = '#34C759',
+        primaryColor = '#833AB4',
+        secondaryColor = '#E1306C',
         primaryLabel = '',
         secondaryLabel = '',
         height = 140,
@@ -15520,7 +17336,7 @@ function createPieChartFromTrend(data, options = {}) {
  * @param {Array} data - Graph data
  * @param {string} dataType - 'trend' | 'breakdown'
  */
-function createSwitchableGraphCard(graphId, title, icon, data, dataType = 'trend') {
+function createSwitchableGraphCard(graphId, title, icon, data, dataType = 'trend', options = {}) {
     const config = getChartConfig(graphId);
     const currentType = config.type || getGraphType(graphId);
     const graphContent = renderGraphByTypeWithConfig(data, currentType, dataType, config);
@@ -15537,6 +17353,10 @@ function createSwitchableGraphCard(graphId, title, icon, data, dataType = 'trend
         </button>
     ` : '';
     
+    // Get hide toggle from options (for custom metrics)
+    const hideToggle = options.hideToggle || '';
+    const hiddenClass = options.hiddenClass || '';
+    
     // Get the icon for the current graph type
     const graphTypeIcons = {
         'bar': 'fa-chart-bar',
@@ -15546,10 +17366,11 @@ function createSwitchableGraphCard(graphId, title, icon, data, dataType = 'trend
     const currentTypeIcon = graphTypeIcons[currentType] || 'fa-chart-bar';
     
     return `
-        <div class="metrics-card ${showSettings ? 'edit-mode' : ''}" data-graph-id="${graphId}" data-graph-data="${dataJson}" data-graph-data-type="${dataType}">
+        <div class="metrics-card ${showSettings ? 'edit-mode' : ''} ${hiddenClass}" data-graph-id="${graphId}" data-graph-data="${dataJson}" data-graph-data-type="${dataType}">
             <div class="metrics-card-header">
                 <h3><i class="fas ${icon}"></i> ${title}</h3>
                 <div class="graph-header-actions">
+                    ${hideToggle}
                     ${settingsToggleBtn}
                     <div class="graph-menu-container">
                         <button class="graph-menu-btn" onclick="toggleGraphMenu(event, '${graphId}')" aria-label="Change graph type" data-current-type="${currentType}">
@@ -16056,6 +17877,10 @@ function renderMetrics() {
     const hasPersonalTasks = personalMetrics.tasks.total > 0;
     const hasPersonalActivity = hasPersonalTasks || personalMetrics.events.total > 0 || personalMetrics.messages.total > 0;
     
+    // Get period label for stats
+    const periodLabel = metricsTimeFilter === '7days' ? 'This Week' : 
+                       (metricsTimeFilter === '30days' ? 'This Month' : 'All Time');
+    
     if (!hasPersonalActivity) {
         // Empty state for personal metrics
         html += createMetricsEmptyState(
@@ -16064,68 +17889,86 @@ function renderMetrics() {
             'Start completing tasks, creating events, or sending messages to see your performance metrics here.'
         );
     } else {
-        // Top row: Stat cards with tooltips
-        html += '<div class="metrics-stats-row">';
+        // Section visibility toggle for personal stats
+        const personalStatsHidden = metricsHiddenSections.personalStats;
+        const personalStatsToggle = metricsEditMode ? `
+            <button class="section-visibility-toggle ${personalStatsHidden ? 'hidden-section' : ''}" 
+                    onclick="toggleMetricsSectionVisibility('personalStats')" 
+                    title="${personalStatsHidden ? 'Show' : 'Hide'} Stats">
+                <i class="fas ${personalStatsHidden ? 'fa-eye-slash' : 'fa-eye'}"></i>
+            </button>
+        ` : '';
         
-        // Completion rate with progress ring (no tooltip on this one - self-explanatory)
-        html += `
-            <div class="metrics-stat-card metrics-stat-card-large" data-tooltip="${personalMetrics.tasks.completed} completed, ${personalMetrics.tasks.open} remaining">
-                <div class="metrics-progress-ring-container">
-                    ${createProgressRing(personalMetrics.tasks.completionRate)}
+        // Top row: Stat cards with tooltips (only show if not hidden)
+        if (!personalStatsHidden || metricsEditMode) {
+            html += `<div class="metrics-stats-row ${personalStatsHidden ? 'section-hidden' : ''}" data-section="personalStats">`;
+            if (metricsEditMode) html += personalStatsToggle;
+            
+            // Completion rate with progress ring
+            html += `
+                <div class="metrics-stat-card metrics-stat-card-large" data-tooltip="${personalMetrics.tasks.completed} completed, ${personalMetrics.tasks.open} remaining">
+                    <div class="metrics-progress-ring-container">
+                        ${createProgressRing(personalMetrics.tasks.completionRate)}
+                    </div>
+                    <div class="metrics-stat-content">
+                        <div class="metrics-stat-label">Task Completion Rate</div>
+                        <div class="metrics-stat-subtitle">${personalMetrics.tasks.completed} of ${personalMetrics.tasks.total} tasks</div>
+                    </div>
                 </div>
-                <div class="metrics-stat-content">
-                    <div class="metrics-stat-label">Task Completion Rate</div>
-                    <div class="metrics-stat-subtitle">${personalMetrics.tasks.completed} of ${personalMetrics.tasks.total} tasks</div>
-                </div>
-            </div>
-        `;
+            `;
+            
+            // Time-filtered completed tasks
+            const tasksTooltip = `Completed: ${personalMetrics.tasks.completedLast7Days} this week, ${personalMetrics.tasks.completedLast30Days} this month`;
+            html += createStatCard(
+                'fa-check-circle', 
+                personalMetrics.tasks.completedInPeriod, 
+                `Completed ${periodLabel}`, 
+                `${personalMetrics.tasks.open} open`, 
+                'success',
+                tasksTooltip
+            );
+            
+            const eventsTooltip = `${personalMetrics.events.total} total events created by you`;
+            html += createStatCard(
+                'fa-calendar-check', 
+                personalMetrics.events.upcoming, 
+                'Upcoming Events', 
+                `${personalMetrics.events.createdLast30Days} created this month`,
+                '',
+                eventsTooltip
+            );
+            
+            // Time-filtered messages
+            const messagesInPeriod = personalMetrics.messages.inPeriod;
+            const messagesAvg = messagesInPeriod > 0 
+                ? Math.round(messagesInPeriod / (metricsTimeFilter === '7days' ? 7 : (metricsTimeFilter === '30days' ? 30 : 90)) * 10) / 10 
+                : 0;
+            const messagesDesc = messagesAvg > 0 ? `~${messagesAvg} per day` : 'Keep chatting!';
+            html += createStatCard(
+                'fa-comment', 
+                messagesInPeriod, 
+                `Messages ${periodLabel}`, 
+                `${personalMetrics.messages.total} total`,
+                '',
+                messagesDesc
+            );
+            
+            html += '</div>';
+        }
         
-        // Stat cards with tooltips
-        const tasksTooltip = `Completed: ${personalMetrics.tasks.completedLast7Days} this week, ${personalMetrics.tasks.completedLast30Days} this month`;
-        html += createStatCard(
-            'fa-check-circle', 
-            personalMetrics.tasks.completedLast7Days, 
-            'Completed This Week', 
-            `${personalMetrics.tasks.open} open`, 
-            'success',
-            tasksTooltip
-        );
-        
-        const eventsTooltip = `${personalMetrics.events.total} total events created by you`;
-        html += createStatCard(
-            'fa-calendar-check', 
-            personalMetrics.events.upcoming, 
-            'Upcoming Events', 
-            `${personalMetrics.events.createdLast30Days} created this month`,
-            '',
-            eventsTooltip
-        );
-        
-        const messagesTotal = personalMetrics.messages.total;
-        const messagesWeek = personalMetrics.messages.last7Days;
-        const messagesAvg = messagesTotal > 0 && messagesWeek > 0 
-            ? Math.round(messagesWeek / 7 * 10) / 10 
-            : 0;
-        const messagesDesc = messagesAvg > 0 ? `~${messagesAvg} per day` : 'Keep chatting!';
-        html += createStatCard(
-            'fa-comment', 
-            personalMetrics.messages.last7Days, 
-            'Messages This Week', 
-            `${personalMetrics.messages.total} total`,
-            '',
-            messagesDesc
-        );
-        
-        html += '</div>';
+        // Personal trend chart visibility toggle
+        const personalTrendHidden = metricsHiddenSections.personalTrend;
         
         // Personal trend chart (or empty state if no completed tasks)
         if (personalMetrics.tasks.completed === 0) {
-            html += createMetricsEmptyState(
-                'fa-tasks',
-                'No Completed Tasks Yet',
-                'Complete your first task to see your progress trend!'
-            );
-        } else {
+            if (!personalTrendHidden || metricsEditMode) {
+                html += createMetricsEmptyState(
+                    'fa-tasks',
+                    'No Completed Tasks Yet',
+                    'Complete your first task to see your progress trend!'
+                );
+            }
+        } else if (!personalTrendHidden || metricsEditMode) {
             // Ensure dailyCompletions has proper structure for chart rendering
             const trendData = personalMetrics.trends.dailyCompletions.map(d => ({
                 label: d.label,
@@ -16161,105 +18004,141 @@ function renderMetrics() {
                 'Create tasks, events, and invite team members to see team performance metrics.'
             );
         } else {
-            // Team stat cards with tooltips
-            html += '<div class="metrics-stats-row">';
-            
-            const teamCompletionTooltip = `${teamMetrics.tasks.completed} tasks done, ${teamMetrics.tasks.open} in progress or pending`;
+            // Team stats visibility toggle
+            const teamStatsHidden = metricsHiddenSections.teamStats;
             html += `
-                <div class="metrics-stat-card metrics-stat-card-large" data-tooltip="${teamCompletionTooltip}">
-                    <div class="metrics-progress-ring-container">
-                        ${createProgressRing(teamMetrics.tasks.completionRate, 80, 8, 'var(--success)')}
-                    </div>
-                    <div class="metrics-stat-content">
-                        <div class="metrics-stat-label">Team Completion Rate</div>
-                        <div class="metrics-stat-subtitle">${teamMetrics.tasks.completed} of ${teamMetrics.tasks.total} tasks</div>
-                    </div>
+                <div class="metrics-section-header">
+                    <button class="section-visibility-toggle ${teamStatsHidden ? 'section-hidden' : ''}" 
+                            onclick="toggleMetricsSectionVisibility('teamStats')"
+                            title="${teamStatsHidden ? 'Show' : 'Hide'} team stats">
+                        <i class="fas fa-${teamStatsHidden ? 'eye-slash' : 'eye'}"></i>
+                    </button>
                 </div>
             `;
             
-            const openTasksTooltip = `${teamMetrics.tasks.completedLast30Days} completed this month`;
-            html += createStatCard(
-                'fa-tasks', 
-                teamMetrics.tasks.open, 
-                'Open Tasks', 
-                `${teamMetrics.tasks.completedLast7Days} completed this week`, 
-                'warning',
-                openTasksTooltip
-            );
-            
-            const eventsThisWeekTooltip = `${teamMetrics.events.total} events in total`;
-            html += createStatCard(
-                'fa-calendar-week', 
-                teamMetrics.events.upcomingThisWeek, 
-                'Events This Week', 
-                `${teamMetrics.events.total} total events`,
-                '',
-                eventsThisWeekTooltip
-            );
-            
-            const membersTooltip = `Team has ${teamMetrics.memberCount} ${teamMetrics.memberCount === 1 ? 'member' : 'members'}`;
-            html += createStatCard(
-                'fa-users', 
-                teamMetrics.memberCount, 
-                'Team Members', 
-                `${teamMetrics.messages.last7Days} messages this week`,
-                '',
-                membersTooltip
-            );
-            
-            html += '</div>';
-            
-            // Team trend chart (or empty state)
-            if (teamMetrics.tasks.completed === 0) {
-                html += createMetricsEmptyState(
-                    'fa-chart-bar',
-                    'No Completed Tasks Yet',
-                    'Team members haven\'t completed any tasks yet. Metrics will appear once tasks are done!'
+            if (!teamStatsHidden) {
+                // Team stat cards with tooltips - use time-filtered values
+                html += '<div class="metrics-stats-row">';
+                
+                const teamCompletionTooltip = `${teamMetrics.tasks.completedInPeriod} tasks done ${periodLabel}, ${teamMetrics.tasks.open} open`;
+                html += `
+                    <div class="metrics-stat-card metrics-stat-card-large" data-tooltip="${teamCompletionTooltip}">
+                        <div class="metrics-progress-ring-container">
+                            ${createProgressRing(teamMetrics.tasks.completionRate, 60, 5, '#34C759')}
+                        </div>
+                        <div class="metrics-stat-content">
+                            <div class="metrics-stat-label">Team Completion Rate</div>
+                            <div class="metrics-stat-subtitle">${teamMetrics.tasks.completedInPeriod} completed ${periodLabel}</div>
+                        </div>
+                    </div>
+                `;
+                
+                const openTasksTooltip = `${teamMetrics.tasks.open} tasks need attention`;
+                html += createStatCard(
+                    'fa-tasks', 
+                    teamMetrics.tasks.open, 
+                    'Open Tasks', 
+                    `${teamMetrics.tasks.completedInPeriod} done ${periodLabel}`, 
+                    'warning',
+                    openTasksTooltip
                 );
-            } else {
-                // Ensure proper data structure for trend chart
-                const teamTrendData = teamMetrics.trends.dailyCompletions.map(d => ({
-                    label: d.label,
-                    value: d.count,
-                    count: d.count
-                }));
-                html += createSwitchableGraphCard(
-                    'team-trend',
-                    `Team Task Completions (${timeBounds.label})`,
-                    'fa-chart-bar',
-                    teamTrendData,
-                    'trend'
+                
+                const eventsInPeriodTooltip = `${teamMetrics.events.inPeriod} events ${periodLabel}`;
+                html += createStatCard(
+                    'fa-calendar-week', 
+                    teamMetrics.events.inPeriod, 
+                    `Events ${periodLabel}`, 
+                    `${teamMetrics.events.total} total events`,
+                    '',
+                    eventsInPeriodTooltip
                 );
+                
+                const membersTooltip = `Team has ${teamMetrics.memberCount} ${teamMetrics.memberCount === 1 ? 'member' : 'members'}`;
+                html += createStatCard(
+                    'fa-users', 
+                    teamMetrics.memberCount, 
+                    'Team Members', 
+                    `${teamMetrics.messages.last7Days} messages this week`,
+                    '',
+                    membersTooltip
+                );
+                
+                html += '</div>';
             }
             
-            // Member breakdown bar chart (only show if there are members with tasks)
-            const memberData = Object.values(teamMetrics.memberBreakdown)
-                .filter(m => m.total > 0)
-                .sort((a, b) => b.completed - a.completed)
-                .slice(0, 10) // Top 10 members
-                .map((m, index) => ({
-                    label: m.name,
-                    value: m.completed,
-                    count: m.completed,
-                    // Don't assign color here - let pie chart auto-assign distinct colors
-                    color: undefined
-                }));
+            // Team charts - side by side layout
+            const teamChartsHidden = metricsHiddenSections.teamCharts;
+            html += `
+                <div class="metrics-section-header">
+                    <span class="metrics-section-subheading">Team Charts</span>
+                    <button class="section-visibility-toggle ${teamChartsHidden ? 'section-hidden' : ''}" 
+                            onclick="toggleMetricsSectionVisibility('teamCharts')"
+                            title="${teamChartsHidden ? 'Show' : 'Hide'} team charts">
+                        <i class="fas fa-${teamChartsHidden ? 'eye-slash' : 'eye'}"></i>
+                    </button>
+                </div>
+            `;
             
-            if (memberData.length > 0) {
-                html += createSwitchableGraphCard(
-                    'member-breakdown',
-                    'Tasks Completed by Member',
-                    'fa-trophy',
-                    memberData,
-                    'breakdown',
-                    { colorByMember: true }
-                );
-            } else if (teamMetrics.memberCount > 0) {
-                html += createMetricsEmptyState(
-                    'fa-trophy',
-                    'No Assigned Tasks Yet',
-                    'Assign tasks to team members to see individual performance breakdown.'
-                );
+            if (!teamChartsHidden) {
+                // Team trend chart (or empty state)
+                if (teamMetrics.tasks.completed === 0) {
+                    html += createMetricsEmptyState(
+                        'fa-chart-bar',
+                        'No Completed Tasks Yet',
+                        'Team members haven\'t completed any tasks yet. Metrics will appear once tasks are done!'
+                    );
+                } else {
+                    // Side-by-side charts container
+                    html += '<div class="metrics-charts-row">';
+                    
+                    // Ensure proper data structure for trend chart
+                    const teamTrendData = teamMetrics.trends.dailyCompletions.map(d => ({
+                        label: d.label,
+                        value: d.count,
+                        count: d.count
+                    }));
+                    html += createSwitchableGraphCard(
+                        'team-trend',
+                        `Team Completions (${timeBounds.label})`,
+                        'fa-chart-bar',
+                        teamTrendData,
+                        'trend'
+                    );
+                    
+                    // Member breakdown bar chart (only show if there are members with tasks)
+                    const memberData = Object.values(teamMetrics.memberBreakdown)
+                        .filter(m => m.total > 0)
+                        .sort((a, b) => b.completed - a.completed)
+                        .slice(0, 10) // Top 10 members
+                        .map((m, index) => ({
+                            label: m.name,
+                            value: m.completed,
+                            count: m.completed,
+                            color: undefined
+                        }));
+                    
+                    if (memberData.length > 0) {
+                        html += createSwitchableGraphCard(
+                            'member-breakdown',
+                            'By Member',
+                            'fa-trophy',
+                            memberData,
+                            'breakdown',
+                            { colorByMember: true }
+                        );
+                    } else if (teamMetrics.memberCount > 0) {
+                        html += `
+                            <div class="metrics-graph-card">
+                                <div class="metrics-empty-state-mini">
+                                    <i class="fas fa-trophy"></i>
+                                    <span>No assigned tasks yet</span>
+                                </div>
+                            </div>
+                        `;
+                    }
+                    
+                    html += '</div>'; // End metrics-charts-row
+                }
             }
         }
     }
@@ -16276,37 +18155,81 @@ function renderMetrics() {
             </div>
         `;
         
-        if (enabledMetrics.length > 0) {
-            html += '<div class="metrics-stats-row custom-metrics-row">';
-            
-            enabledMetrics.forEach((metricId, index) => {
-                const metric = CUSTOM_METRICS_CATALOG[metricId];
-                if (metric) {
-                    html += renderCustomMetricCard(metric, index, enabledMetrics.length);
-                }
+        // Business metrics visibility toggle
+        const businessMetricsHidden = metricsHiddenSections.businessMetrics;
+        html += `
+            <div class="metrics-section-header">
+                <button class="section-visibility-toggle ${businessMetricsHidden ? 'section-hidden' : ''}" 
+                        onclick="toggleMetricsSectionVisibility('businessMetrics')"
+                        title="${businessMetricsHidden ? 'Show' : 'Hide'} business metrics">
+                    <i class="fas fa-${businessMetricsHidden ? 'eye-slash' : 'eye'}"></i>
+                </button>
+            </div>
+        `;
+        
+        if (!businessMetricsHidden && enabledMetrics.length > 0) {
+            // Separate metrics by display mode, filtering hidden ones unless in edit mode
+            const cardMetrics = enabledMetrics.filter(id => {
+                const metric = CUSTOM_METRICS_CATALOG[id];
+                const isHidden = isMetricHidden(id);
+                if (isHidden && !metricsEditMode) return false;
+                return !metric?.hasChart || getMetricDisplayMode(id) === 'card';
+            });
+            const graphMetrics = enabledMetrics.filter(id => {
+                const metric = CUSTOM_METRICS_CATALOG[id];
+                const isHidden = isMetricHidden(id);
+                if (isHidden && !metricsEditMode) return false;
+                return metric?.hasChart && getMetricDisplayMode(id) === 'graph';
             });
             
-            html += '</div>';
-            
-            // Show charts for metrics that have them (only if not in edit mode for cleaner UI)
-            if (!metricsEditMode) {
-                const metricsWithCharts = enabledMetrics
-                    .map(id => CUSTOM_METRICS_CATALOG[id])
-                    .filter(m => m && m.hasChart);
+            // Render card-view metrics
+            if (cardMetrics.length > 0) {
+                html += '<div class="metrics-stats-row custom-metrics-row">';
                 
-                if (metricsWithCharts.length > 0) {
-                    const firstChartMetric = metricsWithCharts[0];
-                    const chartData = firstChartMetric.chartData();
-                    html += createSwitchableGraphCard(
-                        `custom-${firstChartMetric.id || 'metric'}`,
-                        `${firstChartMetric.name} Trend`,
-                        firstChartMetric.icon,
-                        chartData,
-                        'trend'
-                    );
-                }
+                cardMetrics.forEach((metricId, index) => {
+                    const metric = CUSTOM_METRICS_CATALOG[metricId];
+                    if (metric) {
+                        html += renderCustomMetricCard(metric, index, cardMetrics.length);
+                    }
+                });
+                
+                html += '</div>';
             }
-        } else if (metricsEditMode) {
+            
+            // Render graph-view metrics (side by side)
+            if (graphMetrics.length > 0) {
+                html += '<div class="metrics-charts-row">';
+                
+                graphMetrics.forEach(metricId => {
+                    const metric = CUSTOM_METRICS_CATALOG[metricId];
+                    if (metric && metric.hasChart) {
+                        const chartData = metric.chartData();
+                        const metricIsHidden = isMetricHidden(metricId);
+                        const hiddenClass = metricIsHidden ? 'metric-hidden' : '';
+                        
+                        // Add hide toggle for graph cards in edit mode
+                        const graphHideToggle = metricsEditMode ? `
+                            <button class="metric-graph-hide-btn ${metricIsHidden ? 'hidden-state' : ''}" 
+                                    onclick="toggleMetricVisibility('${metricId}')" 
+                                    title="${metricIsHidden ? 'Show metric' : 'Hide metric'}">
+                                <i class="fas fa-${metricIsHidden ? 'eye-slash' : 'eye'}"></i>
+                            </button>
+                        ` : '';
+                        
+                        html += createSwitchableGraphCard(
+                            `custom-${metric.id || 'metric'}`,
+                            `${metric.name}`,
+                            metric.icon,
+                            chartData,
+                            'trend',
+                            { hideToggle: graphHideToggle, hiddenClass }
+                        );
+                    }
+                });
+                
+                html += '</div>';
+            }
+        } else if (!businessMetricsHidden && metricsEditMode) {
             // Show empty state with add button when in edit mode
             html += `
                 <div class="metrics-empty-state custom-metrics-empty">
@@ -16337,6 +18260,114 @@ function renderMetrics() {
     
     // Initialize custom dropdown after rendering
     initMetricsTimeDropdown();
+    
+    // Initialize line chart dot tooltips
+    initLineChartTooltips(container);
+    
+    // Initialize pie chart hover effects
+    initPieChartHoverEffects(container);
+}
+
+/**
+ * Initialize line chart dot tooltips
+ */
+function initLineChartTooltips(container) {
+    const charts = container.querySelectorAll('.line-chart-v2');
+    
+    charts.forEach(chart => {
+        const dots = chart.querySelectorAll('.line-dot[data-tooltip]');
+        let tooltip = null;
+        
+        dots.forEach(dot => {
+            dot.addEventListener('mouseenter', (e) => {
+                const tooltipText = dot.getAttribute('data-tooltip');
+                if (!tooltipText) return;
+                
+                // Create tooltip element if not exists
+                if (!tooltip) {
+                    tooltip = document.createElement('div');
+                    tooltip.className = 'line-chart-tooltip';
+                    chart.appendChild(tooltip);
+                }
+                
+                tooltip.textContent = tooltipText;
+                
+                // Position tooltip above the dot
+                const cx = parseFloat(dot.getAttribute('cx'));
+                const cy = parseFloat(dot.getAttribute('cy'));
+                
+                tooltip.style.left = cx + 'px';
+                tooltip.style.top = cy + 'px';
+                tooltip.classList.add('visible');
+            });
+            
+            dot.addEventListener('mouseleave', () => {
+                if (tooltip) {
+                    tooltip.classList.remove('visible');
+                }
+            });
+        });
+    });
+}
+
+/**
+ * Initialize pie chart hover interactions
+ * Highlights corresponding legend item when a segment is hovered
+ */
+function initPieChartHoverEffects(container) {
+    const pieCharts = container.querySelectorAll('.metrics-pie-chart');
+    
+    pieCharts.forEach(pieChart => {
+        const segments = pieChart.querySelectorAll('.pie-segment');
+        const legendItems = pieChart.querySelectorAll('.pie-legend-item');
+        
+        segments.forEach((segment, index) => {
+            segment.addEventListener('mouseenter', () => {
+                // Highlight corresponding legend item
+                if (legendItems[index]) {
+                    legendItems[index].classList.add('highlighted');
+                }
+            });
+            
+            segment.addEventListener('mouseleave', () => {
+                // Remove highlight from legend item
+                if (legendItems[index]) {
+                    legendItems[index].classList.remove('highlighted');
+                }
+            });
+        });
+        
+        // Also allow legend items to highlight segments
+        legendItems.forEach((legendItem, index) => {
+            legendItem.addEventListener('mouseenter', () => {
+                if (segments[index]) {
+                    segments[index].style.transform = 'scale(1.08)';
+                    segments[index].style.filter = 'brightness(1.15) drop-shadow(0 2px 8px rgba(0, 0, 0, 0.15))';
+                    // Dim other segments
+                    segments.forEach((seg, i) => {
+                        if (i !== index) {
+                            seg.style.opacity = '0.5';
+                            seg.style.filter = 'brightness(0.9)';
+                        }
+                    });
+                }
+                legendItem.classList.add('highlighted');
+            });
+            
+            legendItem.addEventListener('mouseleave', () => {
+                if (segments[index]) {
+                    segments[index].style.transform = '';
+                    segments[index].style.filter = '';
+                    // Restore other segments
+                    segments.forEach(seg => {
+                        seg.style.opacity = '';
+                        seg.style.filter = '';
+                    });
+                }
+                legendItem.classList.remove('highlighted');
+            });
+        });
+    });
 }
 
 // Make renderMetrics available globally for data listener updates
@@ -16928,6 +18959,10 @@ function initModals() {
     const durationText = document.getElementById('durationText');
     const eventColorInput = document.getElementById('eventColor');
     
+    // Initialize custom time pickers
+    initializeTimePicker('startTimeWrapper', 'eventHour', 'eventMinute', 'startHourOptions', 'startMinuteOptions');
+    initializeTimePicker('endTimeWrapper', 'eventEndHour', 'eventEndMinute', 'endHourOptions', 'endMinuteOptions');
+    
     // Event color option buttons - updated for unified color picker
     const eventColorOptions = document.querySelectorAll('#eventModal .unified-color-option');
     eventColorOptions.forEach(option => {
@@ -16941,60 +18976,15 @@ function initModals() {
         });
     });
     
-    // Event visibility option buttons
-    const visibilityOptions = document.querySelectorAll('#eventModal .visibility-option');
-    visibilityOptions.forEach(option => {
-        option.addEventListener('click', () => {
-            // Update selected state
-            visibilityOptions.forEach(o => o.classList.remove('selected'));
-            option.classList.add('selected');
-            
-            // Check the corresponding radio
-            const radio = option.querySelector('input[type="radio"]');
-            if (radio) radio.checked = true;
-        });
-    });
+    // Event visibility toggle (calendar-style)
+    const visibilityToggles = document.querySelectorAll('#eventModal .visibility-toggle');
+    initVisibilityToggles(visibilityToggles);
     
-    // Event repeat option buttons
-    const repeatOptions = document.querySelectorAll('#eventModal .repeat-option');
-    const repeatHelper = document.getElementById('repeatHelper');
-    const repeatHelperText = document.getElementById('repeatHelperText');
+    // Event repeat option buttons (support both old .repeat-chip and new .repeat-pill)
+    const repeatOptions = document.querySelectorAll('#eventModal .repeat-chip, #eventModal .repeat-pill');
     
     function updateRepeatHelper() {
-        const selectedRepeat = document.querySelector('input[name="eventRepeat"]:checked')?.value || 'none';
-        const dateInput = document.getElementById('eventDate');
-        const dateStr = dateInput?.value;
-        
-        if (selectedRepeat === 'none' || !dateStr) {
-            if (repeatHelper) repeatHelper.style.display = 'none';
-            return;
-        }
-        
-        const startDate = new Date(dateStr + 'T00:00:00');
-        const dayName = startDate.toLocaleDateString('en-US', { weekday: 'long' });
-        const dayOfMonth = startDate.getDate();
-        const monthName = startDate.toLocaleDateString('en-US', { month: 'long' });
-        
-        let helperText = '';
-        switch (selectedRepeat) {
-            case 'daily':
-                helperText = `This will repeat every day starting from ${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
-                break;
-            case 'weekly':
-                helperText = `This will repeat every ${dayName} starting from ${startDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
-                break;
-            case 'monthly':
-                helperText = `This will repeat on the ${dayOfMonth}${getOrdinalSuffix(dayOfMonth)} of every month`;
-                break;
-            case 'yearly':
-                helperText = `This will repeat every ${monthName} ${dayOfMonth}${getOrdinalSuffix(dayOfMonth)}`;
-                break;
-        }
-        
-        if (repeatHelper && repeatHelperText) {
-            repeatHelperText.textContent = helperText;
-            repeatHelper.style.display = 'flex';
-        }
+        // Removed the helper text display since we simplified the UI
     }
     
     repeatOptions.forEach(option => {
@@ -17006,16 +18996,8 @@ function initModals() {
             // Check the corresponding radio
             const radio = option.querySelector('input[type="radio"]');
             if (radio) radio.checked = true;
-            
-            updateRepeatHelper();
         });
     });
-    
-    // Update repeat helper when date changes
-    const eventDateInput = document.getElementById('eventDate');
-    if (eventDateInput) {
-        eventDateInput.addEventListener('change', updateRepeatHelper);
-    }
     
     // Helper function to convert to total minutes from midnight
     function toMinutes(hour, minute) {
@@ -17104,8 +19086,7 @@ function initModals() {
         const endTimeStr = `${String(endHour).padStart(2, '0')}:${String(endMinute).padStart(2, '0')}`;
         
         // Get visibility setting
-        const visibilityRadio = document.querySelector('input[name="eventVisibility"]:checked');
-        const visibility = visibilityRadio ? visibilityRadio.value : 'team';
+        const visibility = getActiveVisibilityValue('eventVisibility');
         
         // Get repeat setting
         const repeatRadio = document.querySelector('input[name="eventRepeat"]:checked');
@@ -17236,6 +19217,23 @@ function initModals() {
     const cancelTaskBtn = document.getElementById('cancelTaskBtn');
     const taskDueDateInput = document.getElementById('taskDueDate');
     const dueDateHelper = document.getElementById('dueDateHelper');
+    const taskShowOnCalendar = document.getElementById('taskShowOnCalendar');
+
+    const resetTaskModalProgress = () => {
+        const progressInput = document.getElementById('taskProgress');
+        const progressSlider = document.getElementById('taskProgressSlider');
+        const progressFill = document.getElementById('taskProgressFill');
+        const progressBadge = document.getElementById('taskProgressBadge');
+
+        if (progressInput) progressInput.value = 0;
+        if (progressSlider) {
+            progressSlider.value = 0;
+            progressSlider.style.setProperty('--progress', '0%');
+        }
+        if (progressFill) progressFill.style.width = '0%';
+        if (progressBadge) progressBadge.textContent = '0%';
+        if (taskShowOnCalendar) taskShowOnCalendar.checked = true;
+    };
 
     // Show helper text when due date is selected
     if (taskDueDateInput && dueDateHelper) {
@@ -17250,12 +19248,14 @@ function initModals() {
 
     closeTaskModal.addEventListener('click', () => {
         taskForm.reset();
+        resetTaskModalProgress();
         if (dueDateHelper) dueDateHelper.style.display = 'none';
         closeModal('taskModal');
     });
     
     cancelTaskBtn.addEventListener('click', () => {
         taskForm.reset();
+        resetTaskModalProgress();
         if (dueDateHelper) dueDateHelper.style.display = 'none';
         closeModal('taskModal');
     });
@@ -17285,21 +19285,27 @@ function initModals() {
             rateLimitState.isCreatingTask = true;
         }
         
-        // Validate assignee is a team member
+        // Validate assignee is a team member or "team" (for unassigned/team tasks)
         if (!assigneeId) {
             rateLimitState.isCreatingTask = false;
             showToast('Please select a team member to assign this task to.', 'error');
             return;
         }
         
-        // Get assignee name using unified identity resolver
-        const assigneeIdentity = getIdentity(assigneeId, null);
-        if (assigneeIdentity.displayName === 'Unknown') {
-            rateLimitState.isCreatingTask = false;
-            showToast('Invalid assignee. Please select a valid team member.', 'error');
-            return;
+        // Handle special "team" value - task is assigned to the whole team
+        let assigneeName;
+        if (assigneeId === 'team') {
+            assigneeName = 'Team';
+        } else {
+            // Get assignee name using unified identity resolver
+            const assigneeIdentity = getIdentity(assigneeId, null);
+            if (assigneeIdentity.displayName === 'Unknown') {
+                rateLimitState.isCreatingTask = false;
+                showToast('Invalid assignee. Please select a valid team member.', 'error');
+                return;
+            }
+            assigneeName = assigneeIdentity.displayName;
         }
-        const assigneeName = assigneeIdentity.displayName;
         
         // Get due date if provided
         const dueDateInput = document.getElementById('taskDueDate').value;
@@ -17447,6 +19453,7 @@ function initModals() {
             resetProgressInput.value = 0;
             if (resetProgressSlider) {
                 resetProgressSlider.value = 0;
+                resetProgressSlider.style.setProperty('--progress', '0%');
             }
             if (resetProgressFill) {
                 resetProgressFill.style.width = '0%';
@@ -17670,6 +19677,9 @@ function openModal(modalId) {
     if (!modal) return;
     modal.classList.add('active');
     
+    // Add modal-open class to body for mobile styling (hides bottom nav)
+    document.body.classList.add('modal-open');
+    
     // Bug fix 2: Reset event form duration display when opening event modal
     if (modalId === 'eventModal') {
         const eventForm = document.getElementById('eventForm');
@@ -17698,37 +19708,281 @@ function openModal(modalId) {
     }
 }
 
+// Open event modal with pre-filled date and time
+function openEventModalWithDate(selectedDate, startHour = 9) {
+    // Reset the form first
+    const eventForm = document.getElementById('eventForm');
+    if (eventForm) {
+        eventForm.reset();
+        delete eventForm.dataset.editingEventId;
+    }
+    
+    // Format date for input field (YYYY-MM-DD)
+    const year = selectedDate.getFullYear();
+    const month = String(selectedDate.getMonth() + 1).padStart(2, '0');
+    const day = String(selectedDate.getDate()).padStart(2, '0');
+    const dateStr = `${year}-${month}-${day}`;
+    
+    // Set the date
+    const eventDateInput = document.getElementById('eventDate');
+    if (eventDateInput) {
+        eventDateInput.value = dateStr;
+    }
+    
+    // Set start time (default 9:00 if not provided)
+    const eventHourInput = document.getElementById('eventHour');
+    const eventMinuteInput = document.getElementById('eventMinute');
+    if (eventHourInput) {
+        eventHourInput.value = String(startHour).padStart(2, '0');
+    }
+    if (eventMinuteInput) {
+        eventMinuteInput.value = '00';
+    }
+    
+    // Set end time (1 hour after start)
+    const endHour = (startHour + 1) % 24;
+    const eventEndHourInput = document.getElementById('eventEndHour');
+    const eventEndMinuteInput = document.getElementById('eventEndMinute');
+    if (eventEndHourInput) {
+        eventEndHourInput.value = String(endHour).padStart(2, '0');
+    }
+    if (eventEndMinuteInput) {
+        eventEndMinuteInput.value = '00';
+    }
+    
+    // Update duration display
+    const durationText = document.getElementById('durationText');
+    if (durationText) {
+        durationText.textContent = '60 minutes';
+    }
+    
+    // Reset visibility and repeat to defaults
+    resetEventVisibility();
+    resetEventRepeat();
+    
+    // Open the modal
+    openModal('eventModal');
+}
+
+// Expose globally for calendar click handlers
+window.openEventModalWithDate = openEventModalWithDate;
+
 function closeModal(modalId) {
     const modal = document.getElementById(modalId);
     if (!modal) return;
     modal.classList.remove('active');
+    
+    // Remove modal-open class from body if no modals are active
+    const anyModalActive = document.querySelector('.modal.active');
+    if (!anyModalActive) {
+        document.body.classList.remove('modal-open');
+    }
+}
+
+/**
+ * Initialize a custom time picker with dropdown
+ * @param {string} wrapperId - The ID of the wrapper element
+ * @param {string} hourInputId - The ID of the hour input
+ * @param {string} minuteInputId - The ID of the minute input  
+ * @param {string} hourOptionsId - The ID of the hour options container
+ * @param {string} minuteOptionsId - The ID of the minute options container
+ */
+function initializeTimePicker(wrapperId, hourInputId, minuteInputId, hourOptionsId, minuteOptionsId) {
+    const wrapper = document.getElementById(wrapperId);
+    const hourInput = document.getElementById(hourInputId);
+    const minuteInput = document.getElementById(minuteInputId);
+    const hourOptions = document.getElementById(hourOptionsId);
+    const minuteOptions = document.getElementById(minuteOptionsId);
+    
+    if (!wrapper || !hourInput || !minuteInput || !hourOptions || !minuteOptions) return;
+    
+    // Generate hour options (0-23)
+    hourOptions.innerHTML = '';
+    for (let i = 0; i < 24; i++) {
+        const option = document.createElement('div');
+        option.className = 'time-picker-option';
+        option.textContent = i.toString().padStart(2, '0');
+        option.dataset.value = i;
+        hourOptions.appendChild(option);
+    }
+    
+    // Generate minute options (0-59)
+    minuteOptions.innerHTML = '';
+    for (let i = 0; i < 60; i++) {
+        const option = document.createElement('div');
+        option.className = 'time-picker-option';
+        option.textContent = i.toString().padStart(2, '0');
+        option.dataset.value = i;
+        minuteOptions.appendChild(option);
+    }
+    
+    // Toggle dropdown
+    const display = wrapper.querySelector('.time-picker-display');
+    display.addEventListener('click', (e) => {
+        // Don't toggle if clicking on input
+        if (e.target.tagName === 'INPUT') return;
+        wrapper.classList.toggle('open');
+        if (wrapper.classList.contains('open')) {
+            updateSelectedOptions();
+            scrollToSelected();
+        }
+    });
+    
+    // Close dropdown when clicking outside
+    document.addEventListener('click', (e) => {
+        if (!wrapper.contains(e.target)) {
+            wrapper.classList.remove('open');
+        }
+    });
+    
+    // Handle hour option click
+    hourOptions.addEventListener('click', (e) => {
+        const option = e.target.closest('.time-picker-option');
+        if (option) {
+            const value = option.dataset.value;
+            hourInput.value = value.toString().padStart(2, '0');
+            updateSelectedOptions();
+            hourInput.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+    });
+    
+    // Handle minute option click
+    minuteOptions.addEventListener('click', (e) => {
+        const option = e.target.closest('.time-picker-option');
+        if (option) {
+            const value = option.dataset.value;
+            minuteInput.value = value.toString().padStart(2, '0');
+            updateSelectedOptions();
+            minuteInput.dispatchEvent(new Event('change', { bubbles: true }));
+        }
+    });
+    
+    // Handle input changes
+    hourInput.addEventListener('input', (e) => {
+        let val = e.target.value.replace(/\D/g, '');
+        if (val.length > 2) val = val.slice(0, 2);
+        const num = parseInt(val);
+        if (!isNaN(num) && num > 23) val = '23';
+        e.target.value = val;
+        updateSelectedOptions();
+    });
+    
+    minuteInput.addEventListener('input', (e) => {
+        let val = e.target.value.replace(/\D/g, '');
+        if (val.length > 2) val = val.slice(0, 2);
+        const num = parseInt(val);
+        if (!isNaN(num) && num > 59) val = '59';
+        e.target.value = val;
+        updateSelectedOptions();
+    });
+    
+    // Format on blur (add leading zero)
+    hourInput.addEventListener('blur', () => {
+        const val = parseInt(hourInput.value);
+        if (!isNaN(val) && val >= 0 && val <= 23) {
+            hourInput.value = val.toString().padStart(2, '0');
+        }
+    });
+    
+    minuteInput.addEventListener('blur', () => {
+        const val = parseInt(minuteInput.value);
+        if (!isNaN(val) && val >= 0 && val <= 59) {
+            minuteInput.value = val.toString().padStart(2, '0');
+        }
+    });
+    
+    function updateSelectedOptions() {
+        const hourVal = parseInt(hourInput.value);
+        const minuteVal = parseInt(minuteInput.value);
+        
+        hourOptions.querySelectorAll('.time-picker-option').forEach(opt => {
+            opt.classList.toggle('selected', parseInt(opt.dataset.value) === hourVal);
+        });
+        
+        minuteOptions.querySelectorAll('.time-picker-option').forEach(opt => {
+            opt.classList.toggle('selected', parseInt(opt.dataset.value) === minuteVal);
+        });
+    }
+    
+    function scrollToSelected() {
+        const selectedHour = hourOptions.querySelector('.time-picker-option.selected');
+        const selectedMinute = minuteOptions.querySelector('.time-picker-option.selected');
+        
+        if (selectedHour) {
+            selectedHour.scrollIntoView({ block: 'center', behavior: 'instant' });
+        }
+        if (selectedMinute) {
+            selectedMinute.scrollIntoView({ block: 'center', behavior: 'instant' });
+        }
+    }
+}
+
+// Shared visibility toggle helpers (calendar-style segmented control)
+function initVisibilityToggles(toggles) {
+    const targets = toggles ? Array.from(toggles) : Array.from(document.querySelectorAll('.visibility-toggle'));
+    targets.forEach(toggle => {
+        const targetName = toggle.dataset.target;
+        let hiddenInput = targetName ? toggle.querySelector(`input[name="${targetName}"]`) : null;
+        if (!hiddenInput && targetName) {
+            hiddenInput = document.createElement('input');
+            hiddenInput.type = 'hidden';
+            hiddenInput.name = targetName;
+            hiddenInput.value = 'team';
+            toggle.appendChild(hiddenInput);
+        }
+        const buttons = toggle.querySelectorAll('.view-toggle-btn');
+        const activate = (btn) => {
+            buttons.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            const value = btn.dataset.visibility || 'team';
+            if (hiddenInput) hiddenInput.value = value;
+        };
+        buttons.forEach(btn => btn.addEventListener('click', () => activate(btn)));
+        const preset = toggle.querySelector('.view-toggle-btn.active') || Array.from(buttons).find(b => b.dataset.visibility === (hiddenInput?.value || 'team')) || buttons[0];
+        if (preset) activate(preset);
+    });
+}
+
+function setVisibilitySelection(toggle, visibility) {
+    if (!toggle) return;
+    const buttons = toggle.querySelectorAll('.view-toggle-btn');
+    let applied = false;
+    buttons.forEach(btn => {
+        const isSelected = btn.dataset.visibility === visibility;
+        btn.classList.toggle('active', isSelected);
+        if (isSelected) applied = true;
+    });
+    if (!applied && buttons.length) {
+        buttons.forEach(btn => btn.classList.remove('active'));
+        buttons[0].classList.add('active');
+        visibility = buttons[0].dataset.visibility || 'team';
+    }
+    const hiddenInput = toggle.querySelector('input[type="hidden"]');
+    if (hiddenInput) hiddenInput.value = visibility;
+}
+
+function getActiveVisibilityValue(targetName, fallback = 'team') {
+    const toggle = document.querySelector(`.visibility-toggle[data-target="${targetName}"]`);
+    const active = toggle?.querySelector('.view-toggle-btn.active');
+    if (active?.dataset.visibility) return active.dataset.visibility;
+    const hidden = toggle?.querySelector('input[type="hidden"]');
+    return hidden?.value || fallback;
 }
 
 // Reset event visibility selector to default
 function resetEventVisibility() {
-    document.querySelectorAll('.visibility-option').forEach(opt => {
-        opt.classList.remove('selected');
-        if (opt.dataset.visibility === 'team') {
-            opt.classList.add('selected');
-            opt.querySelector('input[type="radio"]').checked = true;
-        } else {
-            opt.querySelector('input[type="radio"]').checked = false;
-        }
+    document.querySelectorAll('#eventModal .visibility-toggle').forEach(toggle => {
+        setVisibilitySelection(toggle, 'team');
     });
 }
 
 // Reset event repeat selector to default
 function resetEventRepeat() {
-    document.querySelectorAll('.repeat-option').forEach(opt => {
-        opt.classList.remove('selected');
-        if (opt.dataset.repeat === 'none') {
-            opt.classList.add('selected');
-            const radio = opt.querySelector('input[type="radio"]');
-            if (radio) radio.checked = true;
-        } else {
-            const radio = opt.querySelector('input[type="radio"]');
-            if (radio) radio.checked = false;
-        }
+    document.querySelectorAll('.repeat-chip').forEach(opt => {
+        const radio = opt.querySelector('input[type="radio"]');
+        const isDefault = opt.dataset.repeat === 'none';
+        opt.classList.toggle('selected', isDefault);
+        if (radio) radio.checked = isDefault;
     });
     const repeatHelper = document.getElementById('repeatHelper');
     if (repeatHelper) repeatHelper.style.display = 'none';
@@ -17736,29 +19990,18 @@ function resetEventRepeat() {
 
 // Set event repeat selector to specific value
 function setEventRepeat(repeat) {
-    document.querySelectorAll('.repeat-option').forEach(opt => {
-        opt.classList.remove('selected');
-        if (opt.dataset.repeat === repeat) {
-            opt.classList.add('selected');
-            const radio = opt.querySelector('input[type="radio"]');
-            if (radio) radio.checked = true;
-        } else {
-            const radio = opt.querySelector('input[type="radio"]');
-            if (radio) radio.checked = false;
-        }
+    document.querySelectorAll('.repeat-chip').forEach(opt => {
+        const radio = opt.querySelector('input[type="radio"]');
+        const isSelected = opt.dataset.repeat === repeat;
+        opt.classList.toggle('selected', isSelected);
+        if (radio) radio.checked = isSelected;
     });
 }
 
 // Set event visibility selector to specific value
 function setEventVisibility(visibility) {
-    document.querySelectorAll('.visibility-option').forEach(opt => {
-        opt.classList.remove('selected');
-        if (opt.dataset.visibility === visibility) {
-            opt.classList.add('selected');
-            opt.querySelector('input[type="radio"]').checked = true;
-        } else {
-            opt.querySelector('input[type="radio"]').checked = false;
-        }
+    document.querySelectorAll('#eventModal .visibility-toggle').forEach(toggle => {
+        setVisibilitySelection(toggle, visibility);
     });
 }
 
@@ -18256,32 +20499,51 @@ async function initializeUserTeam() {
             return;
         }
 
-        // No teams in user document - but check if user is a member of any team
-        // This handles the case where user was approved but their teams array wasn't updated
-        debugLog('🔍 No teams in user doc - scanning for team membership...');
+        // No teams in user document - check userTeamMemberships first (fastest, most reliable)
+        // This is written by admins when approving join requests
+        debugLog('🔍 No teams in user doc - checking userTeamMemberships...');
         
-        const teamsRef = collection(db, 'teams');
-        const teamsSnapshot = await getDocs(teamsRef);
-        
-        for (const teamDoc of teamsSnapshot.docs) {
-            const teamData = teamDoc.data();
-            const members = teamData.members || {};
+        try {
+            const membershipRef = doc(db, 'userTeamMemberships', currentAuthUser.uid);
+            const membershipDoc = await getDoc(membershipRef);
             
-            if (members[currentAuthUser.uid]) {
-                debugLog(`✅ Found team membership: ${teamDoc.id}`);
+            if (membershipDoc.exists()) {
+                const membership = membershipDoc.data();
+                debugLog(`✅ Found team membership via userTeamMemberships: ${membership.teamId}`);
                 
-                // Update user's teams array
-                await setDoc(userRef, {
-                    teams: [teamDoc.id]
-                }, { merge: true });
+                // Verify we're actually in this team
+                const teamRef = doc(db, 'teams', membership.teamId);
+                const teamDoc = await getDoc(teamRef);
                 
-                appState.currentTeamId = teamDoc.id;
-                appState.userTeams = [teamDoc.id];
-                
-                // Load team data
-                await loadTeamData();
-                return;
+                if (teamDoc.exists()) {
+                    const teamData = teamDoc.data();
+                    if (teamData.members && teamData.members[currentAuthUser.uid]) {
+                        // Update user's teams array
+                        await setDoc(userRef, {
+                            teams: [membership.teamId]
+                        }, { merge: true });
+                        
+                        appState.currentTeamId = membership.teamId;
+                        appState.userTeams = [membership.teamId];
+                        
+                        // Clean up the membership record since we've synced
+                        try {
+                            const { deleteDoc: delDoc } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+                            await delDoc(membershipRef);
+                            debugLog('✅ Cleaned up userTeamMemberships record');
+                        } catch (cleanupError) {
+                            // Not critical if cleanup fails
+                            debugLog('⚠️ Could not clean up membership record:', cleanupError.message);
+                        }
+                        
+                        // Load team data
+                        await loadTeamData();
+                        return;
+                    }
+                }
             }
+        } catch (membershipError) {
+            debugLog('⚠️ Could not check userTeamMemberships:', membershipError.message);
         }
 
         // No teams found - don't auto-create, just log and return
@@ -18471,44 +20733,12 @@ function copyTeamCodeToClipboard(code) {
 
 // Show team creation error with retry option
 function showTeamCreationError() {
-    const modalHtml = `
-        <div class="modal-overlay" id="teamErrorModal">
-            <div class="modal-content" style="max-width: 500px;">
-                <div style="text-align: center; padding: 20px;">
-                    <div style="font-size: 48px; margin-bottom: 20px;">⚠️</div>
-                    <h2 style="color: #d13438; margin-bottom: 10px;">Team Creation Failed</h2>
-                    <p style="color: #666; margin-bottom: 20px;">We couldn't create your team automatically. This might be due to a connection issue or database permissions.</p>
-                    
-                    <div style="display: flex; gap: 10px; justify-content: center;">
-                        <button onclick="retryTeamCreation()" style="padding: 12px 24px; background-color: #0078D4; color: white; border: none; border-radius: 4px; cursor: pointer; font-size: 16px;">
-                            🔄 Retry
-                        </button>
-                        <button onclick="closeTeamErrorModal()" style="padding: 12px 24px; background-color: #f5f5f5; color: #333; border: none; border-radius: 4px; cursor: pointer; font-size: 16px;">
-                            Close
-                        </button>
-                    </div>
-                    
-                    <p style="margin-top: 20px; font-size: 12px; color: #999;">If the problem persists, try refreshing the page or contact support.</p>
-                </div>
-            </div>
-        </div>
-    `;
-    
-    document.body.insertAdjacentHTML('beforeend', modalHtml);
-}
-
-// Close team error modal
-function closeTeamErrorModal() {
-    const modal = document.getElementById('teamErrorModal');
-    if (modal) {
-        modal.remove();
+    showToast('We could not create your team. Open the Team tab and try again.', 'error', 6000, 'Team creation failed');
+    const createBtn = document.getElementById('createTeamBtn');
+    if (createBtn) {
+        createBtn.style.display = 'block';
+        createBtn.focus();
     }
-}
-
-// Retry team creation
-async function retryTeamCreation() {
-    closeTeamErrorModal();
-    await initializeUserTeam();
 }
 
 // Manual team creation (can be triggered from button)
@@ -19108,8 +21338,8 @@ window.generateJoinLink = function() {
         showToast('No team code available', 'error');
         return;
     }
-    const baseUrl = window.location.origin + window.location.pathname.replace(/\/[^\/]*$/, '');
-    const joinUrl = `${baseUrl}/index.html?join=${appState.currentTeamData.teamCode}`;
+    const baseUrl = window.location.origin;
+    const joinUrl = `${baseUrl}/app?join=${appState.currentTeamData.teamCode}`;
     
     navigator.clipboard.writeText(joinUrl).then(() => {
         showToast('Join link copied to clipboard!', 'success');
@@ -19435,7 +21665,7 @@ window.approveJoinRequest = async function(userId) {
 // Execute the actual approval after modal confirmation
 async function executeApproveJoinRequest(userId) {
     try {
-        const { doc, getDoc, updateDoc, deleteDoc, serverTimestamp } = 
+        const { doc, getDoc, updateDoc, deleteDoc, setDoc, serverTimestamp } = 
             await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
 
         const teamRef = doc(db, 'teams', appState.currentTeamId);
@@ -19483,12 +21713,20 @@ async function executeApproveJoinRequest(userId) {
             }
         });
         
+        // CRITICAL: Write to userTeamMemberships so the approved user can find their team
+        // This solves the permission-denied issue when scanning for teams
+        const membershipRef = doc(db, 'userTeamMemberships', userId);
+        await setDoc(membershipRef, {
+            teamId: appState.currentTeamId,
+            teamName: teamData.name || teamData.teamName || 'Team',
+            role: 'member',
+            approvedAt: serverTimestamp(),
+            approvedBy: currentAuthUser.uid
+        });
+        debugLog('✅ Created userTeamMemberships record for:', userId);
+        
         // Delete the join request from subcollection
         await deleteDoc(joinRequestRef);
-
-        // NOTE: User's teams array will be updated automatically when they log in
-        // via the team membership scan in initializeUserTeam()
-        // We can't update their user document from here due to security rules
 
         debugLog('✅ Approved join request - user added to team members');
         
@@ -20259,10 +22497,14 @@ const SEARCH_INDEX = [
         label: 'Notification Preferences',
         description: 'Configure which notifications you receive',
         route: 'settings',
-        sectionId: 'settings-notifications-section',
+        sectionId: 'settings-section',
         category: 'Settings',
         icon: 'fa-bell',
-        keywords: ['notifications', 'notifcations', 'notifs', 'alerts', 'alrts', 'bell', 'notify', 'notification preferences', 'notification settings']
+        keywords: ['notifications', 'notifcations', 'notifs', 'alerts', 'alrts', 'bell', 'notify', 'notification preferences', 'notification settings'],
+        afterNav: () => { 
+            const notificationsTab = document.querySelector('[data-settings-tab="notifications"]');
+            if (notificationsTab) notificationsTab.click();
+        }
     },
     {
         id: 'settings-appearance',
@@ -20270,10 +22512,14 @@ const SEARCH_INDEX = [
         label: 'Dark Mode',
         description: 'Switch between light and dark themes',
         route: 'settings',
-        sectionId: 'settings-appearance-section',
+        sectionId: 'settings-section',
         category: 'Settings',
         icon: 'fa-moon',
-        keywords: ['appearance', 'appearence', 'theme', 'theem', 'dark mode', 'darkmode', 'dark', 'light mode', 'lightmode', 'light', 'colors', 'visual', 'night mode']
+        keywords: ['appearance', 'appearence', 'theme', 'theem', 'dark mode', 'darkmode', 'dark', 'light mode', 'lightmode', 'light', 'colors', 'visual', 'night mode'],
+        afterNav: () => { 
+            const appearanceTab = document.querySelector('[data-settings-tab="appearance"]');
+            if (appearanceTab) appearanceTab.click();
+        }
     },
     {
         id: 'settings-security',
@@ -20281,10 +22527,14 @@ const SEARCH_INDEX = [
         label: 'Security',
         description: 'Password, sessions, and logout options',
         route: 'settings',
-        sectionId: 'settings-security-section',
+        sectionId: 'settings-section',
         category: 'Settings',
         icon: 'fa-shield-halved',
-        keywords: ['security', 'securty', 'password', 'pasword', 'change password', 'sessions', 'account security']
+        keywords: ['security', 'securty', 'password', 'pasword', 'change password', 'sessions', 'account security'],
+        afterNav: () => { 
+            const securityTab = document.querySelector('[data-settings-tab="security"]');
+            if (securityTab) securityTab.click();
+        }
     },
     {
         id: 'settings-profile',
@@ -20292,10 +22542,14 @@ const SEARCH_INDEX = [
         label: 'Profile',
         description: 'Edit your name, avatar, and account info',
         route: 'settings',
-        sectionId: 'settings-profile-section',
+        sectionId: 'settings-section',
         category: 'Settings',
         icon: 'fa-user',
-        keywords: ['profile', 'profle', 'avatar', 'avtar', 'photo', 'picture', 'name', 'display name', 'displayname', 'account', 'my account', 'job title']
+        keywords: ['profile', 'profle', 'avatar', 'avtar', 'photo', 'picture', 'name', 'display name', 'displayname', 'account', 'my account', 'job title'],
+        afterNav: () => { 
+            const profileTab = document.querySelector('[data-settings-tab="profile"]');
+            if (profileTab) profileTab.click();
+        }
     },
     {
         id: 'settings-chat-appearance',
@@ -20303,10 +22557,14 @@ const SEARCH_INDEX = [
         label: 'Chat Appearance',
         description: 'Customize chat bubble style and layout',
         route: 'settings',
-        sectionId: 'settings-chat-appearance-section',
+        sectionId: 'settings-section',
         category: 'Settings',
         icon: 'fa-comments',
-        keywords: ['chat appearance', 'chat style', 'bubble', 'bubbles', 'compact', 'timestamps', 'avatars in chat', 'message style']
+        keywords: ['chat appearance', 'chat style', 'bubble', 'bubbles', 'compact', 'timestamps', 'avatars in chat', 'message style'],
+        afterNav: () => { 
+            const advancedTab = document.querySelector('[data-settings-tab="advanced"]');
+            if (advancedTab) advancedTab.click();
+        }
     },
     
     // ==================== COMMAND ENTRIES ====================
@@ -20374,6 +22632,22 @@ const SEARCH_INDEX = [
         description: 'Send an invitation to join your team',
         icon: 'fa-user-plus',
         keywords: ['invite', 'invit', 'add member', 'new member', 'invite member', 'team invite', 'add teammate']
+    },
+    {
+        id: 'cmd-task-reference',
+        type: 'command',
+        label: 'Insert task reference',
+        description: 'Add a task chip to the current document',
+        icon: 'fa-check-circle',
+        keywords: ['task reference', 'task referance', 'task ref', 'insert task', 'add task chip', 'task chip', 'reference task', 'referance task']
+    },
+    {
+        id: 'cmd-sheet-reference',
+        type: 'command',
+        label: 'Insert sheet reference',
+        description: 'Add a sheet chip to the current document',
+        icon: 'fa-table',
+        keywords: ['sheet reference', 'sheet referance', 'sheet ref', 'insert sheet', 'add sheet chip', 'sheet chip', 'reference sheet', 'referance sheet', 'spreadsheet reference', 'spreadsheet referance']
     }
 ];
 
@@ -20654,8 +22928,57 @@ function initSearch() {
     document.addEventListener('click', (e) => {
         if (!e.target.closest('.search-wrapper')) {
             hideSearchDropdown();
+            // Collapse search bar on mobile when clicking outside
+            collapseSearchBar();
         }
     });
+
+    // Mobile compact search bar - click to expand
+    initMobileSearchBar();
+}
+
+/**
+ * Initialize mobile compact search bar behavior
+ * On small screens, the search bar is just an icon. Clicking expands it.
+ */
+function initMobileSearchBar() {
+    const searchBar = document.querySelector('.search-bar');
+    const searchInput = document.getElementById('globalSearchInput');
+    
+    if (!searchBar || !searchInput) return;
+
+    // Click on the search bar (icon) to expand
+    searchBar.addEventListener('click', (e) => {
+        // Only apply on small screens (matches CSS @media max-width: 480px)
+        if (window.innerWidth <= 480 && !searchBar.classList.contains('expanded')) {
+            e.preventDefault();
+            searchBar.classList.add('expanded');
+            searchInput.focus();
+        }
+    });
+
+    // Collapse on blur if empty
+    searchInput.addEventListener('blur', () => {
+        // Delay to allow click on search results
+        setTimeout(() => {
+            if (!searchInput.value.trim()) {
+                collapseSearchBar();
+            }
+        }, 200);
+    });
+}
+
+/**
+ * Collapse the search bar on mobile
+ */
+function collapseSearchBar() {
+    if (window.innerWidth <= 480) {
+        const searchBar = document.querySelector('.search-bar');
+        const searchInput = document.getElementById('globalSearchInput');
+        if (searchBar && !searchInput?.value.trim()) {
+            searchBar.classList.remove('expanded');
+        }
+    }
 }
 
 /**
@@ -20806,6 +23129,36 @@ function executeSearchCommand(commandId) {
             }, 100);
             break;
 
+        case 'cmd-task-reference':
+            // Navigate to Docs and open task reference picker
+            switchTab('tasks');
+            setTimeout(() => {
+                switchTasksView('docs');
+                setTimeout(() => {
+                    if (typeof window.openReferencePickerModal === 'function') {
+                        window.openReferencePickerModal('task');
+                    } else {
+                        showToast('Open a document first to insert references', 'info');
+                    }
+                }, 100);
+            }, 100);
+            break;
+
+        case 'cmd-sheet-reference':
+            // Navigate to Docs and open sheet reference picker
+            switchTab('tasks');
+            setTimeout(() => {
+                switchTasksView('docs');
+                setTimeout(() => {
+                    if (typeof window.openReferencePickerModal === 'function') {
+                        window.openReferencePickerModal('sheet');
+                    } else {
+                        showToast('Open a document first to insert references', 'info');
+                    }
+                }, 100);
+            }, 100);
+            break;
+
         default:
             console.warn('Unknown command:', commandId);
     }
@@ -20915,30 +23268,38 @@ function initLeadModalDropdowns() {
     if (statusTrigger && statusMenu && statusInput) {
         statusTrigger.addEventListener('click', (e) => {
             e.stopPropagation();
-            statusMenu.classList.toggle('visible');
+            // Close other lead dropdowns first
+            document.querySelectorAll('#leadModal .unified-dropdown-menu').forEach(m => {
+                if (m !== statusMenu) {
+                    m.classList.remove('visible');
+                    m.style.display = 'none';
+                }
+            });
+            const show = !statusMenu.classList.contains('visible');
+            statusMenu.classList.toggle('visible', show);
+            statusMenu.style.display = show ? 'block' : 'none';
         });
         
-        statusMenu.querySelectorAll('.dropdown-menu-option').forEach(opt => {
-            opt.addEventListener('click', () => {
+        // Use unified-dropdown-option class (matching HTML)
+        statusMenu.querySelectorAll('.unified-dropdown-option').forEach(opt => {
+            opt.addEventListener('click', (e) => {
+                e.stopPropagation();
                 const value = opt.dataset.value;
                 const color = opt.dataset.color || '#007AFF';
                 statusInput.value = value;
-                const statusContent = statusTrigger.querySelector('.dropdown-trigger-content') || statusTrigger.querySelector('.unified-dropdown-value');
+                const statusContent = statusTrigger.querySelector('.unified-dropdown-value');
                 if (statusContent) {
                     statusContent.innerHTML = `
-                        <span class="status-dot" style="background: ${color};"></span>
-                        <span>${value}</span>
+                        <span class="unified-status-dot" style="background: ${color};"></span>
+                        <span>${escapeHtml(value)}</span>
                     `;
                 }
-                statusMenu.querySelectorAll('.dropdown-menu-option').forEach(o => {
-                    o.classList.remove('active');
-                    o.querySelector('.fa-check')?.remove();
+                statusMenu.querySelectorAll('.unified-dropdown-option').forEach(o => {
+                    o.classList.remove('selected');
                 });
-                opt.classList.add('active');
-                if (!opt.querySelector('.fa-check')) {
-                    opt.insertAdjacentHTML('beforeend', '<i class="fas fa-check"></i>');
-                }
+                opt.classList.add('selected');
                 statusMenu.classList.remove('visible');
+                statusMenu.style.display = 'none';
             });
         });
     }
@@ -20951,30 +23312,38 @@ function initLeadModalDropdowns() {
     if (sourceTrigger && sourceMenu && sourceInput) {
         sourceTrigger.addEventListener('click', (e) => {
             e.stopPropagation();
-            sourceMenu.classList.toggle('visible');
+            // Close other lead dropdowns first
+            document.querySelectorAll('#leadModal .unified-dropdown-menu').forEach(m => {
+                if (m !== sourceMenu) {
+                    m.classList.remove('visible');
+                    m.style.display = 'none';
+                }
+            });
+            const show = !sourceMenu.classList.contains('visible');
+            sourceMenu.classList.toggle('visible', show);
+            sourceMenu.style.display = show ? 'block' : 'none';
         });
         
-        sourceMenu.querySelectorAll('.dropdown-menu-option').forEach(opt => {
-            opt.addEventListener('click', () => {
+        // Use unified-dropdown-option class (matching HTML)
+        sourceMenu.querySelectorAll('.unified-dropdown-option').forEach(opt => {
+            opt.addEventListener('click', (e) => {
+                e.stopPropagation();
                 const value = opt.dataset.value;
                 const color = opt.dataset.color || '#007AFF';
                 sourceInput.value = value;
-                const sourceContent = sourceTrigger.querySelector('.dropdown-trigger-content') || sourceTrigger.querySelector('.unified-dropdown-value');
+                const sourceContent = sourceTrigger.querySelector('.unified-dropdown-value');
                 if (sourceContent) {
                     sourceContent.innerHTML = `
-                        <span class="source-dot" style="background: ${color};"></span>
-                        <span>${value}</span>
+                        <span class="unified-status-dot" style="background: ${color};"></span>
+                        <span>${escapeHtml(value)}</span>
                     `;
                 }
-                sourceMenu.querySelectorAll('.dropdown-menu-option').forEach(o => {
-                    o.classList.remove('active');
-                    o.querySelector('.fa-check')?.remove();
+                sourceMenu.querySelectorAll('.unified-dropdown-option').forEach(o => {
+                    o.classList.remove('selected');
                 });
-                opt.classList.add('active');
-                if (!opt.querySelector('.fa-check')) {
-                    opt.insertAdjacentHTML('beforeend', '<i class="fas fa-check"></i>');
-                }
+                opt.classList.add('selected');
                 sourceMenu.classList.remove('visible');
+                sourceMenu.style.display = 'none';
             });
         });
     }
@@ -20987,14 +23356,19 @@ function initLeadModalDropdowns() {
     if (spreadsheetTrigger && spreadsheetMenu && spreadsheetInput) {
         spreadsheetTrigger.addEventListener('click', (e) => {
             e.stopPropagation();
-            spreadsheetMenu.classList.toggle('visible');
+            const show = !spreadsheetMenu.classList.contains('visible');
+            spreadsheetMenu.classList.toggle('visible', show);
+            spreadsheetMenu.style.display = show ? 'block' : 'none';
         });
     }
     
     // Close dropdowns on outside click
-    document.addEventListener('click', () => {
-        document.querySelectorAll('#leadModal .custom-dropdown-menu').forEach(m => {
+    document.addEventListener('click', (e) => {
+        // Don't close if clicking inside a dropdown
+        if (e.target.closest('.unified-dropdown')) return;
+        document.querySelectorAll('#leadModal .unified-dropdown-menu').forEach(m => {
             m.classList.remove('visible');
+            m.style.display = 'none';
         });
     });
 }
@@ -21042,6 +23416,7 @@ function populateLeadSpreadsheetDropdown() {
                 if (label) label.textContent = spreadsheet.name;
             }
             menu.classList.remove('visible');
+            menu.style.display = 'none';
         });
     });
 }
@@ -21303,7 +23678,7 @@ function performSearch(query) {
         html += '<div class="search-section-title"><i class="fas fa-table-list"></i> Sheets</div>';
         results.tasks.forEach(task => {
             html += `
-                <div class="search-result-item" data-index="${resultIndex}" data-type="navigation" onclick="executeSearchResult(null, 'navigation', 'tasks', 'tasks-section')">
+                <div class="search-result-item" data-index="${resultIndex}" data-type="navigation" onclick="navigateToTaskSheet('${task.id}')">
                     <div class="search-result-icon"><i class="fas fa-check-circle"></i></div>
                     <div class="search-result-content">
                         <div class="search-result-title">${escapeHtml(task.title)}</div>
@@ -21380,6 +23755,9 @@ function performSearch(query) {
 // SETTINGS & USER MENU
 // ===================================
 function initSettings() {
+    // Initialize settings tab navigation
+    initSettingsTabs();
+    
     // Initialize account settings form
     loadAccountSettings();
     
@@ -21410,62 +23788,357 @@ function initSettings() {
     // Initialize accent color settings
     initAccentColorPicker();
     
-    // Initialize inline avatar upload button (UX Polish: moved from separate card)
+    // Initialize inline avatar upload (dropzone)
     initInlineAvatarUpload();
+    
+    // Initialize bio character counter
+    initBioCharCounter();
+    
+    // Initialize avatar dropzone drag and drop
+    initAvatarDropzone();
 }
 
-// Initialize inline avatar upload (below color picker)
-function initInlineAvatarUpload() {
-    const uploadBtn = document.getElementById('uploadAvatarBtnInline');
+// Initialize settings tabs navigation
+function initSettingsTabs() {
+    const tabs = document.querySelectorAll('.settings-tab');
+    const panes = document.querySelectorAll('.settings-tab-pane');
+    
+    tabs.forEach(tab => {
+        tab.addEventListener('click', () => {
+            const targetTab = tab.dataset.settingsTab;
+            
+            // Update tab active state
+            tabs.forEach(t => t.classList.remove('active'));
+            tab.classList.add('active');
+            
+            // Update pane active state
+            panes.forEach(pane => {
+                pane.classList.remove('active');
+                if (pane.id === `settings-pane-${targetTab}`) {
+                    pane.classList.add('active');
+                }
+            });
+        });
+    });
+    
+    // Initialize theme selector in Appearance tab
+    initThemeSelectorModern();
+    // Initialize custom selects for settings (replace native select UI with styled list)
+    initCustomSelects();
+}
+
+/**
+ * Initialize custom select UI components for settings selects
+ * Keeps original <select> hidden for form submission but renders a styled list of children
+ */
+function initCustomSelects() {
+    const selects = document.querySelectorAll('.settings-select-minimal select');
+    if (!selects || selects.length === 0) return;
+
+    function closeAll() {
+        document.querySelectorAll('.custom-select-list.show').forEach(l => l.classList.remove('show'));
+        document.querySelectorAll('.custom-select-button.open').forEach(b => b.classList.remove('open'));
+    }
+
+    selects.forEach(select => {
+        if (select.dataset.customized) return;
+
+        // Hide original select but keep it in the DOM for forms
+        select.style.display = 'none';
+
+        const wrapper = document.createElement('div');
+        wrapper.className = 'custom-select';
+
+        const btn = document.createElement('button');
+        btn.type = 'button';
+        btn.className = 'custom-select-button';
+        const label = document.createElement('span');
+        label.className = 'custom-select-label';
+        label.textContent = select.options[select.selectedIndex]?.text || '';
+        const arrow = document.createElement('span');
+        arrow.className = 'arrow';
+        btn.appendChild(label);
+        btn.appendChild(arrow);
+
+        const list = document.createElement('div');
+        list.className = 'custom-select-list';
+
+        Array.from(select.options).forEach((opt, idx) => {
+            const item = document.createElement('div');
+            item.className = 'custom-select-item';
+            item.textContent = opt.text;
+            item.dataset.value = opt.value;
+            if (select.selectedIndex === idx) item.classList.add('active');
+            item.addEventListener('click', (e) => {
+                e.stopPropagation();
+                // Update original select value
+                select.value = item.dataset.value;
+                // Trigger change event
+                select.dispatchEvent(new Event('change', { bubbles: true }));
+                // Update label and styles
+                list.querySelectorAll('.custom-select-item').forEach(i => i.classList.remove('active'));
+                item.classList.add('active');
+                label.textContent = item.textContent;
+                list.classList.remove('show');
+                btn.classList.remove('open');
+            });
+            list.appendChild(item);
+        });
+
+        wrapper.appendChild(btn);
+        wrapper.appendChild(list);
+        select.parentNode.appendChild(wrapper);
+
+        select.dataset.customized = '1';
+
+        btn.addEventListener('click', (e) => {
+            e.stopPropagation();
+            const open = list.classList.toggle('show');
+            btn.classList.toggle('open', open);
+            // close other selects
+            document.querySelectorAll('.custom-select-list').forEach(l => { if (l !== list) l.classList.remove('show'); });
+        });
+
+        // reflect programmatic changes on original select
+        select.addEventListener('change', () => {
+            const val = select.value;
+            const activeItem = list.querySelector(`.custom-select-item[data-value="${val}"]`);
+            if (activeItem) {
+                list.querySelectorAll('.custom-select-item').forEach(i => i.classList.remove('active'));
+                activeItem.classList.add('active');
+                label.textContent = activeItem.textContent;
+            }
+        });
+    });
+
+    // Close on outside click
+    document.addEventListener('click', closeAll);
+}
+
+// Initialize modern theme selector buttons
+function initThemeSelectorModern() {
+    // Support both .theme-option-modern and .theme-btn (minimal)
+    const themeButtons = document.querySelectorAll('.theme-option-modern, .theme-btn');
+    const themeInput = document.getElementById('themePreference');
+    
+    // Get current theme from localStorage
+    const currentTheme = localStorage.getItem('themePreference') || 'system';
+    
+    // Set initial active state
+    themeButtons.forEach(btn => {
+        if (btn.dataset.theme === currentTheme) {
+            btn.classList.add('active');
+        }
+        
+        btn.addEventListener('click', () => {
+            // Update active state
+            themeButtons.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+            
+            // Update hidden input
+            if (themeInput) {
+                themeInput.value = btn.dataset.theme;
+            }
+            
+            // Apply theme
+            applyThemePreference(btn.dataset.theme);
+            
+            // Save preference
+            localStorage.setItem('themePreference', btn.dataset.theme);
+        });
+    });
+    
+    // Initialize minimal color pickers
+    initMinimalColorPickers();
+}
+
+// Initialize minimal color pickers (avatar + accent)
+function initMinimalColorPickers() {
+    // Avatar color picker (minimal dots)
+    const avatarColorDots = document.querySelectorAll('.avatar-color-picker-minimal .color-dot');
+    const avatarColorInput = document.getElementById('settingsAvatarColor');
+    
+    if (avatarColorDots.length && avatarColorInput) {
+        // Set initial selected state
+        const currentColor = avatarColorInput.value;
+        avatarColorDots.forEach(dot => {
+            if (dot.dataset.color === currentColor) {
+                dot.classList.add('selected');
+            }
+            
+            dot.addEventListener('click', () => {
+                avatarColorDots.forEach(d => d.classList.remove('selected'));
+                dot.classList.add('selected');
+                avatarColorInput.value = dot.dataset.color;
+                
+                // Update avatar preview
+                const avatarPreview = document.getElementById('profileAvatarPreview');
+                if (avatarPreview) {
+                    avatarPreview.style.backgroundColor = dot.dataset.color;
+                }
+            });
+        });
+    }
+    
+    // Accent color picker (minimal dots)
+    const accentDots = document.querySelectorAll('.accent-color-picker-minimal .accent-dot');
+    if (accentDots.length) {
+        const savedAccent = localStorage.getItem('accentColor') || 'blue';
+        
+        accentDots.forEach(dot => {
+            if (dot.dataset.accent === savedAccent) {
+                dot.classList.add('selected');
+            }
+            
+            dot.addEventListener('click', () => {
+                accentDots.forEach(d => d.classList.remove('selected'));
+                dot.classList.add('selected');
+                
+                // Apply accent color
+                const isDark = document.body.classList.contains('dark-mode');
+                const color = isDark ? dot.dataset.dark : dot.dataset.color;
+                const hover = isDark ? dot.dataset.darkHover : dot.dataset.hover;
+                const soft = isDark ? dot.dataset.darkSoft : dot.dataset.soft;
+                
+                document.documentElement.style.setProperty('--accent', color);
+                document.documentElement.style.setProperty('--accent-hover', hover);
+                document.documentElement.style.setProperty('--accent-soft', soft);
+                
+                localStorage.setItem('accentColor', dot.dataset.accent);
+            });
+        });
+    }
+}
+
+// Apply theme preference
+function applyThemePreference(preference) {
+    const prefersDark = window.matchMedia('(prefers-color-scheme: dark)').matches;
+    
+    const shouldBeDark = preference === 'dark' || (preference === 'system' && prefersDark);
+
+    if (shouldBeDark) {
+        document.body.classList.add('dark-mode');
+        document.documentElement.classList.add('dark-mode');
+        localStorage.setItem('darkMode', 'true');
+    } else {
+        document.body.classList.remove('dark-mode');
+        document.documentElement.classList.remove('dark-mode');
+        localStorage.setItem('darkMode', 'false');
+    }
+
+    if (window.__setThemeMeta) {
+        window.__setThemeMeta(shouldBeDark);
+    }
+}
+
+// Initialize bio character counter
+function initBioCharCounter() {
+    const bioTextarea = document.getElementById('settingsBio');
+    const charCount = document.getElementById('bioCharCount');
+    
+    if (!bioTextarea || !charCount) return;
+    
+    const updateCount = () => {
+        charCount.textContent = bioTextarea.value.length;
+    };
+    
+    bioTextarea.addEventListener('input', updateCount);
+    updateCount();
+}
+
+// Initialize avatar dropzone with drag and drop
+function initAvatarDropzone() {
+    const dropzone = document.getElementById('avatarDropzone');
     const fileInput = document.getElementById('avatarFileInputInline');
     
-    if (!uploadBtn || !fileInput) return;
+    if (!dropzone || !fileInput) return;
     
-    // Trigger file input when button clicked
-    uploadBtn.addEventListener('click', () => {
+    // Prevent default drag behaviors
+    ['dragenter', 'dragover', 'dragleave', 'drop'].forEach(eventName => {
+        dropzone.addEventListener(eventName, (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+        });
+    });
+    
+    // Highlight on drag
+    ['dragenter', 'dragover'].forEach(eventName => {
+        dropzone.addEventListener(eventName, () => {
+            dropzone.classList.add('drag-over');
+        });
+    });
+    
+    ['dragleave', 'drop'].forEach(eventName => {
+        dropzone.addEventListener(eventName, () => {
+            dropzone.classList.remove('drag-over');
+        });
+    });
+    
+    // Handle drop
+    dropzone.addEventListener('drop', (e) => {
+        const files = e.dataTransfer.files;
+        if (files.length > 0) {
+            handleAvatarFile(files[0]);
+        }
+    });
+    
+    // Handle click to open file picker
+    dropzone.addEventListener('click', () => {
         fileInput.click();
     });
     
     // Handle file selection
+    fileInput.addEventListener('change', (e) => {
+        const file = e.target.files[0];
+        if (file) {
+            handleAvatarFile(file);
+        }
+    });
+}
+
+// Handle avatar file upload
+async function handleAvatarFile(file) {
+    // Validate file size (max 10MB as per dropzone text)
+    if (file.size > 10 * 1024 * 1024) {
+        showToast('Image must be under 10MB', 'error');
+        return;
+    }
+    
+    // Validate file type
+    const validTypes = ['image/svg+xml', 'image/jpeg', 'image/jpg', 'image/png'];
+    if (!validTypes.includes(file.type)) {
+        showToast('Please select a SVG, JPG, or PNG file', 'error');
+        return;
+    }
+    
+    try {
+        showToast('Avatar upload feature requires Firebase Storage setup', 'info');
+    } catch (error) {
+        console.error('Avatar upload error:', error);
+        showToast('Failed to upload avatar', 'error');
+    }
+}
+
+// Initialize inline avatar upload (legacy support - now handled by initAvatarDropzone)
+function initInlineAvatarUpload() {
+    // The avatar upload is now handled by the dropzone in initAvatarDropzone
+    // This function is kept for backwards compatibility
+    const uploadBtn = document.getElementById('uploadAvatarBtn');
+    const fileInput = document.getElementById('avatarFileInput');
+    
+    if (!uploadBtn || !fileInput) return;
+    
+    // Trigger file input when button clicked (legacy)
+    uploadBtn.addEventListener('click', () => {
+        fileInput.click();
+    });
+    
+    // Handle file selection (legacy)
     fileInput.addEventListener('change', async (e) => {
         const file = e.target.files[0];
         if (!file) return;
-        
-        // Validate file size (max 2MB)
-        if (file.size > 2 * 1024 * 1024) {
-            showToast('Image must be under 2MB', 'error');
-            fileInput.value = '';
-            return;
-        }
-        
-        // Validate file type
-        if (!file.type.startsWith('image/')) {
-            showToast('Please select an image file', 'error');
-            fileInput.value = '';
-            return;
-        }
-        
-        // Show loading state
-        const originalText = uploadBtn.innerHTML;
-        uploadBtn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> Uploading...';
-        uploadBtn.disabled = true;
-        
-        try {
-            // For now, show a placeholder message since Firebase Storage may not be set up
-            // In production, this would call uploadUserAvatar(file)
-            showToast('Avatar upload feature requires Firebase Storage setup', 'info');
-            
-            // Reset button
-            uploadBtn.innerHTML = originalText;
-            uploadBtn.disabled = false;
-            fileInput.value = '';
-        } catch (error) {
-            console.error('Avatar upload error:', error);
-            showToast('Failed to upload avatar', 'error');
-            uploadBtn.innerHTML = originalText;
-            uploadBtn.disabled = false;
-            fileInput.value = '';
-        }
+        handleAvatarFile(file);
+        fileInput.value = '';
     });
 }
 
@@ -21542,11 +24215,20 @@ function updateProfilePreview(userData) {
     }
 }
 
-// Setup avatar color picker - supports both old (.color-option) and new (.color-circle) styles
+// Setup avatar color picker - supports both old (.color-option), (.color-circle), and new (.color-dot) styles
 function setupAvatarColorPicker() {
-    const colorOptions = document.querySelectorAll('.color-option, .color-circle');
+    const colorOptions = document.querySelectorAll('.color-option, .color-circle, .color-dot');
     
     colorOptions.forEach(option => {
+        // Make options keyboard accessible
+        option.tabIndex = 0;
+        option.addEventListener('keydown', function(e) {
+            if (e.key === 'Enter' || e.key === ' ') {
+                e.preventDefault();
+                this.click();
+            }
+        });
+
         option.addEventListener('click', function() {
             // Remove selected class from all
             colorOptions.forEach(opt => opt.classList.remove('selected'));
@@ -21569,9 +24251,9 @@ function setupAvatarColorPicker() {
     });
 }
 
-// Select color option - supports both old (.color-option) and new (.color-circle) styles
+// Select color option - supports old (.color-option), (.color-circle), and new (.color-dot') styles
 function selectColorOption(color) {
-    const colorOptions = document.querySelectorAll('.color-option, .color-circle');
+    const colorOptions = document.querySelectorAll('.color-option, .color-circle, .color-dot');
     colorOptions.forEach(option => {
         if (option.getAttribute('data-color') === color) {
             option.classList.add('selected');
@@ -21776,6 +24458,7 @@ async function saveAccountSettings(e) {
 function updateSidebarProfile(displayName, avatarColor) {
     const sidebarName = document.getElementById('sidebarUserName');
     const sidebarAvatar = document.getElementById('sidebarAvatar');
+    const topBarAvatar = document.getElementById('topBarAvatar');
     
     if (sidebarName) {
         sidebarName.textContent = displayName;
@@ -21799,6 +24482,20 @@ function updateSidebarProfile(displayName, avatarColor) {
         
         // Set the initials
         sidebarAvatar.textContent = initials;
+    }
+
+    if (topBarAvatar) {
+        const initials = generateAvatar(displayName);
+        const darkerColor = shadeColor(avatarColor, -20);
+        topBarAvatar.innerHTML = '';
+        topBarAvatar.style.background = `linear-gradient(135deg, ${avatarColor} 0%, ${darkerColor} 100%)`;
+        topBarAvatar.style.color = 'white';
+        topBarAvatar.style.alignItems = 'center';
+        topBarAvatar.style.justifyContent = 'center';
+        topBarAvatar.style.fontSize = '14px';
+        topBarAvatar.style.fontWeight = '700';
+        topBarAvatar.textContent = initials;
+        topBarAvatar.onclick = () => openSettings();
     }
 }
 
@@ -22036,11 +24733,27 @@ async function updateUserPreferences(preferences) {
     const userDoc = await getDoc(userRef);
     const existingPrefs = userDoc.exists() ? (userDoc.data().preferences || {}) : {};
     
-    // Merge with new preferences
-    const updatedPrefs = {
-        ...existingPrefs,
-        ...preferences
-    };
+    // Recursive deep merge helper function for nested objects
+    function deepMerge(target, source) {
+        const result = { ...target };
+        for (const [key, value] of Object.entries(source)) {
+            if (value && typeof value === 'object' && !Array.isArray(value)) {
+                // If both target and source values are objects, recursively merge
+                if (result[key] && typeof result[key] === 'object' && !Array.isArray(result[key])) {
+                    result[key] = deepMerge(result[key], value); // RECURSIVE
+                } else {
+                    result[key] = { ...value };
+                }
+            } else {
+                // Direct assignment for primitives and arrays
+                result[key] = value;
+            }
+        }
+        return result;
+    }
+    
+    // Deep merge with new preferences to preserve nested objects like notificationPreferences
+    const updatedPrefs = deepMerge(existingPrefs, preferences);
     
     // Update document
     await setDoc(userRef, { preferences: updatedPrefs }, { merge: true });
@@ -22085,7 +24798,8 @@ function initAppearanceForm() {
     const form = document.getElementById('appearanceForm');
     if (!form) return;
     
-    const themeOptions = document.querySelectorAll('.theme-option');
+    // Support both old (.theme-option) and new (.theme-option-modern) selectors
+    const themeOptions = document.querySelectorAll('.theme-option, .theme-option-modern');
     const themeInput = document.getElementById('themePreference');
     
     if (!themeOptions.length) {
@@ -22136,7 +24850,8 @@ function initAppearanceForm() {
  * @param {string} theme - 'system', 'light', or 'dark'
  */
 function updateThemeUI(theme) {
-    const themeOptions = document.querySelectorAll('.theme-option');
+    // Support both old (.theme-option) and new (.theme-option-modern) selectors
+    const themeOptions = document.querySelectorAll('.theme-option, .theme-option-modern');
     const themeInput = document.getElementById('themePreference');
     
     themeOptions.forEach(option => {
@@ -22556,16 +25271,27 @@ function initSidebarIconsToggle() {
 
 // Load sidebar icons preference
 async function loadSidebarIconsPreference() {
-    if (!currentAuthUser || !db) return true; // Default to enabled
+    if (!currentAuthUser || !db) {
+        // Fallback to localStorage if not authenticated
+        const stored = localStorage.getItem('sidebarIconsEnabled');
+        return stored !== null ? stored === 'true' : true; // Default to enabled
+    }
     
     try {
+        const { doc, getDoc } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
         const userDoc = await getDoc(doc(db, 'users', currentAuthUser.uid));
         if (userDoc.exists()) {
             const preferences = userDoc.data().preferences || {};
-            return preferences.ui?.sidebarIconsEnabled !== false; // Default to true
+            const enabled = preferences.ui?.sidebarIconsEnabled !== false; // Default to true
+            // Also save to localStorage for offline access
+            localStorage.setItem('sidebarIconsEnabled', enabled);
+            return enabled;
         }
     } catch (error) {
         console.error('Error loading sidebar icons preference:', error);
+        // Fallback to localStorage on error
+        const stored = localStorage.getItem('sidebarIconsEnabled');
+        return stored !== null ? stored === 'true' : true;
     }
     return true;
 }
@@ -22584,14 +25310,17 @@ function applySidebarIconsPreference(enabled) {
 
 // Save sidebar icons preference
 async function saveSidebarIconsPreference() {
+    const enabled = document.getElementById('showSidebarIcons')?.checked ?? true;
+    
+    // Always save to localStorage for immediate persistence
+    localStorage.setItem('sidebarIconsEnabled', enabled);
+    
     if (!currentAuthUser || !db) {
-        showToast('Cannot save preferences. Please sign in again.', 'error');
+        console.log('Saving sidebar icons preference to localStorage only (not authenticated)');
         return;
     }
     
-    const enabled = document.getElementById('showSidebarIcons').checked;
-    
-    console.log('Saving sidebar icons preference:', enabled);
+    console.log('Saving sidebar icons preference to Firestore:', enabled);
     
     try {
         await updateUserPreferences({ ui: { sidebarIconsEnabled: enabled } });
@@ -22663,6 +25392,7 @@ function updateSettingsVisibility() {
     // Admin/Owner settings
     const advancedSettingsCard = document.getElementById('settings-chat-appearance-section');
     const animationsSettingsCard = document.getElementById('animationsSettingsCard');
+    const advancedSettingsTab = document.getElementById('advancedSettingsTab');
     const isAdminOrOwner = (currentUserRole === 'admin' || currentUserRole === 'owner') && hasTeam;
     
     if (advancedSettingsCard) {
@@ -22670,6 +25400,10 @@ function updateSettingsVisibility() {
     }
     if (animationsSettingsCard) {
         animationsSettingsCard.style.display = isAdminOrOwner ? 'block' : 'none';
+    }
+    // Show/hide the Advanced tab in the new settings UI
+    if (advancedSettingsTab) {
+        advancedSettingsTab.style.display = isAdminOrOwner ? 'inline-block' : 'none';
     }
 }
 
@@ -22815,10 +25549,10 @@ function initFinancesVisibilityForm() {
         enabledToggle.checked = isEnabled;
     }
     
-    // Select the correct radio button
-    const radio = form.querySelector(`input[name="financesVisibility"][value="${currentVisibility}"]`);
-    if (radio) {
-        radio.checked = true;
+    // Set the visibility select value (HTML uses select, not radio buttons)
+    const visibilitySelect = document.getElementById('financesVisibilitySelect');
+    if (visibilitySelect) {
+        visibilitySelect.value = currentVisibility;
     }
     
     // Show/hide visibility options based on enabled state
@@ -22827,47 +25561,50 @@ function initFinancesVisibilityForm() {
         visibilityOptions.style.display = isEnabled ? 'block' : 'none';
     }
     
-    // Add toggle change listener
+    // Add toggle change listener - auto-save on change
     if (enabledToggle) {
-        enabledToggle.removeEventListener('change', handleFinancesEnabledChange);
-        enabledToggle.addEventListener('change', handleFinancesEnabledChange);
+        enabledToggle.removeEventListener('change', handleFinancesSettingsChange);
+        enabledToggle.addEventListener('change', handleFinancesSettingsChange);
     }
     
-    // Remove existing listener and add new one
-    form.removeEventListener('submit', handleFinancesVisibilitySave);
-    form.addEventListener('submit', handleFinancesVisibilitySave);
+    // Add visibility select change listener - auto-save on change
+    if (visibilitySelect) {
+        visibilitySelect.removeEventListener('change', handleFinancesSettingsChange);
+        visibilitySelect.addEventListener('change', handleFinancesSettingsChange);
+    }
 }
 
 /**
- * Handle finances enabled toggle change
+ * Handle finances settings change - auto-save on any change
  */
-function handleFinancesEnabledChange(event) {
+async function handleFinancesSettingsChange(event) {
+    const enabledToggle = document.getElementById('financesEnabledToggle');
+    const visibilitySelect = document.getElementById('financesVisibilitySelect');
+    const isEnabled = enabledToggle?.checked || false;
+    const selectedVisibility = visibilitySelect?.value || 'owner-only';
+    
+    // Show/hide visibility options based on enabled state
     const visibilityOptions = document.getElementById('financesVisibilityOptions');
     if (visibilityOptions) {
-        visibilityOptions.style.display = event.target.checked ? 'block' : 'none';
+        visibilityOptions.style.display = isEnabled ? 'block' : 'none';
     }
+    
+    // Auto-save the settings
+    await saveFinancesSettings(isEnabled, selectedVisibility);
 }
 
 /**
- * Handle finances visibility form submission
+ * Save finances settings to Firestore
  */
-async function handleFinancesVisibilitySave(event) {
-    event.preventDefault();
-    
-    const form = event.target;
-    const enabledToggle = document.getElementById('financesEnabledToggle');
-    const isEnabled = enabledToggle?.checked || false;
-    const selectedVisibility = form.querySelector('input[name="financesVisibility"]:checked')?.value || 'owner-only';
-    
+async function saveFinancesSettings(isEnabled, selectedVisibility) {
     // Check if user is owner
     const currentUserRole = appState.teammates?.find(t => t.id === currentAuthUser?.uid)?.role;
     if (currentUserRole !== 'owner') {
-        showToast('Only the team owner can change finances settings', 'error');
+        // Silently fail for non-owners - they shouldn't see this form anyway
         return;
     }
     
     if (!db || !appState.currentTeamId) {
-        showToast('Unable to save settings. Please try again.', 'error');
         return;
     }
     
@@ -22991,7 +25728,9 @@ async function initNotificationForm() {
     const form = document.getElementById('notificationsForm');
     if (!form) return;
     
+    console.log('📋 Initializing notification form...');
     const preferences = await loadNotificationPreferences();
+    console.log('Loaded notification preferences:', preferences);
     
     // Map of toggle IDs to preference paths
     const toggleMap = {
@@ -23009,7 +25748,10 @@ async function initNotificationForm() {
         const toggle = document.getElementById(toggleId);
         if (toggle) {
             // Set initial state from preferences
-            toggle.checked = preferences[category]?.[key] ?? defaultNotificationPreferences[category][key];
+            const savedValue = preferences[category]?.[key];
+            const defaultValue = defaultNotificationPreferences[category][key];
+            toggle.checked = savedValue ?? defaultValue;
+            console.log(`  Toggle ${toggleId}: ${toggle.checked} (saved: ${savedValue}, default: ${defaultValue})`);
             
             // Add change listener for instant save
             toggle.addEventListener('change', async () => {
@@ -23038,13 +25780,16 @@ async function saveNotificationPreference(category, key, value) {
         cachedNotificationPreferences[category][key] = value;
         
         // Save to Firestore
+        console.log(`💾 Saving notification preference: ${category}.${key} = ${value}`);
+        console.log('Full preferences being saved:', cachedNotificationPreferences);
         await updateUserPreferences({ 
             notificationPreferences: cachedNotificationPreferences 
         });
         
+        console.log(`✅ Notification preference saved successfully: ${category}.${key} = ${value}`);
         debugLog(`✅ Notification preference saved: ${category}.${key} = ${value}`);
     } catch (error) {
-        console.error('Error saving notification preference:', error);
+        console.error('❌ Error saving notification preference:', error);
         showToast('Error saving preference. Please try again.', 'error');
     }
 }
@@ -24230,8 +26975,8 @@ window.generateJoinLink = function() {
         showToast('No team code available', 'error');
         return;
     }
-    const baseUrl = window.location.origin + window.location.pathname.replace(/\/[^\/]*$/, '');
-    const joinUrl = `${baseUrl}/index.html?join=${appState.currentTeamData.teamCode}`;
+    const baseUrl = window.location.origin;
+    const joinUrl = `${baseUrl}/app?join=${appState.currentTeamData.teamCode}`;
     
     navigator.clipboard.writeText(joinUrl).then(() => {
         showToast('Join link copied to clipboard!', 'success');
@@ -24725,10 +27470,16 @@ async function saveTaskToFirestore(task) {
         // Allowed: createdBy, teamId, title, description, status, assignee, assigneeId, priority, dueAt, dueDate,
         //          createdAt, updatedAt, tags, completed, completedAt, completedBy, progress, estimatedTime,
         //          budget, spreadsheetId, showOnCalendar, isRecurring, recurrence
+        // LEADS: leadName, source, value, contact, notes
+        // CUSTOM FIELDS: customFields
         const allowedFields = ['title', 'description', 'status', 'assignee', 'assigneeId', 'priority', 
                                'dueAt', 'dueDate', 'tags', 'completed', 'completedAt', 'completedBy', 
                                'progress', 'estimatedTime', 'budget', 'spreadsheetId', 'showOnCalendar',
-                               'isRecurring', 'recurrence'];
+                               'isRecurring', 'recurrence',
+                               // Lead-specific fields
+                               'leadName', 'source', 'value', 'contact', 'notes',
+                               // Custom fields
+                               'customFields'];
         const taskData = {
             teamId: appState.currentTeamId,  // Required by rules
             createdBy: currentAuthUser.uid,
@@ -24764,8 +27515,9 @@ async function saveTaskToFirestore(task) {
             }
         }
         // Ensure title is set (required by rules)
+        // For leads, use leadName as title if title not provided
         if (!taskData.title) {
-            taskData.title = task.name || 'Untitled Task';
+            taskData.title = task.leadName || task.name || 'Untitled Task';
         }
         
         console.log('📝 CREATE task with data:', {
@@ -24816,11 +27568,17 @@ async function updateTaskInFirestore(task) {
         // SECURITY: Only include fields allowed by rules whitelist (UPDATE - mutable fields only)
         // Allowed on UPDATE: title, description, status, assignee, assigneeId, priority, dueAt, dueDate,
         //          updatedAt, tags, completed, completedAt, completedBy, progress, estimatedTime
+        // LEADS: leadName, source, value, contact, notes
+        // CUSTOM FIELDS: customFields
         // NOTE: updatedBy is NOT allowed - removed to fix permission-denied
         // NOTE: createdBy, teamId, createdAt are immutable - don't send on UPDATE
         const allowedFields = ['title', 'description', 'status', 'assignee', 'assigneeId', 'priority', 
                                'dueAt', 'dueDate', 'tags', 'completed', 'completedAt', 'completedBy', 
-                               'progress', 'estimatedTime'];
+                               'progress', 'estimatedTime',
+                               // Lead-specific fields
+                               'leadName', 'source', 'value', 'contact', 'notes',
+                               // Custom fields
+                               'customFields'];
         const filteredData = {};
         for (const key of allowedFields) {
             if (key in taskData) {
@@ -25248,6 +28006,13 @@ async function saveEventToFirestore(event) {
         return;
     }
     
+    // RATE LIMITING: Check if user can create event
+    const rateCheck = canCreateEvent();
+    if (!rateCheck.allowed) {
+        showToast(rateCheck.reason, 'warning', 3000);
+        return;
+    }
+    
     try {
         const { collection, addDoc, serverTimestamp, Timestamp } = 
             await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
@@ -25280,6 +28045,10 @@ async function saveEventToFirestore(event) {
         console.log('Saving event to Firestore for team:', event.teamId);
         const docRef = await addDoc(eventsRef, eventData);
         console.log('✅ Event saved to Firestore with ID:', docRef.id);
+        
+        // RATE LIMITING: Update rate limit state after successful save
+        rateLimitState.lastEventCreation = Date.now();
+        rateLimitState.eventCount++;
         
     } catch (error) {
         console.error('❌ Error saving event to Firestore:', error.code || error.message);
@@ -25436,8 +28205,14 @@ async function subscribeLinkLobbyGroups() {
                     debugLog('Could not fetch links for group:', docSnapshot.id, linkError.message);
                 }
                 
-                // Sort links: favorites first, then by createdAt
+                // Sort links: by sortOrder (if set), then favorites first, then by createdAt
                 groupData.links.sort((a, b) => {
+                    // First sort by sortOrder if both have it
+                    const aOrder = typeof a.sortOrder === 'number' ? a.sortOrder : Infinity;
+                    const bOrder = typeof b.sortOrder === 'number' ? b.sortOrder : Infinity;
+                    if (aOrder !== bOrder) return aOrder - bOrder;
+                    
+                    // Then favorites first
                     if (a.favorite && !b.favorite) return -1;
                     if (!a.favorite && b.favorite) return 1;
                     return (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0);
@@ -25445,6 +28220,11 @@ async function subscribeLinkLobbyGroups() {
                 
                 Object.keys(groupData.domainGroups).forEach(domain => {
                     groupData.domainGroups[domain].sort((a, b) => {
+                        // First sort by sortOrder if both have it
+                        const aOrder = typeof a.sortOrder === 'number' ? a.sortOrder : Infinity;
+                        const bOrder = typeof b.sortOrder === 'number' ? b.sortOrder : Infinity;
+                        if (aOrder !== bOrder) return aOrder - bOrder;
+                        
                         if (a.favorite && !b.favorite) return -1;
                         if (!a.favorite && b.favorite) return 1;
                         return (b.createdAt?.toMillis?.() || 0) - (a.createdAt?.toMillis?.() || 0);
@@ -25625,8 +28405,9 @@ function renderLinkLobby() {
         container.appendChild(groupEl);
     });
     
-    // Initialize drag and drop
+    // Initialize drag and drop for groups and individual links
     initGroupDragAndDrop();
+    initLinkDragAndDrop();
 }
 
 // Create group element
@@ -25745,7 +28526,10 @@ function renderLinkItem(link, groupId) {
     const faviconUrl = link.iconUrl || `https://www.google.com/s2/favicons?domain=${link.domain}&sz=32`;
     
     return `
-        <div class="link-item ${link.favorite ? 'favorite' : ''}" data-link-id="${link.id}" data-group-id="${groupId}" data-url="${escapeHtml(link.url)}">
+        <div class="link-item ${link.favorite ? 'favorite' : ''}" data-link-id="${link.id}" data-group-id="${groupId}" data-url="${escapeHtml(link.url)}" draggable="true">
+            <div class="link-item-drag-handle" title="Drag to reorder">
+                <i class="fas fa-grip-vertical"></i>
+            </div>
             <div class="link-item-collapsed" onclick="openLink('${escapeHtml(link.url)}')">
                 <img class="link-favicon" src="${faviconUrl}" alt="" onerror="this.outerHTML='<div class=\\'link-favicon-fallback\\'><i class=\\'fas fa-link\\'></i></div>'">
                 <span class="link-name">${escapeHtml(link.label)}</span>
@@ -26478,6 +29262,143 @@ async function updateGroupSortOrders() {
     }
 }
 
+// ===================================
+// LINK LOBBY - Individual Link Drag and Drop (within groups)
+// ===================================
+
+let draggedLink = null;
+
+function initLinkDragAndDrop() {
+    const container = document.getElementById('linkLobbyContainer');
+    if (!container) return;
+    
+    const linkItems = container.querySelectorAll('.link-item');
+    
+    linkItems.forEach(linkItem => {
+        const handle = linkItem.querySelector('.link-item-drag-handle');
+        if (!handle) return;
+        
+        // Drag start on handle
+        handle.addEventListener('dragstart', (e) => {
+            e.stopPropagation(); // Prevent group drag
+            draggedLink = linkItem;
+            linkItem.classList.add('dragging');
+            e.dataTransfer.effectAllowed = 'move';
+            e.dataTransfer.setData('text/plain', linkItem.dataset.linkId);
+            e.dataTransfer.setData('application/x-link-drag', 'true'); // Mark as link drag
+        });
+        
+        handle.addEventListener('dragend', () => {
+            draggedLink = null;
+            linkItem.classList.remove('dragging');
+            // Remove all drag-over classes
+            container.querySelectorAll('.link-item.drag-over').forEach(el => el.classList.remove('drag-over'));
+        });
+        
+        // Drag over link items
+        linkItem.addEventListener('dragover', (e) => {
+            // Only handle link drags, not group drags
+            if (!draggedLink || draggedLink === linkItem) return;
+            
+            // Only allow drop within same group
+            if (draggedLink.dataset.groupId !== linkItem.dataset.groupId) return;
+            
+            e.preventDefault();
+            e.stopPropagation();
+            linkItem.classList.add('drag-over');
+        });
+        
+        linkItem.addEventListener('dragleave', (e) => {
+            e.stopPropagation();
+            linkItem.classList.remove('drag-over');
+        });
+        
+        linkItem.addEventListener('drop', async (e) => {
+            e.preventDefault();
+            e.stopPropagation();
+            linkItem.classList.remove('drag-over');
+            
+            if (!draggedLink || draggedLink === linkItem) return;
+            
+            // Only allow drop within same group
+            const groupId = linkItem.dataset.groupId;
+            if (draggedLink.dataset.groupId !== groupId) return;
+            
+            // Find the links-list container
+            const linksList = linkItem.closest('.links-list');
+            if (!linksList) return;
+            
+            // Reorder in DOM
+            const allLinks = [...linksList.querySelectorAll('.link-item')];
+            const draggedIndex = allLinks.indexOf(draggedLink);
+            const dropIndex = allLinks.indexOf(linkItem);
+            
+            if (draggedIndex < dropIndex) {
+                linkItem.after(draggedLink);
+            } else {
+                linkItem.before(draggedLink);
+            }
+            
+            // Update sort orders in Firestore
+            await updateLinkSortOrders(groupId, linksList);
+        });
+    });
+    
+    // Also allow dropping on .links-list containers (for empty areas)
+    container.querySelectorAll('.links-list').forEach(linksList => {
+        linksList.addEventListener('dragover', (e) => {
+            if (!draggedLink) return;
+            const groupId = linksList.closest('.link-group')?.dataset.groupId;
+            if (draggedLink.dataset.groupId !== groupId) return;
+            
+            e.preventDefault();
+        });
+        
+        linksList.addEventListener('drop', async (e) => {
+            if (!draggedLink) return;
+            const groupId = linksList.closest('.link-group')?.dataset.groupId;
+            if (draggedLink.dataset.groupId !== groupId) return;
+            
+            e.preventDefault();
+            
+            // If dropped on empty area, move to end
+            const lastLink = linksList.querySelector('.link-item:last-child');
+            if (lastLink && lastLink !== draggedLink) {
+                lastLink.after(draggedLink);
+            }
+            
+            await updateLinkSortOrders(groupId, linksList);
+        });
+    });
+}
+
+// Update link sort orders in Firestore
+async function updateLinkSortOrders(groupId, linksList) {
+    if (!db || !appState.currentTeamId || !groupId) return;
+    
+    try {
+        const { doc, updateDoc } = 
+            await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+        
+        const links = linksList.querySelectorAll('.link-item');
+        const updates = [];
+        
+        links.forEach((link, index) => {
+            const linkId = link.dataset.linkId;
+            if (linkId && link.dataset.groupId === groupId) {
+                const linkRef = doc(db, 'teams', appState.currentTeamId, 'linkLobbyGroups', groupId, 'links', linkId);
+                updates.push(updateDoc(linkRef, { sortOrder: index }));
+            }
+        });
+        
+        await Promise.all(updates);
+        console.log('Link sort orders updated for group:', groupId);
+        
+    } catch (error) {
+        console.error('Error updating link sort orders:', error);
+    }
+}
+
 // Debounce helper
 function debounce(func, wait) {
     let timeout;
@@ -27074,11 +29995,35 @@ function getCategoryLabel(value) {
  * Render the finances section with two-column layout
  */
 function renderFinances() {
-    const metrics = calculateFinanceMetrics(appState.transactions);
+    // Inject company subscriptions as virtual expense rows (private stays hidden)
+    const subscriptionExpenses = (appState.subscriptions || [])
+        .filter(sub => sub.type === 'company')
+        .map(sub => {
+            const subDate = sub.nextPayDate?.toDate?.() || new Date(sub.nextPayDate || Date.now());
+            return {
+            id: `sub-${sub.id}`,
+            type: 'expense',
+            amount: sub.amount || 0,
+            party: sub.vendor || sub.name || 'Subscription',
+            description: sub.name ? `Subscription · ${sub.name}` : 'Subscription',
+            category: sub.category || 'subscriptions',
+            date: subDate,
+            frequency: sub.frequency || 'monthly',
+            isRecurring: true,
+            notes: sub.notes || '',
+            createdBy: sub.createdBy,
+            createdAt: sub.createdAt,
+            isSubscription: true,
+            subscriptionId: sub.id
+            };
+        });
+
+    const combinedTransactions = [...appState.transactions, ...subscriptionExpenses];
+    const metrics = calculateFinanceMetrics(combinedTransactions);
     
     // Separate transactions by type
     const revenueTransactions = appState.transactions.filter(t => t.type === 'income');
-    const expenseTransactions = appState.transactions.filter(t => t.type === 'expense');
+    const expenseTransactions = combinedTransactions.filter(t => t.type === 'expense');
     
     // Sort by date descending
     revenueTransactions.sort((a, b) => {
@@ -27128,8 +30073,8 @@ function renderFinances() {
     if (addRevenueBtn) addRevenueBtn.style.display = canEditFinances ? 'inline-flex' : 'none';
     if (addExpenseBtn) addExpenseBtn.style.display = canEditFinances ? 'inline-flex' : 'none';
     
-    // Check if there are any transactions at all
-    const hasAnyTransactions = appState.transactions.length > 0;
+    // Check if there are any transactions (including subscription expenses)
+    const hasAnyTransactions = combinedTransactions.length > 0;
     const financesContent = document.getElementById('financesContent');
     const financesPlaceholder = document.getElementById('financesPlaceholder');
     
@@ -27154,6 +30099,8 @@ function renderFinances() {
     // Render revenue column
     const revenueList = document.getElementById('revenueList');
     const revenueEmptyState = document.getElementById('revenueEmptyState');
+    const revenueFooter = document.getElementById('revenueFooter');
+    const MAX_VISIBLE_ROWS = 6; // Rows visible before "See All"
     
     if (revenueList) {
         if (revenueTransactions.length === 0) {
@@ -27163,15 +30110,32 @@ function renderFinances() {
                 const addBtn = revenueEmptyState.querySelector('button');
                 if (addBtn) addBtn.style.display = canEditFinances ? 'inline-flex' : 'none';
             }
+            if (revenueFooter) revenueFooter.style.display = 'none';
         } else {
             if (revenueEmptyState) revenueEmptyState.style.display = 'none';
-            revenueList.innerHTML = revenueTransactions.map(t => renderTransactionRow(t, canEditFinances)).join('');
+            // Show all if expanded, otherwise limit to MAX_VISIBLE_ROWS
+            const isExpanded = revenueList.classList.contains('expanded');
+            const visibleTransactions = isExpanded ? revenueTransactions.slice(0, 50) : revenueTransactions.slice(0, MAX_VISIBLE_ROWS);
+            revenueList.innerHTML = visibleTransactions.map(t => renderTransactionRow(t, canEditFinances)).join('');
+            // Show footer only if more than MAX_VISIBLE_ROWS transactions
+            if (revenueFooter) {
+                revenueFooter.style.display = revenueTransactions.length > MAX_VISIBLE_ROWS ? 'block' : 'none';
+                const btn = revenueFooter.querySelector('.see-all-btn');
+                if (btn) {
+                    const remaining = revenueTransactions.length - MAX_VISIBLE_ROWS;
+                    btn.innerHTML = isExpanded 
+                        ? '<span>Show Less</span><i class="fas fa-chevron-up"></i>'
+                        : `<span>See All (${remaining} more)</span><i class="fas fa-chevron-down"></i>`;
+                    btn.classList.toggle('active', isExpanded);
+                }
+            }
         }
     }
     
     // Render expenses column
     const expensesList = document.getElementById('expensesList');
     const expensesEmptyState = document.getElementById('expensesEmptyState');
+    const expensesFooter = document.getElementById('expensesFooter');
     
     if (expensesList) {
         if (expenseTransactions.length === 0) {
@@ -27181,9 +30145,25 @@ function renderFinances() {
                 const addBtn = expensesEmptyState.querySelector('button');
                 if (addBtn) addBtn.style.display = canEditFinances ? 'inline-flex' : 'none';
             }
+            if (expensesFooter) expensesFooter.style.display = 'none';
         } else {
             if (expensesEmptyState) expensesEmptyState.style.display = 'none';
-            expensesList.innerHTML = expenseTransactions.map(t => renderTransactionRow(t, canEditFinances)).join('');
+            // Show all if expanded, otherwise limit to MAX_VISIBLE_ROWS
+            const isExpanded = expensesList.classList.contains('expanded');
+            const visibleTransactions = isExpanded ? expenseTransactions.slice(0, 50) : expenseTransactions.slice(0, MAX_VISIBLE_ROWS);
+            expensesList.innerHTML = visibleTransactions.map(t => renderTransactionRow(t, canEditFinances)).join('');
+            // Show footer only if more than MAX_VISIBLE_ROWS transactions
+            if (expensesFooter) {
+                expensesFooter.style.display = expenseTransactions.length > MAX_VISIBLE_ROWS ? 'block' : 'none';
+                const btn = expensesFooter.querySelector('.see-all-btn');
+                if (btn) {
+                    const remaining = expenseTransactions.length - MAX_VISIBLE_ROWS;
+                    btn.innerHTML = isExpanded 
+                        ? '<span>Show Less</span><i class="fas fa-chevron-up"></i>'
+                        : `<span>See All (${remaining} more)</span><i class="fas fa-chevron-down"></i>`;
+                    btn.classList.toggle('active', isExpanded);
+                }
+            }
         }
     }
     
@@ -27200,6 +30180,41 @@ function renderFinances() {
     });
 }
 
+// Ensure dropdown clicks register and close properly (settings, notifications, custom selects)
+function initDropdownGuards() {
+    const closeDropdowns = () => {
+        document.querySelectorAll('.settings-dropdown, .notifications-dropdown, .custom-dropdown-options, .mention-dropdown, .doc-format-dropdown, .global-search-dropdown')
+            .forEach(dd => {
+                dd.classList.remove('active', 'visible');
+                dd.style.display = 'none';
+            });
+    };
+
+    document.addEventListener('click', (e) => {
+        const option = e.target.closest('.dropdown-item, .custom-dropdown-option, .settings-dropdown .dropdown-item, .notifications-dropdown .dropdown-item, .doc-format-option, .mention-option, .global-search-result, .dropdown-menu-option');
+        if (option) {
+            // Allow primary click handlers to run first
+            setTimeout(closeDropdowns, 0);
+        }
+    });
+}
+
+/**
+ * Toggle See All/Show Less for finance transaction columns
+ */
+window.toggleSeeAll = function(column) {
+    const listId = column === 'revenue' ? 'revenueList' : 'expensesList';
+    const list = document.getElementById(listId);
+    if (!list) return;
+    
+    list.classList.toggle('expanded');
+    
+    // Re-render the transactions to show/hide rows
+    if (typeof renderFinances === 'function') {
+        renderFinances();
+    }
+};
+
 /**
  * Render a single transaction row with expandable details
  * Collapsed view: Amount (left) | From → To (middle) | Short date (right)
@@ -27207,6 +30222,7 @@ function renderFinances() {
  */
 function renderTransactionRow(transaction, canEdit = true) {
     const t = transaction;
+    const isSubscription = t.isSubscription === true;
     const transactionDate = t.date?.toDate?.() || new Date(t.date);
     // Short date format: Dec 13
     const shortDateStr = transactionDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
@@ -27236,30 +30252,17 @@ function renderTransactionRow(transaction, canEdit = true) {
         : escapeHtml(t.description);
     
     return `
-        <div class="transaction-row" data-id="${t.id}">
+        <div class="transaction-row ${isSubscription ? 'transaction-row-subscription' : ''}" data-id="${t.id}">
             <div class="transaction-row-main">
                 <div class="transaction-col-amount">
                     <span class="transaction-amount ${t.type}">${isIncome ? '+' : '-'}${formatCurrency(t.amount)}</span>
                     ${t.isRecurring ? `<span class="transaction-recurring-indicator" title="Recurring ${t.frequency}"><i class="fas fa-sync-alt"></i></span>` : ''}
+                    ${isSubscription ? '<span class="transaction-badge">Subscription</span>' : ''}
                 </div>
                 <div class="transaction-col-from-to">
                     <span class="transaction-from-to">${fromToDisplay}</span>
-                    ${t.party && t.description ? `<span class="transaction-desc-sub">${escapeHtml(t.description)}</span>` : ''}
-                </div>
-                <div class="transaction-col-date">
-                    <span class="transaction-date-short">${shortDateStr}</span>
                 </div>
                 <div class="transaction-col-actions">
-                    ${canEdit ? `
-                    <div class="transaction-actions">
-                        <button class="transaction-action-btn edit" onclick="event.stopPropagation(); editTransaction('${t.id}')" title="Edit">
-                            <i class="fas fa-pen"></i>
-                        </button>
-                        <button class="transaction-action-btn delete" onclick="event.stopPropagation(); openDeleteTransactionModal('${t.id}')" title="Delete">
-                            <i class="fas fa-trash"></i>
-                        </button>
-                    </div>
-                    ` : ''}
                     <span class="expand-icon"><i class="fas fa-chevron-down"></i></span>
                 </div>
             </div>
@@ -27310,6 +30313,25 @@ function renderTransactionRow(transaction, canEdit = true) {
                     </div>
                     ` : ''}
                 </div>
+                ${canEdit ? `
+                <div class="transaction-row-actions">
+                    ${isSubscription ? `
+                        <button class="btn-sm btn-edit" onclick="event.stopPropagation(); editSubscription('${t.subscriptionId}')">
+                            <i class="fas fa-pen"></i> Manage
+                        </button>
+                        <button class="btn-sm btn-delete" onclick="event.stopPropagation(); openDeleteSubscriptionModal('${t.subscriptionId}')">
+                            <i class="fas fa-trash"></i> Delete
+                        </button>
+                    ` : `
+                        <button class="btn-sm btn-edit" onclick="event.stopPropagation(); editTransaction('${t.id}')">
+                            <i class="fas fa-pen"></i> Edit
+                        </button>
+                        <button class="btn-sm btn-delete" onclick="event.stopPropagation(); openDeleteTransactionModal('${t.id}')">
+                            <i class="fas fa-trash"></i> Delete
+                        </button>
+                    `}
+                </div>
+                ` : ''}
             </div>
         </div>
     `;
@@ -27377,6 +30399,641 @@ function getFinanceMetricsData() {
 // Expose functions to window for inline onclick handlers
 window.editTransaction = editTransaction;
 window.openDeleteTransactionModal = openDeleteTransactionModal;
+
+// ===================================
+// SUBSCRIPTIONS MANAGEMENT
+// ===================================
+
+// Current subscription tab filter
+let currentSubscriptionTab = 'company';
+
+/**
+ * Load subscriptions from Firestore
+ */
+async function loadSubscriptions() {
+    if (!db || !appState.currentTeamId) {
+        appState.subscriptions = [];
+        return;
+    }
+    
+    try {
+        const { collection, query, orderBy, getDocs } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+        const subscriptionsRef = collection(db, 'teams', appState.currentTeamId, 'subscriptions');
+        const q = query(subscriptionsRef, orderBy('nextPayDate', 'asc'));
+        const snapshot = await getDocs(q);
+        
+        const rawSubs = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        }));
+        // Privacy: only show private subscriptions created by the current user
+        appState.subscriptions = rawSubs.filter(sub => {
+            if (sub.type !== 'private') return true;
+            if (!sub.createdBy) return false; // safest default for legacy records
+            return sub.createdBy === currentAuthUser?.uid;
+        });
+        
+        debugLog('📅 Loaded subscriptions:', appState.subscriptions.length);
+        renderSubscriptions();
+        
+    } catch (error) {
+        console.error('Error loading subscriptions:', error);
+        appState.subscriptions = [];
+    }
+}
+
+/**
+ * Render subscriptions section
+ */
+function renderSubscriptions() {
+    const subscriptionsList = document.getElementById('subscriptionsList');
+    const subscriptionsEmptyState = document.getElementById('subscriptionsEmptyState');
+    const subscriptionsCount = document.getElementById('subscriptionsCount');
+    const companySubsCount = document.getElementById('companySubsCount');
+    const privateSubsCount = document.getElementById('privateSubsCount');
+    const upcomingSubscriptions = document.getElementById('upcomingSubscriptions');
+    
+    if (!subscriptionsList) return;
+    
+    // Count subscriptions by type
+    const companySubs = appState.subscriptions.filter(s => s.type === 'company');
+    const privateSubs = appState.subscriptions.filter(s => s.type === 'private');
+    
+    // Update counts
+    if (subscriptionsCount) subscriptionsCount.textContent = appState.subscriptions.length;
+    if (companySubsCount) companySubsCount.textContent = companySubs.length;
+    if (privateSubsCount) privateSubsCount.textContent = privateSubs.length;
+    
+    // Filter by current tab
+    const filteredSubs = currentSubscriptionTab === 'company' ? companySubs : privateSubs;
+    
+    if (filteredSubs.length === 0) {
+        subscriptionsList.innerHTML = '';
+        if (subscriptionsEmptyState) subscriptionsEmptyState.style.display = 'flex';
+    } else {
+        if (subscriptionsEmptyState) subscriptionsEmptyState.style.display = 'none';
+        subscriptionsList.innerHTML = filteredSubs.map(sub => renderSubscriptionRow(sub)).join('');
+    }
+    
+    // Render upcoming subscriptions (next 7 days)
+    renderUpcomingSubscriptions();
+    
+    // Recalculate finances (company subscriptions affect expenses)
+    updateFinancesWithSubscriptions();
+}
+
+/**
+ * Render a single subscription row
+ */
+function renderSubscriptionRow(sub) {
+    const nextPayDate = sub.nextPayDate?.toDate?.() || new Date(sub.nextPayDate);
+    const dateStr = nextPayDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+    const isPrivate = sub.type === 'private';
+    const currencySymbol = getCurrencySymbol(sub.currency || 'USD');
+    const frequencyLabel = getFrequencyLabel(sub.frequency);
+    
+    // Get icon based on category
+    const categoryIcon = getSubscriptionCategoryIcon(sub.category);
+    
+    return `
+        <div class="subscription-row ${isPrivate ? 'private' : ''}" data-id="${sub.id}">
+            <div class="subscription-info">
+                <div class="subscription-logo ${sub.type}">
+                    <i class="fas ${categoryIcon}"></i>
+                </div>
+                <div class="subscription-details">
+                    <div class="subscription-name">
+                        ${escapeHtml(sub.name)}
+                        ${isPrivate ? '<span class="private-badge">Private</span>' : ''}
+                    </div>
+                    <div class="subscription-meta">
+                        <span><i class="fas fa-calendar"></i> ${dateStr}</span>
+                        ${sub.category ? `<span><i class="fas fa-tag"></i> ${escapeHtml(sub.category)}</span>` : ''}
+                    </div>
+                </div>
+            </div>
+            <div class="subscription-amount-col">
+                <span class="subscription-amount">${currencySymbol}${formatNumber(sub.amount)}</span>
+                <span class="subscription-frequency">${frequencyLabel}</span>
+            </div>
+            <div class="subscription-actions">
+                ${sub.cancelLink ? `
+                <a href="${escapeHtml(sub.cancelLink)}" target="_blank" rel="noopener noreferrer" class="subscription-action-btn link" title="Manage Subscription">
+                    <i class="fas fa-external-link-alt"></i>
+                </a>
+                ` : ''}
+                <button class="subscription-action-btn edit" onclick="editSubscription('${sub.id}')" title="Edit">
+                    <i class="fas fa-pen"></i>
+                </button>
+                <button class="subscription-action-btn delete" onclick="openDeleteSubscriptionModal('${sub.id}')" title="Delete">
+                    <i class="fas fa-trash"></i>
+                </button>
+            </div>
+        </div>
+    `;
+}
+
+/**
+ * Render upcoming subscriptions (next 7 days)
+ */
+function renderUpcomingSubscriptions() {
+    const container = document.getElementById('upcomingSubscriptions');
+    if (!container) return;
+    
+    const now = new Date();
+    const sevenDaysFromNow = new Date(now.getTime() + 7 * 24 * 60 * 60 * 1000);
+    
+    // Get subscriptions due in next 7 days
+    const upcoming = appState.subscriptions.filter(sub => {
+        const nextPayDate = sub.nextPayDate?.toDate?.() || new Date(sub.nextPayDate);
+        return nextPayDate >= now && nextPayDate <= sevenDaysFromNow;
+    }).sort((a, b) => {
+        const dateA = a.nextPayDate?.toDate?.() || new Date(a.nextPayDate);
+        const dateB = b.nextPayDate?.toDate?.() || new Date(b.nextPayDate);
+        return dateA - dateB;
+    });
+    
+    if (upcoming.length === 0) {
+        container.classList.remove('has-items');
+        container.innerHTML = '';
+        return;
+    }
+    
+    container.classList.add('has-items');
+    container.innerHTML = `
+        <div class="upcoming-header">
+            <i class="fas fa-bell"></i>
+            <span>Upcoming in next 7 days</span>
+        </div>
+        <div class="upcoming-list">
+            ${upcoming.map(sub => {
+                const nextPayDate = sub.nextPayDate?.toDate?.() || new Date(sub.nextPayDate);
+                const daysUntil = Math.ceil((nextPayDate - now) / (1000 * 60 * 60 * 24));
+                const dateLabel = daysUntil === 0 ? 'Today' : daysUntil === 1 ? 'Tomorrow' : `In ${daysUntil} days`;
+                const currencySymbol = getCurrencySymbol(sub.currency || 'USD');
+                
+                return `
+                    <div class="upcoming-item">
+                        <div class="upcoming-item-info">
+                            <span class="upcoming-item-name">${escapeHtml(sub.name)}</span>
+                            <span class="upcoming-item-date">${dateLabel}</span>
+                        </div>
+                        <span class="upcoming-item-amount">${currencySymbol}${formatNumber(sub.amount)}</span>
+                    </div>
+                `;
+            }).join('')}
+        </div>
+    `;
+}
+
+/**
+ * Update finances with company subscription data
+ * Company subscriptions should appear as recurring expenses
+ */
+function updateFinancesWithSubscriptions() {
+    // This function integrates company subscriptions into the expense totals
+    // For now, we'll just recalculate MRR to include subscription costs
+    const companySubs = appState.subscriptions.filter(s => s.type === 'company');
+    
+    let monthlySubsCost = 0;
+    companySubs.forEach(sub => {
+        const amount = sub.amount || 0;
+        switch (sub.frequency) {
+            case 'weekly':
+                monthlySubsCost += amount * 4.33; // avg weeks per month
+                break;
+            case 'monthly':
+                monthlySubsCost += amount;
+                break;
+            case 'quarterly':
+                monthlySubsCost += amount / 3;
+                break;
+            case 'yearly':
+                monthlySubsCost += amount / 12;
+                break;
+        }
+    });
+    
+    // Store for use in metrics calculations
+    appState.monthlySubscriptionCost = monthlySubsCost;
+}
+
+/**
+ * Open subscription modal for adding or editing
+ */
+function openSubscriptionModal(subscription = null) {
+    const modal = document.getElementById('subscriptionModal');
+    const form = document.getElementById('subscriptionForm');
+    const title = document.getElementById('subscriptionModalTitle');
+    const subtitle = document.getElementById('subscriptionModalSubtitle');
+    const typeHint = document.getElementById('subscriptionTypeHint');
+    
+    if (!modal || !form) return;
+    
+    // Reset form
+    form.reset();
+    document.getElementById('subscriptionId').value = '';
+    document.getElementById('subscriptionType').value = 'company';
+    
+    // Reset type buttons
+    const typeButtons = document.querySelectorAll('.subscription-type-toggle .type-btn');
+    typeButtons.forEach(btn => {
+        btn.classList.toggle('active', btn.dataset.type === 'company');
+    });
+    
+    // Set default next payment date to today
+    const dateInput = document.getElementById('subscriptionNextPayDate');
+    if (dateInput) {
+        dateInput.value = new Date().toISOString().split('T')[0];
+    }
+    
+    // Update hint
+    if (typeHint) {
+        typeHint.textContent = 'Company subscriptions appear in expenses';
+    }
+    
+    if (subscription) {
+        // Edit mode
+        title.innerHTML = '<i class="fas fa-edit"></i> Edit Subscription';
+        subtitle.textContent = 'Update subscription details';
+        
+        // Fill form with subscription data
+        document.getElementById('subscriptionId').value = subscription.id;
+        document.getElementById('subscriptionType').value = subscription.type;
+        document.getElementById('subscriptionName').value = subscription.name || '';
+        document.getElementById('subscriptionAmount').value = subscription.amount || '';
+        document.getElementById('subscriptionCurrency').value = subscription.currency || 'USD';
+        document.getElementById('subscriptionFrequency').value = subscription.frequency || 'monthly';
+        document.getElementById('subscriptionCategory').value = subscription.category || '';
+        document.getElementById('subscriptionCancelLink').value = subscription.cancelLink || '';
+        document.getElementById('subscriptionNotes').value = subscription.notes || '';
+        
+        // Set next payment date
+        const nextPayDate = subscription.nextPayDate?.toDate?.() || new Date(subscription.nextPayDate);
+        document.getElementById('subscriptionNextPayDate').value = nextPayDate.toISOString().split('T')[0];
+        
+        // Update type buttons
+        typeButtons.forEach(btn => {
+            btn.classList.toggle('active', btn.dataset.type === subscription.type);
+        });
+        
+        // Update hint based on type
+        if (typeHint) {
+            typeHint.textContent = subscription.type === 'company' 
+                ? 'Company subscriptions appear in expenses'
+                : 'Private subscriptions create personal calendar reminders';
+        }
+    } else {
+        // Add mode
+        title.innerHTML = '<i class="fas fa-calendar-check"></i> New Subscription';
+        subtitle.textContent = 'Track a recurring subscription';
+    }
+    
+    modal.classList.add('active');
+}
+
+/**
+ * Close subscription modal
+ */
+function closeSubscriptionModalFn() {
+    const modal = document.getElementById('subscriptionModal');
+    if (modal) {
+        modal.classList.remove('active');
+    }
+}
+
+/**
+ * Handle subscription form submission
+ */
+async function handleSubscriptionSave(event) {
+    event.preventDefault();
+    
+    if (!db || !appState.currentTeamId || !currentAuthUser) {
+        showToast('Unable to save subscription. Please try again.', 'error');
+        return;
+    }
+    
+    const subscriptionId = document.getElementById('subscriptionId').value;
+    const isEdit = !!subscriptionId;
+    
+    // Get form values
+    const subscriptionData = {
+        type: document.getElementById('subscriptionType').value,
+        name: document.getElementById('subscriptionName').value.trim(),
+        amount: parseFloat(document.getElementById('subscriptionAmount').value) || 0,
+        currency: document.getElementById('subscriptionCurrency').value,
+        frequency: document.getElementById('subscriptionFrequency').value,
+        nextPayDate: new Date(document.getElementById('subscriptionNextPayDate').value),
+        category: document.getElementById('subscriptionCategory').value,
+        cancelLink: document.getElementById('subscriptionCancelLink').value.trim(),
+        notes: document.getElementById('subscriptionNotes').value.trim(),
+        updatedAt: new Date()
+    };
+    
+    // Validate
+    if (!subscriptionData.name) {
+        showToast('Please enter a service name', 'error');
+        return;
+    }
+    if (subscriptionData.amount <= 0) {
+        showToast('Please enter a valid amount', 'error');
+        return;
+    }
+    
+    try {
+        const { doc, collection, addDoc, updateDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+        
+        if (isEdit) {
+            // Update existing subscription
+            const subscriptionRef = doc(db, 'teams', appState.currentTeamId, 'subscriptions', subscriptionId);
+            await updateDoc(subscriptionRef, {
+                ...subscriptionData,
+                updatedAt: serverTimestamp()
+            });
+            showToast('Subscription updated successfully', 'success');
+        } else {
+            // Add new subscription
+            const subscriptionsRef = collection(db, 'teams', appState.currentTeamId, 'subscriptions');
+            await addDoc(subscriptionsRef, {
+                ...subscriptionData,
+                createdBy: currentAuthUser.uid,
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp()
+            });
+            showToast('Subscription added successfully', 'success');
+            
+            // Create private calendar event if it's a private subscription
+            if (subscriptionData.type === 'private') {
+                await createSubscriptionCalendarEvent(subscriptionData);
+            }
+        }
+        
+        closeSubscriptionModalFn();
+        loadSubscriptions(); // Refresh the list
+        
+    } catch (error) {
+        console.error('Error saving subscription:', error);
+        showToast('Failed to save subscription', 'error');
+    }
+}
+
+/**
+ * Create a private calendar event for a subscription
+ */
+async function createSubscriptionCalendarEvent(subscription) {
+    try {
+        const { collection, addDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+        
+        const eventData = {
+            title: `💳 ${subscription.name} payment due`,
+            date: subscription.nextPayDate,
+            type: 'reminder',
+            visibility: 'private',
+            createdBy: currentAuthUser.uid,
+            isSubscriptionReminder: true,
+            subscriptionName: subscription.name,
+            subscriptionAmount: subscription.amount,
+            subscriptionCurrency: subscription.currency,
+            createdAt: serverTimestamp()
+        };
+        
+        const eventsRef = collection(db, 'teams', appState.currentTeamId, 'events');
+        await addDoc(eventsRef, eventData);
+        
+        debugLog('📅 Created calendar event for private subscription:', subscription.name);
+    } catch (error) {
+        console.error('Error creating subscription calendar event:', error);
+    }
+}
+
+/**
+ * Edit subscription
+ */
+function editSubscription(subscriptionId) {
+    const subscription = appState.subscriptions.find(s => s.id === subscriptionId);
+    if (subscription) {
+        openSubscriptionModal(subscription);
+    }
+}
+
+/**
+ * Open delete subscription confirmation modal
+ */
+function openDeleteSubscriptionModal(subscriptionId) {
+    const modal = document.getElementById('deleteSubscriptionModal');
+    const idInput = document.getElementById('deleteSubscriptionId');
+    
+    if (modal && idInput) {
+        idInput.value = subscriptionId;
+        modal.classList.add('active');
+    }
+}
+
+/**
+ * Close delete subscription modal
+ */
+function closeDeleteSubscriptionModalFn() {
+    const modal = document.getElementById('deleteSubscriptionModal');
+    if (modal) {
+        modal.classList.remove('active');
+    }
+}
+
+/**
+ * Delete subscription
+ */
+async function deleteSubscription(subscriptionId) {
+    if (!db || !appState.currentTeamId) {
+        showToast('Unable to delete subscription', 'error');
+        return;
+    }
+    
+    try {
+        const { doc, deleteDoc } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+        const subscriptionRef = doc(db, 'teams', appState.currentTeamId, 'subscriptions', subscriptionId);
+        await deleteDoc(subscriptionRef);
+        
+        showToast('Subscription deleted', 'success');
+        closeDeleteSubscriptionModalFn();
+        loadSubscriptions();
+        
+    } catch (error) {
+        console.error('Error deleting subscription:', error);
+        showToast('Failed to delete subscription', 'error');
+    }
+}
+
+/**
+ * Initialize subscription event listeners
+ */
+function initSubscriptionEventListeners() {
+    // Add subscription button
+    const addSubscriptionBtn = document.getElementById('addSubscriptionBtn');
+    const addFirstSubscriptionBtn = document.getElementById('addFirstSubscriptionBtn');
+    
+    if (addSubscriptionBtn) {
+        addSubscriptionBtn.addEventListener('click', () => openSubscriptionModal());
+    }
+    if (addFirstSubscriptionBtn) {
+        addFirstSubscriptionBtn.addEventListener('click', () => openSubscriptionModal());
+    }
+    
+    // Close modal buttons
+    const closeSubscriptionModal = document.getElementById('closeSubscriptionModal');
+    const cancelSubscriptionBtn = document.getElementById('cancelSubscriptionBtn');
+    
+    if (closeSubscriptionModal) {
+        closeSubscriptionModal.addEventListener('click', closeSubscriptionModalFn);
+    }
+    if (cancelSubscriptionBtn) {
+        cancelSubscriptionBtn.addEventListener('click', closeSubscriptionModalFn);
+    }
+    
+    // Form submission
+    const subscriptionForm = document.getElementById('subscriptionForm');
+    if (subscriptionForm) {
+        subscriptionForm.addEventListener('submit', handleSubscriptionSave);
+    }
+    
+    // Type toggle buttons
+    const typeToggle = document.querySelector('.subscription-type-toggle');
+    if (typeToggle) {
+        typeToggle.querySelectorAll('.type-btn').forEach(btn => {
+            btn.addEventListener('click', (e) => {
+                e.preventDefault();
+                const type = btn.dataset.type;
+                typeToggle.querySelectorAll('.type-btn').forEach(b => b.classList.remove('active'));
+                btn.classList.add('active');
+                document.getElementById('subscriptionType').value = type;
+                
+                // Update hint
+                const typeHint = document.getElementById('subscriptionTypeHint');
+                if (typeHint) {
+                    typeHint.textContent = type === 'company' 
+                        ? 'Company subscriptions appear in expenses'
+                        : 'Private subscriptions create personal calendar reminders';
+                }
+            });
+        });
+    }
+    
+    // Tab switching
+    const subscriptionsTabs = document.getElementById('subscriptionsTabs');
+    if (subscriptionsTabs) {
+        subscriptionsTabs.querySelectorAll('.sub-tab').forEach(tab => {
+            tab.addEventListener('click', () => {
+                const tabType = tab.dataset.tab;
+                currentSubscriptionTab = tabType;
+                
+                subscriptionsTabs.querySelectorAll('.sub-tab').forEach(t => t.classList.remove('active'));
+                tab.classList.add('active');
+                
+                renderSubscriptions();
+            });
+        });
+    }
+    
+    // Delete modal
+    const closeDeleteSubscriptionModal = document.getElementById('closeDeleteSubscriptionModal');
+    const cancelDeleteSubscription = document.getElementById('cancelDeleteSubscription');
+    const confirmDeleteSubscription = document.getElementById('confirmDeleteSubscription');
+    
+    if (closeDeleteSubscriptionModal) {
+        closeDeleteSubscriptionModal.addEventListener('click', closeDeleteSubscriptionModalFn);
+    }
+    if (cancelDeleteSubscription) {
+        cancelDeleteSubscription.addEventListener('click', closeDeleteSubscriptionModalFn);
+    }
+    if (confirmDeleteSubscription) {
+        confirmDeleteSubscription.addEventListener('click', () => {
+            const subscriptionId = document.getElementById('deleteSubscriptionId').value;
+            if (subscriptionId) {
+                deleteSubscription(subscriptionId);
+            }
+        });
+    }
+    
+    // Close modal on backdrop click
+    const subscriptionModal = document.getElementById('subscriptionModal');
+    if (subscriptionModal) {
+        subscriptionModal.addEventListener('click', (e) => {
+            if (e.target === subscriptionModal) {
+                closeSubscriptionModalFn();
+            }
+        });
+    }
+    
+    const deleteSubModal = document.getElementById('deleteSubscriptionModal');
+    if (deleteSubModal) {
+        deleteSubModal.addEventListener('click', (e) => {
+            if (e.target === deleteSubModal) {
+                closeDeleteSubscriptionModalFn();
+            }
+        });
+    }
+}
+
+/**
+ * Get currency symbol from currency code
+ */
+function getCurrencySymbol(currencyCode) {
+    const symbols = {
+        'USD': '$',
+        'EUR': '€',
+        'GBP': '£',
+        'CAD': '$',
+        'AUD': '$',
+        'JPY': '¥',
+        'ILS': '₪'
+    };
+    return symbols[currencyCode] || '$';
+}
+
+/**
+ * Get frequency label
+ */
+function getFrequencyLabel(frequency) {
+    const labels = {
+        'weekly': '/week',
+        'monthly': '/month',
+        'quarterly': '/quarter',
+        'yearly': '/year'
+    };
+    return labels[frequency] || '/month';
+}
+
+/**
+ * Get subscription category icon
+ */
+function getSubscriptionCategoryIcon(category) {
+    const icons = {
+        'software': 'fa-code',
+        'streaming': 'fa-play-circle',
+        'cloud': 'fa-cloud',
+        'productivity': 'fa-tasks',
+        'communication': 'fa-comments',
+        'design': 'fa-palette',
+        'marketing': 'fa-bullhorn',
+        'storage': 'fa-database',
+        'security': 'fa-shield-alt',
+        'other': 'fa-box'
+    };
+    return icons[category] || 'fa-credit-card';
+}
+
+/**
+ * Format number with commas
+ */
+function formatNumber(num) {
+    return new Intl.NumberFormat('en-US', {
+        minimumFractionDigits: 2,
+        maximumFractionDigits: 2
+    }).format(num || 0);
+}
+
+// Expose subscription functions to window for inline onclick handlers
+window.editSubscription = editSubscription;
+window.openDeleteSubscriptionModal = openDeleteSubscriptionModal;
 
 // ===================================
 // GLOBAL KEYBOARD SHORTCUTS
@@ -27565,6 +31222,8 @@ document.addEventListener('DOMContentLoaded', async () => {
     initJoinTeamModal(); // Initialize join team modal
     initLinkLobby(); // Initialize Link Lobby
     initFinances(); // Initialize Finances tab
+    initSubscriptionEventListeners(); // Initialize Subscriptions
+    initDropdownGuards(); // Ensure dropdown options close on selection
     initDocsModule(); // Initialize Docs feature
     initGlobalKeyboardShortcuts(); // Initialize keyboard shortcuts (t/e/m//)
     startActivityRefreshTimer(); // Start periodic refresh of activity times
@@ -27577,6 +31236,250 @@ document.addEventListener('DOMContentLoaded', async () => {
         console.log('User authenticated. All features are ready to use.');
     }, 500);
 });
+
+// ===================================
+// PUSH NOTIFICATIONS
+// ===================================
+
+/**
+ * Register Service Worker for Push Notifications
+ */
+async function registerServiceWorker() {
+    if (!('serviceWorker' in navigator)) {
+        console.log('[Push] Service workers not supported');
+        return null;
+    }
+    
+    try {
+        const registration = await navigator.serviceWorker.register('/sw.js', {
+            scope: '/'
+        });
+        console.log('[Push] Service worker registered:', registration.scope);
+        return registration;
+    } catch (error) {
+        console.error('[Push] Service worker registration failed:', error);
+        return null;
+    }
+}
+
+/**
+ * Request push notification permission and subscribe
+ */
+async function requestPushPermission() {
+    const statusEl = document.getElementById('pushNotifStatus');
+    const btnEl = document.getElementById('enablePushBtn');
+    
+    // Check if push is supported
+    if (!('PushManager' in window)) {
+        if (statusEl) statusEl.textContent = 'Not supported';
+        showToast('Push notifications are not supported in this browser', 'error');
+        return;
+    }
+    
+    try {
+        // Request permission
+        const permission = await Notification.requestPermission();
+        
+        if (permission === 'granted') {
+            // Register service worker if not already
+            const registration = await registerServiceWorker();
+            if (!registration) {
+                showToast('Failed to register service worker', 'error');
+                return;
+            }
+            
+            // Subscribe to push
+            const subscription = await subscribeToPush(registration);
+            if (subscription) {
+                // Save subscription to Firestore
+                await savePushSubscription(subscription);
+                
+                if (statusEl) statusEl.textContent = 'Enabled';
+                if (btnEl) {
+                    btnEl.innerHTML = '<i class="fas fa-check"></i> Enabled';
+                    btnEl.disabled = true;
+                    btnEl.classList.add('success');
+                }
+                showToast('Push notifications enabled!', 'success');
+            }
+        } else if (permission === 'denied') {
+            if (statusEl) statusEl.textContent = 'Blocked';
+            showToast('Notifications blocked. Please enable in browser settings.', 'error');
+        } else {
+            if (statusEl) statusEl.textContent = 'Not enabled';
+        }
+    } catch (error) {
+        console.error('[Push] Error requesting permission:', error);
+        showToast('Failed to enable notifications', 'error');
+    }
+}
+
+/**
+ * Subscribe to push notifications
+ */
+async function subscribeToPush(registration) {
+    try {
+        // Check for existing subscription
+        let subscription = await registration.pushManager.getSubscription();
+        
+        if (subscription) {
+            console.log('[Push] Already subscribed');
+            return subscription;
+        }
+        
+        // For VAPID, you need to generate keys. This is a placeholder.
+        // In production, get the public key from your backend
+        const vapidPublicKey = localStorage.getItem('vapidPublicKey');
+        
+        if (!vapidPublicKey) {
+            // Without VAPID, we can still show local notifications
+            console.log('[Push] No VAPID key configured, using local notifications only');
+            return { endpoint: 'local', keys: {} };
+        }
+        
+        // Convert VAPID key to Uint8Array
+        const convertedVapidKey = urlBase64ToUint8Array(vapidPublicKey);
+        
+        subscription = await registration.pushManager.subscribe({
+            userVisibleOnly: true,
+            applicationServerKey: convertedVapidKey
+        });
+        
+        console.log('[Push] Subscribed:', subscription);
+        return subscription;
+    } catch (error) {
+        console.error('[Push] Subscription failed:', error);
+        return null;
+    }
+}
+
+/**
+ * Convert base64 URL to Uint8Array for VAPID
+ */
+function urlBase64ToUint8Array(base64String) {
+    const padding = '='.repeat((4 - base64String.length % 4) % 4);
+    const base64 = (base64String + padding)
+        .replace(/-/g, '+')
+        .replace(/_/g, '/');
+    
+    const rawData = window.atob(base64);
+    const outputArray = new Uint8Array(rawData.length);
+    
+    for (let i = 0; i < rawData.length; ++i) {
+        outputArray[i] = rawData.charCodeAt(i);
+    }
+    return outputArray;
+}
+
+/**
+ * Save push subscription to Firestore
+ */
+async function savePushSubscription(subscription) {
+    if (!appState.currentUser || !appState.currentTeamId) {
+        console.log('[Push] No user or team, skipping subscription save');
+        return;
+    }
+    
+    try {
+        const subscriptionData = {
+            endpoint: subscription.endpoint || 'local',
+            keys: subscription.keys ? {
+                p256dh: subscription.keys.p256dh || '',
+                auth: subscription.keys.auth || ''
+            } : {},
+            userId: appState.currentUser.uid,
+            teamId: appState.currentTeamId,
+            createdAt: firebase.firestore.FieldValue.serverTimestamp(),
+            userAgent: navigator.userAgent
+        };
+        
+        // Store in user's push subscriptions collection
+        await db.collection('users')
+            .doc(appState.currentUser.uid)
+            .collection('pushSubscriptions')
+            .doc('web')
+            .set(subscriptionData, { merge: true });
+        
+        console.log('[Push] Subscription saved to Firestore');
+    } catch (error) {
+        console.error('[Push] Failed to save subscription:', error);
+    }
+}
+
+/**
+ * Check and update push notification UI status
+ */
+async function updatePushNotificationStatus() {
+    const statusEl = document.getElementById('pushNotifStatus');
+    const btnEl = document.getElementById('enablePushBtn');
+    
+    if (!statusEl || !btnEl) return;
+    
+    // Check if supported
+    if (!('PushManager' in window) || !('serviceWorker' in navigator)) {
+        statusEl.textContent = 'Not supported';
+        btnEl.disabled = true;
+        btnEl.innerHTML = '<i class="fas fa-times"></i> Not Supported';
+        return;
+    }
+    
+    // Check permission status
+    if (Notification.permission === 'granted') {
+        statusEl.textContent = 'Enabled';
+        btnEl.innerHTML = '<i class="fas fa-check"></i> Enabled';
+        btnEl.disabled = true;
+        btnEl.classList.add('success');
+    } else if (Notification.permission === 'denied') {
+        statusEl.textContent = 'Blocked';
+        btnEl.innerHTML = '<i class="fas fa-ban"></i> Blocked';
+        btnEl.disabled = true;
+    } else {
+        statusEl.textContent = 'Not enabled';
+        btnEl.innerHTML = '<i class="fas fa-bell"></i> Enable';
+        btnEl.disabled = false;
+    }
+}
+
+/**
+ * Send a test push notification (local)
+ */
+function sendTestNotification(title = 'TeamsterX', body = 'Test notification!') {
+    if (Notification.permission !== 'granted') {
+        console.log('[Push] Permission not granted');
+        return;
+    }
+    
+    const options = {
+        body: body,
+        icon: '/img/favicon-circle.png',
+        badge: '/img/favicon-circle.png',
+        tag: 'teamsterx-test',
+        vibrate: [100, 50, 100]
+    };
+    
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+        navigator.serviceWorker.ready.then(registration => {
+            registration.showNotification(title, options);
+        });
+    } else {
+        new Notification(title, options);
+    }
+}
+
+// Initialize push notifications on load
+document.addEventListener('DOMContentLoaded', () => {
+    // Register service worker early
+    if ('serviceWorker' in navigator) {
+        registerServiceWorker();
+    }
+    
+    // Update UI status when settings tab is opened
+    setTimeout(updatePushNotificationStatus, 1000);
+});
+
+// Make functions globally available
+window.requestPushPermission = requestPushPermission;
+window.sendTestNotification = sendTestNotification;
 
 // ===================================
 // EXPORT FOR TESTING (if needed)

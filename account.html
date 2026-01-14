@@ -4,48 +4,19 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Teamster - Account</title>
+    <script>
+        // Localhost safety: static servers (e.g., VS Code Live Server) don't rewrite /account to /account.html
+        if ((location.hostname === 'localhost' || location.hostname === '127.0.0.1') && location.pathname === '/account') {
+            location.replace('/account.html' + location.search + location.hash);
+        }
+    </script>
     <link rel="stylesheet" href="auth.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.4.0/css/all.min.css">
     <script src="https://unpkg.com/lucide@latest"></script>
 </head>
 <body>
     <div class="auth-container">
-        <!-- Left Side - Branding -->
-        <div class="auth-brand">
-            <div class="brand-content">
-                <!-- Orbiting Icons Container -->
-                <div class="orbit-container">
-                    <!-- Center Logo -->
-                    <div class="center-logo">
-                        <img src="img/logo.png" alt="Teamster" class="brand-logo-img-large" onerror="this.style.display='none'; this.nextElementSibling.style.display='flex';">
-                        <div class="brand-logo-fallback-large" style="display: none;">
-                            <span class="logo-t">T</span>
-                        </div>
-                    </div>
-                    
-                    <!-- Orbiting Icons -->
-                    <div class="orbit-ring">
-                        <div class="orbit-icon orbit-icon-1">
-                            <i class="fas fa-comments"></i>
-                        </div>
-                        <div class="orbit-icon orbit-icon-2">
-                            <i class="fas fa-calendar-alt"></i>
-                        </div>
-                        <div class="orbit-icon orbit-icon-3">
-                            <i class="fas fa-table-list"></i>
-                        </div>
-                        <div class="orbit-icon orbit-icon-4">
-                            <i class="fas fa-chart-line"></i>
-                        </div>
-                    </div>
-                </div>
-                
-                <h1>Work better, together</h1>
-                <p>Streamlined collaboration for teams that move fast.</p>
-            </div>
-        </div>
-
-        <!-- Right Side - Authentication Forms -->
+        <!-- Left Side - Authentication Forms (65%) -->
         <div class="auth-forms">
             <div class="form-container">
                 <!-- Logo for mobile/single column view -->
@@ -60,25 +31,23 @@
                 <div class="auth-form active" id="signInForm">
                     <div class="form-header">
                         <h2>Welcome back</h2>
-                        <p>Sign in to your account</p>
+                        <p>Welcome back! Please enter your details.</p>
                     </div>
 
                     <form id="emailSignInForm">
                         <div class="form-group">
                             <label for="signInEmail">
-                                <i class="fas fa-envelope"></i>
-                                Email Address
+                                Enter your email
                             </label>
                             <input type="email" id="signInEmail" required placeholder="Enter your email">
                         </div>
 
                         <div class="form-group">
                             <label for="signInPassword">
-                                <i class="fas fa-lock"></i>
                                 Password
                             </label>
                             <div class="password-input-wrapper">
-                                <input type="password" id="signInPassword" required placeholder="Enter your password">
+                                <input type="password" id="signInPassword" required placeholder="Password">
                                 <button type="button" class="password-toggle" onclick="togglePassword('signInPassword')">
                                     <i data-lucide="eye-off"></i>
                                 </button>
@@ -94,23 +63,26 @@
                         </div>
 
                         <button type="submit" class="btn-primary btn-full">
-                            <i class="fas fa-sign-in-alt"></i>
-                            Sign In
+                            Log in
                         </button>
                     </form>
 
-                    <div class="form-footer">
-                        <p>Don't have an account?</p>
-                        <button class="btn-signup-visible" id="showSignUpBtn">
-                            <i class="fas fa-user-plus"></i>
-                            Create Account
-                        </button>
-                        <div class="form-footer-links">
-                            <button class="link-button" id="googleSignInBtn">
-                                <i class="fab fa-google"></i>
-                                Sign in with Google
-                            </button>
-                        </div>
+                    <div class="auth-divider">
+                        <span>or</span>
+                    </div>
+
+                    <button type="button" class="btn-google" id="googleSignInBtn">
+                        <svg width="18" height="18" viewBox="0 0 18 18" xmlns="http://www.w3.org/2000/svg">
+                            <path d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z" fill="#4285F4"/>
+                            <path d="M9 18c2.43 0 4.467-.806 5.956-2.18l-2.908-2.259c-.806.54-1.837.86-3.048.86-2.344 0-4.328-1.584-5.036-3.711H.957v2.332A8.997 8.997 0 0 0 9 18z" fill="#34A853"/>
+                            <path d="M3.964 10.71A5.41 5.41 0 0 1 3.682 9c0-.593.102-1.17.282-1.71V4.958H.957A8.996 8.996 0 0 0 0 9c0 1.452.348 2.827.957 4.042l3.007-2.332z" fill="#FBBC05"/>
+                            <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 0 0 .957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
+                        </svg>
+                        Sign in with Google
+                    </button>
+
+                    <div class="form-footer-inline">
+                        <p>Don't have an account? <a href="#" id="showSignUpBtn">Sign up</a></p>
                     </div>
                 </div>
 
@@ -124,7 +96,6 @@
                     <form id="emailSignUpForm">
                         <div class="form-group">
                             <label for="signUpName">
-                                <i class="fas fa-user"></i>
                                 Full Name
                             </label>
                             <input type="text" id="signUpName" required placeholder="Enter your full name">
@@ -132,7 +103,6 @@
 
                         <div class="form-group">
                             <label for="signUpEmail">
-                                <i class="fas fa-envelope"></i>
                                 Email Address
                             </label>
                             <input type="email" id="signUpEmail" required placeholder="Enter your email">
@@ -140,7 +110,6 @@
 
                         <div class="form-group">
                             <label for="signUpPassword">
-                                <i class="fas fa-lock"></i>
                                 Password
                             </label>
                             <div class="password-input-wrapper">
@@ -154,7 +123,6 @@
 
                         <div class="form-group">
                             <label for="signUpPasswordConfirm">
-                                <i class="fas fa-lock"></i>
                                 Confirm Password
                             </label>
                             <div class="password-input-wrapper">
@@ -173,23 +141,12 @@
                         </div>
 
                         <button type="submit" class="btn-primary btn-full">
-                            <i class="fas fa-user-plus"></i>
                             Create Account
                         </button>
                     </form>
 
-                    <div class="form-footer">
-                        <p>Already have an account?</p>
-                        <button class="btn-signin-visible" id="showSignInBtn">
-                            <i class="fas fa-sign-in-alt"></i>
-                            Sign In
-                        </button>
-                        <div class="form-footer-links">
-                            <button class="link-button" id="googleSignUpBtn">
-                                <i class="fab fa-google"></i>
-                                Sign up with Google
-                            </button>
-                        </div>
+                    <div class="form-footer-inline">
+                        <p>Already have an account? <a href="#" id="showSignInBtn">Sign in</a></p>
                     </div>
                 </div>
 
@@ -203,19 +160,17 @@
                     <form id="emailResetForm">
                         <div class="form-group">
                             <label for="resetEmail">
-                                <i class="fas fa-envelope"></i>
                                 Email Address
                             </label>
                             <input type="email" id="resetEmail" required placeholder="Enter your email">
                         </div>
 
                         <button type="submit" class="btn-primary btn-full">
-                            <i class="fas fa-paper-plane"></i>
                             Send Reset Link
                         </button>
                     </form>
 
-                    <div class="form-footer">
+                    <div class="form-footer-inline">
                         <p><a href="#" id="backToSignInBtn">Back to Sign In</a></p>
                     </div>
                 </div>
@@ -234,6 +189,203 @@
             <div class="loading-overlay" id="loadingOverlay">
                 <div class="spinner"></div>
                 <p>Please wait...</p>
+            </div>
+        </div>
+
+        <!-- Right Side - Preview Panel (35%) -->
+        <div class="auth-brand">
+            <!-- Rotating Preview Sections -->
+            <div class="preview-carousel">
+                
+                <!-- Section 1: Tasks -->
+                <div class="preview-section active" data-section="tasks">
+                    <div class="section-header">
+                        <i class="fas fa-tasks"></i>
+                        <span>Tasks</span>
+                    </div>
+                    <div class="glass-card tasks-card">
+                        <div class="task-item">
+                            <div class="task-check completed">
+                                <i class="fas fa-check"></i>
+                            </div>
+                            <div class="task-content">
+                                <span class="task-title">Design system update</span>
+                            </div>
+                            <div class="task-priority high"></div>
+                        </div>
+                        <div class="task-item">
+                            <div class="task-check">
+                                <i class="fas fa-check"></i>
+                            </div>
+                            <div class="task-content">
+                                <span class="task-title">API integration</span>
+                            </div>
+                            <div class="task-priority medium"></div>
+                        </div>
+                        <div class="task-item">
+                            <div class="task-check">
+                                <i class="fas fa-check"></i>
+                            </div>
+                            <div class="task-content">
+                                <span class="task-title">User testing</span>
+                            </div>
+                            <div class="task-priority low"></div>
+                        </div>
+                    </div>
+                    <div class="preview-stats-row">
+                        <div class="mini-stat">
+                            <span class="mini-stat-value">12</span>
+                            <span class="mini-stat-label">Active</span>
+                        </div>
+                        <div class="mini-stat">
+                            <span class="mini-stat-value">8</span>
+                            <span class="mini-stat-label">Done</span>
+                        </div>
+                        <div class="mini-stat">
+                            <span class="mini-stat-value">3</span>
+                            <span class="mini-stat-label">Urgent</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Section 2: Team Pulse -->
+                <div class="preview-section" data-section="team">
+                    <div class="section-header">
+                        <i class="fas fa-users"></i>
+                        <span>Team</span>
+                    </div>
+                    <div class="glass-card team-card">
+                        <div class="team-avatars">
+                            <div class="avatar" style="background: linear-gradient(135deg, #667eea, #764ba2);">J</div>
+                            <div class="avatar" style="background: linear-gradient(135deg, #f093fb, #f5576c);">S</div>
+                            <div class="avatar" style="background: linear-gradient(135deg, #4facfe, #00f2fe);">M</div>
+                            <div class="avatar" style="background: linear-gradient(135deg, #43e97b, #38f9d7);">A</div>
+                            <div class="avatar" style="background: linear-gradient(135deg, #fa709a, #fee140);">K</div>
+                        </div>
+                        <div class="team-status">
+                            <div class="status-dot online"></div>
+                            <span>4 members online</span>
+                        </div>
+                        <div class="activity-feed">
+                            <div class="activity-item">
+                                <div class="activity-dot"></div>
+                                <span>Sarah updated project</span>
+                            </div>
+                            <div class="activity-item">
+                                <div class="activity-dot"></div>
+                                <span>Mike joined call</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="preview-stats-row">
+                        <div class="mini-stat">
+                            <span class="mini-stat-value">24</span>
+                            <span class="mini-stat-label">Members</span>
+                        </div>
+                        <div class="mini-stat">
+                            <span class="mini-stat-value">6</span>
+                            <span class="mini-stat-label">Teams</span>
+                        </div>
+                        <div class="mini-stat">
+                            <span class="mini-stat-value">98%</span>
+                            <span class="mini-stat-label">Active</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Section 3: Metrics -->
+                <div class="preview-section" data-section="metrics">
+                    <div class="section-header">
+                        <i class="fas fa-chart-line"></i>
+                        <span>Metrics</span>
+                    </div>
+                    <div class="glass-card metrics-card">
+                        <div class="chart-container">
+                            <svg viewBox="0 0 200 80" class="line-chart">
+                                <defs>
+                                    <linearGradient id="chartGradient" x1="0%" y1="0%" x2="0%" y2="100%">
+                                        <stop offset="0%" style="stop-color:#4ade80;stop-opacity:0.3"/>
+                                        <stop offset="100%" style="stop-color:#4ade80;stop-opacity:0"/>
+                                    </linearGradient>
+                                </defs>
+                                <path d="M0 70 L20 60 L40 65 L60 45 L80 50 L100 35 L120 40 L140 25 L160 30 L180 15 L200 10 L200 80 L0 80 Z" 
+                                      fill="url(#chartGradient)"/>
+                                <path d="M0 70 L20 60 L40 65 L60 45 L80 50 L100 35 L120 40 L140 25 L160 30 L180 15 L200 10" 
+                                      stroke="#4ade80" stroke-width="2.5" fill="none" stroke-linecap="round"/>
+                            </svg>
+                            <div class="chart-badge">
+                                <i class="fas fa-arrow-up"></i>
+                                <span>+24%</span>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="preview-stats-row">
+                        <div class="mini-stat mint">
+                            <span class="mini-stat-value">94%</span>
+                            <span class="mini-stat-label">Retention</span>
+                        </div>
+                        <div class="mini-stat">
+                            <span class="mini-stat-value">87%</span>
+                            <span class="mini-stat-label">Engage</span>
+                        </div>
+                        <div class="mini-stat">
+                            <span class="mini-stat-value">2.1%</span>
+                            <span class="mini-stat-label">Churn</span>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Section 4: Finances -->
+                <div class="preview-section" data-section="finances">
+                    <div class="section-header">
+                        <i class="fas fa-dollar-sign"></i>
+                        <span>Revenue</span>
+                    </div>
+                    <div class="glass-card finance-card">
+                        <div class="balance-display">
+                            <span class="balance-label">Total Balance</span>
+                            <span class="balance-amount">$48,250</span>
+                        </div>
+                        <div class="bar-chart">
+                            <div class="bar" style="height: 45%"><span>M</span></div>
+                            <div class="bar" style="height: 65%"><span>T</span></div>
+                            <div class="bar" style="height: 55%"><span>W</span></div>
+                            <div class="bar active" style="height: 85%"><span>T</span></div>
+                            <div class="bar" style="height: 70%"><span>F</span></div>
+                            <div class="bar" style="height: 40%"><span>S</span></div>
+                            <div class="bar" style="height: 30%"><span>S</span></div>
+                        </div>
+                    </div>
+                    <div class="preview-stats-row">
+                        <div class="mini-stat mint">
+                            <span class="mini-stat-value">+18%</span>
+                            <span class="mini-stat-label">Growth</span>
+                        </div>
+                        <div class="mini-stat">
+                            <span class="mini-stat-value">$12k</span>
+                            <span class="mini-stat-label">Weekly</span>
+                        </div>
+                        <div class="mini-stat">
+                            <span class="mini-stat-value">156</span>
+                            <span class="mini-stat-label">Orders</span>
+                        </div>
+                    </div>
+                </div>
+
+            </div>
+
+            <!-- Section Indicators -->
+            <div class="carousel-indicators">
+                <div class="indicator active" data-target="tasks"></div>
+                <div class="indicator" data-target="team"></div>
+                <div class="indicator" data-target="metrics"></div>
+                <div class="indicator" data-target="finances"></div>
+            </div>
+
+            <!-- Footer Text -->
+            <div class="preview-footer">
+                <h3>Your workspace, elevated</h3>
+                <p>Everything your team needs in one place</p>
             </div>
         </div>
     </div>
@@ -300,6 +452,55 @@
             // Re-render the icon
             lucide.createIcons();
         };
+
+        // Preview Carousel Rotation
+        (function() {
+            const sections = document.querySelectorAll('.preview-section');
+            const indicators = document.querySelectorAll('.carousel-indicators .indicator');
+            let currentIndex = 0;
+            const totalSections = sections.length;
+            
+            function showSection(index) {
+                // Hide all sections
+                sections.forEach(section => {
+                    section.classList.remove('active', 'exit');
+                });
+                
+                // Update indicators
+                indicators.forEach(ind => ind.classList.remove('active'));
+                
+                // Show target section
+                sections[index].classList.add('active');
+                indicators[index].classList.add('active');
+            }
+            
+            function nextSection() {
+                const prevIndex = currentIndex;
+                currentIndex = (currentIndex + 1) % totalSections;
+                
+                // Add exit animation to current
+                sections[prevIndex].classList.add('exit');
+                
+                // After short delay, show next
+                setTimeout(() => {
+                    showSection(currentIndex);
+                }, 150);
+            }
+            
+            // Auto-rotate every 4 seconds
+            setInterval(nextSection, 4000);
+            
+            // Click on indicators
+            indicators.forEach((indicator, index) => {
+                indicator.addEventListener('click', () => {
+                    if (index !== currentIndex) {
+                        sections[currentIndex].classList.add('exit');
+                        currentIndex = index;
+                        setTimeout(() => showSection(currentIndex), 150);
+                    }
+                });
+            });
+        })();
     </script>
 </body>
 </html>

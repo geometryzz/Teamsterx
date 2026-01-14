@@ -1,38 +1,9 @@
 {
   "firestore": {
-    "rules": "firestore.rules"
+    "rules": "firestore.rules",
+    "indexes": "firestore.indexes.json"
   },
-  "hosting": {
-    "public": ".",
-    "ignore": [
-      "firebase.json",
-      "**/.*",
-      "**/node_modules/**"
-    ],
-    "rewrites": [
-      {
-        "source": "/app",
-        "destination": "/index.html"
-      },
-      {
-        "source": "/app/**",
-        "destination": "/index.html"
-      },
-      {
-        "source": "/home",
-        "destination": "/index.html"
-      }
-    ],
-    "headers": [
-      {
-        "source": "/home/**",
-        "headers": [
-          {
-            "key": "Cache-Control",
-            "value": "public, max-age=3600"
-          }
-        ]
-      }
-    ]
+  "storage": {
+    "rules": "storage.rules"
   }
 }
