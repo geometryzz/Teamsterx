@@ -2601,6 +2601,30 @@ body.dark-mode .chat-filter-toggle .filter-btn.active {
     color: var(--accent);
 }
 
+@media (max-width: 768px) {
+    /* Pillier reactions on mobile for clearer tap targets */
+    .reactions-bar {
+        border-radius: 999px;
+        padding: 10px 16px;
+        gap: 8px;
+    }
+
+    .reaction-emoji-btn {
+        width: 40px;
+        height: 40px;
+    }
+
+    .message-reactions-display {
+        gap: 8px;
+    }
+
+    .reaction-chip {
+        border-radius: 999px;
+        padding: 6px 12px;
+        font-size: 13px;
+    }
+}
+
 /* Make message content relative for positioning action buttons */
 .message-content {
     position: relative;
@@ -2857,35 +2881,38 @@ body.dark-mode .reaction-chip.user-reacted {
     
     /* Reactions mobile */
     .reactions-bar {
-        padding: 4px 6px;
-        border-radius: 20px;
+        padding: 10px 16px;
+        border-radius: 999px;
+        gap: 8px;
     }
     
     .reaction-emoji-btn {
-        width: 28px;
-        height: 28px;
-        font-size: 16px;
+        min-width: 44px;
+        height: 36px;
+        padding: 0 12px;
+        font-size: 18px;
+        border-radius: 999px;
     }
     
     .message-reactions-display {
-        gap: 4px;
-        margin-top: 4px;
+        gap: 8px;
+        margin-top: 6px;
     }
     
     .reaction-chip {
-        padding: 2px 6px;
+        padding: 6px 12px;
         border-radius: 999px;
-        font-size: 11px;
+        font-size: 13px;
         height: auto;
         line-height: 1.2;
     }
     
     .reaction-emoji {
-        font-size: 11px;
+        font-size: 13px;
     }
     
     .reaction-count {
-        font-size: 10px;
+        font-size: 11px;
     }
 }
 
@@ -3043,7 +3070,7 @@ body.dark-mode .reaction-chip.user-reacted {
     display: flex;
     flex-direction: column;
     flex: 1 1 auto;
-    overflow: visible;
+    overflow: hidden; /* Prevent container from scrolling */
     padding-bottom: 120px; /* Ensure bottom rows are visible */
 }
 
@@ -3062,6 +3089,9 @@ body.dark-mode .calendar-container {
     border-bottom: 1px solid var(--border-subtle);
     gap: 16px;
     background: var(--bg-surface);
+    flex-shrink: 0; /* Don't shrink on mobile */
+    width: 100%; /* Always viewport width */
+    overflow: hidden; /* Never scroll */
 }
 
 .calendar-title-section {
@@ -3143,6 +3173,53 @@ body.dark-mode .view-toggle-btn.active {
     font-size: 14px;
 }
 
+/* Mobile: Compact calendar header */
+@media (max-width: 768px) {
+    .calendar-header {
+        padding: 8px 12px;
+        gap: 8px;
+        flex-wrap: nowrap; /* Keep all items on one row */
+    }
+
+    .calendar-title-section {
+        flex: 0 1 auto; /* Allow shrinking, don't take full width */
+        min-width: 0;
+    }
+
+    .calendar-title {
+        font-size: 0.95rem;
+        margin: 0;
+        white-space: nowrap;
+    }
+
+    .calendar-nav-btn {
+        width: 28px;
+        height: 28px;
+        font-size: 12px;
+        flex-shrink: 0;
+    }
+
+    .calendar-view-toggle {
+        padding: 2px;
+        gap: 2px;
+        flex-shrink: 0;
+        margin-left: auto; /* Push to right edge */
+    }
+
+    .view-toggle-btn {
+        padding: 5px 10px;
+        font-size: 10px;
+        gap: 3px;
+    }
+
+    .calendar-add-btn {
+        width: 32px;
+        height: 32px;
+        font-size: 12px;
+        flex-shrink: 0;
+    }
+}
+
 .calendar-nav-btn:hover {
     background: var(--light-gray);
     color: var(--text-main);
@@ -3195,8 +3272,8 @@ body.dark-mode .calendar-nav-btn:hover {
     flex: 1;
     border: none;
     border-radius: 0;
-    overflow: visible;
-    min-height: calc(100vh - 280px); /* Ensure full month grid is visible */
+    overflow: visible; /* Allow content to be visible */
+    min-height: auto; /* Remove fixed min-height */
     background: transparent;
     gap: 0px;
     padding-bottom: 80px; /* Extra breathing room below calendar */
@@ -3244,10 +3321,18 @@ body.dark-mode .calendar-day-header:nth-child(7) {
 
 #calendarDays {
     display: contents;
+    /* Ensures calendar days flow directly in parent grid */
 }
 
 #calendarDays:has(.week-colview) {
     display: block;
+}
+
+/* Force calendar days to be direct grid children */
+#calendarDays > .calendar-day {
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
 }
 
 /* Calendar Day Cell - Month View - macOS Style */
@@ -3265,6 +3350,66 @@ body.dark-mode .calendar-day-header:nth-child(7) {
     background-clip: padding-box;
     overflow: hidden;
     position: relative;
+}
+
+/* Mobile/Tablet: larger day tiles with horizontal scroll */
+@media (max-width: 900px) {
+    .calendar-container {
+        overflow-x: auto !important; /* Allow horizontal scroll */
+        overflow-y: visible !important;
+        -webkit-overflow-scrolling: touch;
+        display: flex;
+        flex-direction: column;
+    }
+
+    /* Header stays fixed at viewport width, never scrolls */
+    .calendar-header {
+        position: sticky;
+        top: 0;
+        left: 0;
+        width: 100%;
+        max-width: 100vw;
+        z-index: 10;
+        background: var(--bg-surface);
+        box-sizing: border-box;
+    }
+
+    .calendar-grid {
+        display: grid !important; /* Force grid layout */
+        grid-template-columns: repeat(7, 140px) !important; /* Fixed width columns */
+        overflow: visible !important; /* Let container handle scroll */
+        width: max-content;
+        min-width: calc(7 * 140px);
+        gap: 4px;
+        padding: 10px;
+        min-height: auto;
+        padding-bottom: 60px;
+    }
+
+    .calendar-day-header {
+        min-width: 140px;
+        width: 140px;
+        padding: 10px;
+        font-size: 12px;
+    }
+
+    .calendar-day {
+        min-width: 140px;
+        width: 140px;
+        min-height: 110px;
+        padding: 8px 10px;
+        border-radius: 10px;
+    }
+    
+    /* Ensure calendarDays children flow into grid */
+    #calendarDays {
+        display: contents !important;
+    }
+    
+    #calendarDays > .calendar-day {
+        min-width: 140px;
+        width: 140px;
+    }
 }
 
 /* Weekend columns - subtle gray background */
@@ -4651,14 +4796,27 @@ body.dark-mode .day-event-time {
     color: var(--accent);
 }
 
-/* Responsive: Show mobile view on small screens */
+/* Responsive: mobile week view uses day agenda */
 @media (max-width: 899px) {
+    /* Hide column view on small screens */
     .week-colview {
-        display: none;
+        display: none !important;
     }
-    
+
+    /* Make sure the mobile agenda is visible and full width */
     .day-agenda {
-        display: flex;
+        display: flex !important;
+    }
+
+    .calendar-grid:has(.day-agenda) {
+        display: block;
+        width: 100%;
+        padding: 0;
+        overflow: visible;
+    }
+
+    #calendarDays:has(.day-agenda) {
+        display: block;
     }
 }
 
@@ -9408,13 +9566,14 @@ body.dark-mode .dropdown-menu-option.active {
         left: 0;
         right: 0;
         width: 100%;
-        height: var(--bottom-nav-height);
+        height: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom, 0px));
         flex-direction: row;
         border-right: none;
         border-top: 1px solid var(--border-subtle);
         border-radius: 0;
         padding: 0;
-        padding-bottom: env(safe-area-inset-bottom); /* iOS home indicator safe area */
+        padding-bottom: env(safe-area-inset-bottom, 0px); /* iOS home indicator safe area */
+        box-sizing: border-box;
         z-index: 9000; /* High z-index to stay above content but below modals */
         background: var(--bg-surface-soft);
         backdrop-filter: blur(20px);
@@ -9544,9 +9703,9 @@ body.dark-mode .dropdown-menu-option.active {
         padding-bottom: calc(var(--bottom-nav-height) + env(safe-area-inset-bottom) + 20px);
     }
 
-    /* Calendar section needs horizontal scroll for cut-off dates */
+    /* Calendar section should not scroll, only grid inside */
     #calendar-section {
-        overflow-x: auto;
+        overflow-x: hidden;
     }
     
     /* Section headers - full width edge to edge */
@@ -9770,22 +9929,35 @@ body.dark-mode .dropdown-menu-option.active {
     
     /* Calendar section mobile scroll */
     #calendar-section {
-        overflow-y: auto;
-        overflow-x: auto; /* Allow horizontal scroll when calendar is wider than screen */
+        overflow-y: auto; /* Allow vertical scrolling */
+        overflow-x: hidden; /* Section never scrolls horizontally */
         -webkit-overflow-scrolling: touch;
-        padding-bottom: 240px; /* Extra scroll room to avoid cutoff */
+        padding-bottom: 120px; /* Extra scroll room to avoid cutoff */
     }
     
     #calendar-section .calendar-container {
-        overflow: visible;
+        overflow: hidden; /* Container doesn't scroll */
         height: auto;
         max-height: none;
         min-height: auto;
-        min-width: min-content; /* Allow calendar to expand beyond screen width */
+        width: 100%; /* Container is viewport width */
+        max-width: 100vw;
+    }
+    
+    #calendar-section .calendar-header {
+        width: 100%; /* Header is always full viewport width */
+        max-width: 100vw;
+        overflow: hidden;
+        position: sticky;
+        top: 0;
+        left: 0;
+        z-index: 10;
+        background: var(--bg-surface);
     }
     
     #calendar-section .calendar-grid {
-        min-width: 320px; /* Minimum width to prevent too much squishing */
+        overflow-x: auto; /* Only grid scrolls horizontally */
+        -webkit-overflow-scrolling: touch;
     }
     
     /* Calendar view toggle mobile - keep compact */
@@ -18295,12 +18467,12 @@ body.dark-mode .doc-private-badge {
     box-shadow: 0 4px 12px rgba(0, 0, 0, 0.1);
     min-width: 160px;
     padding: 4px;
-    z-index: 100;
-    display: none;
+    z-index: 10000;
+    display: none !important;
 }
 
 .doc-format-dropdown.visible {
-    display: block;
+    display: block !important;
 }
 
 .doc-format-option {
@@ -28332,5 +28504,121 @@ button span + i,
 
     .search-bar.expanded .search-clear {
         display: flex;
+    }
+}
+
+/* ===================================
+   FINAL MOBILE CALENDAR FIXES
+   =================================== */
+
+/* MONTH VIEW - Mobile: scrollable grid with square day cells */
+@media (max-width: 900px) {
+    /* Calendar container must allow horizontal scroll */
+    .calendar-container {
+        overflow-x: auto !important;
+        overflow-y: visible !important;
+        -webkit-overflow-scrolling: touch !important;
+    }
+
+    /* Month view grid layout */
+    .calendar-grid {
+        display: grid !important;
+        grid-template-columns: repeat(7, 140px) !important;
+        grid-auto-rows: auto !important;
+        gap: 4px !important;
+        padding: 6px !important;
+        width: max-content !important;
+        min-width: calc(7 * 140px + 12px) !important;
+    }
+
+    .calendar-day-header {
+        min-width: 140px !important;
+        width: 140px !important;
+        padding: 6px !important;
+    }
+
+    #calendarDays {
+        display: contents !important;
+    }
+
+    #calendarDays > .calendar-day {
+        min-width: 140px !important;
+        width: 140px !important;
+        min-height: 140px !important;
+        height: 140px !important;
+        border-radius: 12px !important;
+        padding: 8px !important;
+    }
+
+    /* WEEK VIEW - Mobile: full-width agenda, NOT inside grid */
+    .calendar-grid:has(.day-agenda) {
+        display: block !important;
+        width: 100% !important;
+        min-width: 100% !important;
+        padding: 0 !important;
+        overflow: visible !important;
+    }
+
+    #calendarDays:has(.day-agenda) {
+        display: block !important;
+        width: 100% !important;
+    }
+
+    .day-agenda {
+        display: flex !important;
+        flex-direction: column !important;
+        width: 100% !important;
+        min-height: 60vh !important;
+    }
+
+    /* Hide column view on mobile, show agenda */
+    .week-colview {
+        display: none !important;
+    }
+}
+
+/* WEEK VIEW - Desktop and all sizes: when week content is present, no grid */
+.calendar-grid:has(.day-agenda),
+.calendar-grid:has(.week-colview),
+.calendar-grid:has(.week-view-scroll-container) {
+    display: block !important;
+    width: 100% !important;
+    padding: 0 !important;
+    overflow: visible !important;
+}
+
+#calendarDays:has(.day-agenda),
+#calendarDays:has(.week-colview),
+#calendarDays:has(.week-view-scroll-container) {
+    display: block !important;
+    width: 100% !important;
+}
+
+.week-view-scroll-container {
+    width: 100% !important;
+    max-height: 70vh !important;
+    overflow: auto !important;
+}
+
+/* Day agenda full size */
+.day-agenda {
+    width: 100%;
+}
+
+@media (max-width: 480px) {
+    .calendar-grid {
+        grid-template-columns: repeat(7, 100px) !important;
+    }
+
+    .calendar-day-header {
+        min-width: 100px !important;
+        width: 100px !important;
+    }
+
+    #calendarDays > .calendar-day {
+        min-width: 100px !important;
+        width: 100px !important;
+        min-height: 100px !important;
+        height: 100px !important;
     }
 }
