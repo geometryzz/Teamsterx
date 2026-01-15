@@ -1375,6 +1375,9 @@ async function initializeFirebaseAuth() {
                 currentAuthUser = user;
                 updateUserProfile(user);
                 console.log('✅ User authenticated');
+
+                // Sync theme from account so devices stay consistent
+                syncThemeAfterLogin();
                 
                 // === PHASE 4 & 8: Sync public profile using SAVED displayName, not auth displayName ===
                 // This ensures the publicProfile always reflects the user's chosen name
@@ -2221,7 +2224,7 @@ let reactionsState = {
 let typingState = {
     lastTypingUpdate: 0,          // Timestamp of last Firestore typing update
     typingThrottleMs: 700,        // Throttle typing updates to reduce Firestore writes
-    typingTimeoutMs: 2000,        // Consider user stopped typing after 2s
+    typingTimeoutMs: 4000,        // Consider user stopped typing after 4s
     unsubscribeTyping: null,      // Firestore listener unsubscribe function
     currentlyTyping: new Map()    // Map of userId -> {displayName, updatedAt}
 };
@@ -2252,7 +2255,9 @@ async function updateTypingStatus() {
         await setDoc(typingRef, {
             userId: currentAuthUser.uid,
             displayName: identity.displayName,
-            updatedAt: serverTimestamp()
+            updatedAt: serverTimestamp(),
+            // Client-side timestamp so listeners render immediately while server timestamp resolves
+            clientUpdatedAt: now
         });
         
     } catch (error) {
@@ -2306,12 +2311,16 @@ async function subscribeToTypingIndicator() {
                 // Skip current user
                 if (data.userId === currentAuthUser?.uid) return;
                 
-                // Check if typing entry is stale (older than 2 seconds)
-                const updatedAt = data.updatedAt?.toMillis ? data.updatedAt.toMillis() : 0;
-                if (now - updatedAt < typingState.typingTimeoutMs) {
+                // Check if typing entry is stale (older than typingTimeoutMs)
+                const updatedAt = typeof data.updatedAt?.toMillis === 'function'
+                    ? data.updatedAt.toMillis()
+                    : (typeof data.updatedAt === 'number' ? data.updatedAt : (data.clientUpdatedAt || 0));
+
+                const freshTimestamp = updatedAt || now;
+                if (now - freshTimestamp < typingState.typingTimeoutMs) {
                     typingState.currentlyTyping.set(data.userId, {
                         displayName: data.displayName,
-                        updatedAt: updatedAt
+                        updatedAt: freshTimestamp
                     });
                 }
             });
@@ -4216,8 +4225,12 @@ function initCalendar() {
         prevMonthBtn.addEventListener('click', () => {
             if (appState.calendarView === 'month') {
                 appState.currentDate.setMonth(appState.currentDate.getMonth() - 1);
+                // Lazy load events for the new month when navigating backwards
+                loadEventsForMonth(appState.currentDate);
             } else {
                 appState.currentDate.setDate(appState.currentDate.getDate() - 7);
+                // Lazy load events if week view goes to a new month
+                loadEventsForMonth(appState.currentDate);
             }
             renderCalendar();
         });
@@ -11180,11 +11193,24 @@ function initTasks() {
             }
         });
         
-        // Handle paste - sanitize content
+        // Handle paste - preserve HTML formatting
         editor.addEventListener('paste', (e) => {
             e.preventDefault();
+            // Try to get HTML first, fall back to plain text
+            const html = e.clipboardData?.getData('text/html');
             const text = e.clipboardData?.getData('text/plain') || '';
-            document.execCommand('insertText', false, text);
+            
+            if (html) {
+                // Sanitize and insert HTML to preserve formatting
+                const sanitized = DOMPurify.sanitize(html, {
+                    ALLOWED_TAGS: ['p', 'br', 'b', 'strong', 'i', 'em', 'u', 'strike', 's', 'del', 'a', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'pre', 'code', 'span', 'div', 'sub', 'sup'],
+                    ALLOWED_ATTR: ['href', 'target', 'rel', 'style'],
+                    ALLOW_DATA_ATTR: false
+                });
+                document.execCommand('insertHTML', false, sanitized);
+            } else {
+                document.execCommand('insertText', false, text);
+            }
         });
     }
     
@@ -12113,8 +12139,29 @@ function initTasks() {
         
         if (!trigger || !dropdown) return;
         
+        // Prevent duplicate initialization
+        if (trigger.dataset.initialized === 'true') return;
+        trigger.dataset.initialized = 'true';
+        
         // Store saved selection for format dropdown
         let savedFormatRange = null;
+        
+        // Normalize any selected headings back to paragraphs
+        function normalizeSelectionToParagraph(editor, range) {
+            if (!editor || !range) return;
+            const headings = editor.querySelectorAll('h1, h2, h3, h4, h5, h6');
+            headings.forEach(h => {
+                try {
+                    if (range.intersectsNode(h)) {
+                        const p = document.createElement('p');
+                        p.innerHTML = h.innerHTML;
+                        h.replaceWith(p);
+                    }
+                } catch (err) {
+                    console.warn('Normalize heading failed', err);
+                }
+            });
+        }
         
         // Helper to check if range is inside editor
         function isRangeInsideEditor(range, editor) {
@@ -12125,7 +12172,10 @@ function initTasks() {
         
         // Toggle dropdown and save selection
         trigger.addEventListener('click', (e) => {
+            e.preventDefault();
             e.stopPropagation();
+            e.stopImmediatePropagation();
+            
             const editor = document.getElementById('docEditor');
             
             // Save current selection if inside editor
@@ -12137,16 +12187,22 @@ function initTasks() {
                 }
             }
             
-            dropdown.classList.toggle('visible');
+            // Explicit toggle
+            const isVisible = dropdown.classList.contains('visible');
+            if (isVisible) {
+                dropdown.classList.remove('visible');
+            } else {
+                dropdown.classList.add('visible');
+            }
         });
         
-        // Close on outside click (clear saved range)
+        // Close on outside click (don't clear saved range to allow reopening)
         document.addEventListener('click', (e) => {
             if (!dropdown.contains(e.target) && !trigger.contains(e.target)) {
                 dropdown.classList.remove('visible');
-                savedFormatRange = null;
+                // Don't clear savedFormatRange here so dropdown can be reopened
             }
-        });
+        }, true); // Use capture phase
         
         // Format options
         dropdown.querySelectorAll('.doc-format-option').forEach(option => {
@@ -12173,8 +12229,14 @@ function initTasks() {
                     console.warn('Format command failed:', e);
                 }
                 
-                // Update label only if command succeeded
-                if (success && label) {
+                // If switching to Normal, force any selected headings back to <p>
+                if (format === 'p') {
+                    const currentRange = window.getSelection().rangeCount ? window.getSelection().getRangeAt(0) : null;
+                    normalizeSelectionToParagraph(editor, currentRange || savedFormatRange);
+                }
+                
+                // Update label based on requested format (even if execCommand is flaky)
+                if (label) {
                     if (format === 'p') {
                         label.textContent = 'Normal';
                     } else {
@@ -24977,20 +25039,50 @@ async function loadThemePreference() {
 function applyTheme(theme) {
     const shouldBeDark = resolveTheme(theme);
     
-    if (shouldBeDark) {
-        document.body.classList.add('dark-mode');
-    } else {
-        document.body.classList.remove('dark-mode');
+    // Apply on body + root for consistent CSS targeting
+    document.body.classList.toggle('dark-mode', shouldBeDark);
+    document.documentElement.classList.toggle('dark-mode', shouldBeDark);
+
+    // Persist dark flag for legacy paths and keep system meta in sync
+    localStorage.setItem('darkMode', shouldBeDark ? 'true' : 'false');
+    if (window.__setThemeMeta) {
+        window.__setThemeMeta(shouldBeDark);
     }
     
     // Also update settings cards immediately
     document.querySelectorAll('.settings-card').forEach(card => {
-        if (shouldBeDark) {
-            card.classList.add('dark-mode');
-        } else {
-            card.classList.remove('dark-mode');
-        }
+        card.classList.toggle('dark-mode', shouldBeDark);
     });
+}
+
+// Load the saved preference after login and apply consistently across devices
+async function syncThemeAfterLogin() {
+    if (!currentAuthUser || !db) return;
+
+    try {
+        const savedTheme = await loadThemePreference();
+        const localTheme = localStorage.getItem('themePreference') || 'system';
+        const themeToUse = savedTheme || localTheme;
+
+        // Apply immediately and persist locally for fast future loads
+        applyThemePreference(themeToUse);
+        localStorage.setItem('themePreference', themeToUse);
+
+        // Reflect selection in any rendered selectors
+        updateThemeUI(themeToUse);
+
+        // Seed Firestore if missing so new devices stay in sync (silent, no toast)
+        if (!savedTheme) {
+            await updateUserPreferences({
+                appearance: {
+                    theme: themeToUse,
+                    darkMode: themeToUse === 'dark' || (themeToUse === 'system' && systemPrefersDark())
+                }
+            });
+        }
+    } catch (error) {
+        console.error('Error syncing theme after login:', error);
+    }
 }
 
 // Keep old applyDarkMode for backward compatibility with other code
@@ -28192,18 +28284,19 @@ async function saveMessageToFirestore(message) {
 
 const EVENT_FETCH_LIMIT = 400;
 
-async function loadEventsFromFirestore() {
+// Track which months have been loaded for lazy loading
+let loadedEventMonths = new Set();
+let eventsUnsubscribe = null;
+
+async function loadEventsFromFirestore(forceMonth = null) {
     if (!db || !currentAuthUser || !appState.currentTeamId) {
         console.log('Cannot load events: missing db, auth, or teamId');
         return;
     }
     
     try {
-        const { collection, query, onSnapshot, orderBy, doc, getDoc, Timestamp, limitToLast } = 
+        const { collection, query, onSnapshot, orderBy, doc, getDoc, Timestamp, where, getDocs } = 
             await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
-        
-        const eventsRef = collection(db, 'teams', appState.currentTeamId, 'events');
-        const q = query(eventsRef, orderBy('startTime', 'asc'), limitToLast(EVENT_FETCH_LIMIT));
         
         // Get user role for visibility filtering
         const teamRef = doc(db, 'teams', appState.currentTeamId);
@@ -28212,77 +28305,148 @@ async function loadEventsFromFirestore() {
         const userRole = getCurrentUserRole(teamData);
         const isAdmin = userRole === 'admin' || userRole === 'owner';
         
-        // Real-time listener
-        onSnapshot(q, (querySnapshot) => {
-            const events = [];
+        // Calculate date range: current month and next month (or forceMonth if specified)
+        const now = new Date();
+        let startDate, endDate;
+        
+        if (forceMonth) {
+            // Load specific month when navigating backwards
+            startDate = new Date(forceMonth.getFullYear(), forceMonth.getMonth(), 1);
+            endDate = new Date(forceMonth.getFullYear(), forceMonth.getMonth() + 2, 0, 23, 59, 59);
+        } else {
+            // Initial load: current month and next month
+            startDate = new Date(now.getFullYear(), now.getMonth(), 1);
+            endDate = new Date(now.getFullYear(), now.getMonth() + 2, 0, 23, 59, 59);
+        }
+        
+        const monthKey = `${startDate.getFullYear()}-${startDate.getMonth()}`;
+        
+        // Skip if this month range is already loaded (unless forced)
+        if (!forceMonth && loadedEventMonths.has(monthKey)) {
+            debugLog('Events for this month range already loaded');
+            return;
+        }
+        
+        loadedEventMonths.add(monthKey);
+        
+        const eventsRef = collection(db, 'teams', appState.currentTeamId, 'events');
+        
+        // Query events within date range
+        const q = query(
+            eventsRef, 
+            where('startTime', '>=', Timestamp.fromDate(startDate)),
+            where('startTime', '<=', Timestamp.fromDate(endDate)),
+            orderBy('startTime', 'asc')
+        );
+        
+        // One-time fetch for lazy loading (not real-time for past months)
+        if (forceMonth) {
+            const querySnapshot = await getDocs(q);
+            const newEvents = [];
+            
             querySnapshot.forEach((docSnapshot) => {
                 const data = docSnapshot.data();
-                
-                // Check visibility permissions
                 const visibility = data.visibility || 'team';
                 const isCreator = data.createdBy === currentAuthUser.uid;
                 
-                // Filter based on visibility
                 let canSee = false;
-                if (visibility === 'team') {
-                    canSee = true; // Everyone can see team events
-                } else if (visibility === 'admins') {
-                    canSee = isAdmin || isCreator; // Only admins or creator can see
-                } else if (visibility === 'private') {
-                    canSee = isCreator; // Only creator can see
-                }
+                if (visibility === 'team') canSee = true;
+                else if (visibility === 'admins') canSee = isAdmin || isCreator;
+                else if (visibility === 'private') canSee = isCreator;
                 
-                if (canSee) {
-                    events.push({
-                        id: docSnapshot.id,
-                        title: data.title,
-                        description: data.description,
-                        date: data.startTime?.toDate ? data.startTime.toDate() : new Date(data.startTime),
-                        endDate: data.endTimeStamp?.toDate ? data.endTimeStamp.toDate() : new Date(data.endTimeStamp),
-                        time: data.startTimeStr || '',
-                        endTime: data.endTimeStr || '',
-                        color: data.color || '#0078d4',
-                        visibility: visibility,
-                        // RECURRING EVENTS: Load repeat frequency and start date
-                        repeat: data.repeat || 'none',
-                        repeatStart: data.repeatStart?.toDate ? data.repeatStart.toDate() : (data.repeatStart ? new Date(data.repeatStart) : null),
-                        teamId: data.teamId,
-                        createdBy: data.createdBy,
-                        createdByName: data.createdByName
-                    });
+                if (canSee && !appState.events.find(e => e.id === docSnapshot.id)) {
+                    newEvents.push(parseEventDoc(docSnapshot));
                 }
             });
             
-            appState.events = events;
-            debugLog(`✅ Loaded ${events.length} events (filtered by visibility)`);
-            debugLog('Events:', events);
+            // Merge with existing events
+            appState.events = [...appState.events, ...newEvents];
+            debugLog(`✅ Lazy loaded ${newEvents.length} additional events`);
             
-            // Update calendar display if on calendar section
             if (typeof renderCalendar === 'function') {
-                debugLog('Calling renderCalendar to update display...');
                 renderCalendar();
-            } else {
-                debugLog('renderCalendar function not yet defined');
             }
+            return;
+        }
+        
+        // Clean up previous listener
+        if (eventsUnsubscribe) {
+            eventsUnsubscribe();
+        }
+        
+        // Real-time listener for current/future months
+        eventsUnsubscribe = onSnapshot(q, (querySnapshot) => {
+            const events = [];
+            querySnapshot.forEach((docSnapshot) => {
+                const data = docSnapshot.data();
+                const visibility = data.visibility || 'team';
+                const isCreator = data.createdBy === currentAuthUser.uid;
+                
+                let canSee = false;
+                if (visibility === 'team') canSee = true;
+                else if (visibility === 'admins') canSee = isAdmin || isCreator;
+                else if (visibility === 'private') canSee = isCreator;
+                
+                if (canSee) {
+                    events.push(parseEventDoc(docSnapshot));
+                }
+            });
             
-            // Update overview when events change
+            // Merge with any previously lazy-loaded events
+            const lazyLoadedEvents = appState.events.filter(e => {
+                const eventDate = new Date(e.date);
+                return eventDate < startDate;
+            });
+            
+            appState.events = [...lazyLoadedEvents, ...events];
+            debugLog(`✅ Loaded ${events.length} events (filtered by visibility)`);
+            
+            if (typeof renderCalendar === 'function') {
+                renderCalendar();
+            }
             updateOverview();
-            
-            // Update metrics if active
             updateMetricsIfActive();
         }, (error) => {
-            // Handle Firestore listener errors (network issues, timeouts, etc.)
             if (error.code === 'unavailable' || error.code === 'deadline-exceeded') {
                 debugLog('⚠️ Events listener temporarily unavailable, will auto-retry');
             } else {
                 console.error('Error in events snapshot listener:', error.code || error.message);
-                debugError('Full error:', error);
             }
         });
         
     } catch (error) {
         console.error('Error loading events from Firestore:', error.code || error.message);
         debugError('Full error:', error);
+    }
+}
+
+// Helper to parse event document
+function parseEventDoc(docSnapshot) {
+    const data = docSnapshot.data();
+    return {
+        id: docSnapshot.id,
+        title: data.title,
+        description: data.description,
+        date: data.startTime?.toDate ? data.startTime.toDate() : new Date(data.startTime),
+        endDate: data.endTimeStamp?.toDate ? data.endTimeStamp.toDate() : new Date(data.endTimeStamp),
+        time: data.startTimeStr || '',
+        endTime: data.endTimeStr || '',
+        color: data.color || '#0078d4',
+        visibility: data.visibility || 'team',
+        repeat: data.repeat || 'none',
+        repeatStart: data.repeatStart?.toDate ? data.repeatStart.toDate() : (data.repeatStart ? new Date(data.repeatStart) : null),
+        teamId: data.teamId,
+        createdBy: data.createdBy,
+        createdByName: data.createdByName
+    };
+}
+
+// Load events for a specific month (called when navigating backwards)
+async function loadEventsForMonth(date) {
+    const monthKey = `${date.getFullYear()}-${date.getMonth()}`;
+    if (!loadedEventMonths.has(monthKey)) {
+        debugLog(`Lazy loading events for ${date.toLocaleDateString('en-US', { month: 'long', year: 'numeric' })}`);
+        await loadEventsFromFirestore(date);
     }
 }
 
