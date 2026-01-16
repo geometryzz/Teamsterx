@@ -6076,6 +6076,7 @@ function initTasks() {
                 color: '#0070f3',
                 icon: 'fa-list-check',
                 visibility: 'team',
+                pinned: false,
                 type: 'tasks',
                 columns: ['title', 'status', 'assignee', 'priority', 'dueDate', 'progress'],
                 createdBy: currentAuthUser?.uid || null,
@@ -6103,6 +6104,11 @@ function initTasks() {
                 return s.createdBy === currentAuthUser?.uid;
             }
             return true; // team visibility or no visibility set (legacy)
+        }).sort((a, b) => {
+            const aPinned = a.pinned === true ? 1 : 0;
+            const bPinned = b.pinned === true ? 1 : 0;
+            if (aPinned !== bPinned) return bPinned - aPinned; // pinned first
+            return (a.name || '').localeCompare(b.name || '');
         });
 
         // Render spreadsheet cards
@@ -6117,6 +6123,7 @@ function initTasks() {
         const card = document.createElement('div');
         card.className = 'spreadsheet-card';
         card.dataset.spreadsheetId = spreadsheet.id;
+        const pinBadge = spreadsheet.pinned ? '<div class="card-pin-badge pinned" title="Pinned"><i class="fas fa-thumbtack"></i></div>' : '';
 
         // Determine if this is a leads table
         const isLeadsTable = spreadsheet.type === 'leads';
@@ -6137,7 +6144,8 @@ function initTasks() {
 
         // Check if this is a private spreadsheet
         const isPrivate = spreadsheet.visibility === 'private';
-        const privateTag = isPrivate ? '<span class="spreadsheet-private-tag"><i class="fas fa-lock"></i> Private</span>' : '';
+        const privateTag = isPrivate ? '<span class="spreadsheet-private-tag" title="Private"><i class="fas fa-lock"></i></span>' : '';
+        const badgeRow = (privateTag || pinBadge) ? `<div class="card-badge-row">${privateTag}${pinBadge}</div>` : '';
 
         // Different metrics for leads vs tasks
         let metaHtml;
@@ -6169,7 +6177,7 @@ function initTasks() {
                     ${metaHtml}
                 </div>
             </div>
-            ${privateTag}
+            ${badgeRow}
         `;
 
         // Click handler for the card (open spreadsheet)
@@ -6245,6 +6253,15 @@ function initTasks() {
             }
             hideSpreadsheetContextMenu();
         });
+
+        // Pin/Unpin action
+        document.getElementById('contextMenuPin')?.addEventListener('click', async () => {
+            if (contextMenuSpreadsheet) {
+                const shouldPin = !contextMenuSpreadsheet.pinned;
+                await toggleSpreadsheetPinned(contextMenuSpreadsheet, shouldPin);
+            }
+            hideSpreadsheetContextMenu();
+        });
         
         // Delete action
         document.getElementById('contextMenuDelete')?.addEventListener('click', () => {
@@ -6284,6 +6301,17 @@ function initTasks() {
         
         // Disable delete for "default" spreadsheet
         const deleteItem = document.getElementById('contextMenuDelete');
+        const pinItem = document.getElementById('contextMenuPin');
+        if (pinItem) {
+            const pinLabel = pinItem.querySelector('span');
+            if (pinLabel) {
+                pinLabel.textContent = spreadsheet.pinned ? 'Unpin' : 'Pin';
+            }
+            const pinIcon = pinItem.querySelector('i');
+            if (pinIcon) {
+                pinIcon.className = spreadsheet.pinned ? 'fas fa-thumbtack' : 'fas fa-thumbtack';
+            }
+        }
         if (deleteItem) {
             if (spreadsheet.id === 'default') {
                 deleteItem.style.opacity = '0.4';
@@ -6301,6 +6329,28 @@ function initTasks() {
             menu.classList.remove('visible');
         }
         contextMenuSpreadsheet = null;
+    }
+
+    async function toggleSpreadsheetPinned(spreadsheet, shouldPin) {
+        const target = appState.spreadsheets.find(s => s.id === spreadsheet.id) || spreadsheet;
+        const previous = target.pinned === true;
+        target.pinned = shouldPin;
+        if (appState.currentSpreadsheet?.id === target.id) {
+            appState.currentSpreadsheet.pinned = shouldPin;
+        }
+
+        try {
+            await saveSpreadsheetToFirestore(target);
+            renderSpreadsheetCards();
+            showToast(shouldPin ? 'Pinned to top' : 'Unpinned', 'success');
+        } catch (err) {
+            console.error('Failed to toggle pin state:', err);
+            target.pinned = previous;
+            if (appState.currentSpreadsheet?.id === target.id) {
+                appState.currentSpreadsheet.pinned = previous;
+            }
+            showToast('Could not update pin status', 'error');
+        }
     }
     
     function promptRenameSpreadsheet(spreadsheet) {
@@ -10156,6 +10206,7 @@ function initTasks() {
                     type: type, // 'tasks' or 'leads'
                     icon: icon,
                     color: color,
+                    pinned: false,
                     visibility: visibility,
                     createdBy: currentAuthUser?.uid || null,
                     columns: [...preset.columns],
@@ -10444,6 +10495,7 @@ function initTasks() {
                     type: spreadsheet.type || 'tasks',
                     icon: spreadsheet.icon || 'fa-table',
                     color: spreadsheet.color || '#0070f3',
+                    pinned: spreadsheet.pinned === true,
                     columns: spreadsheet.columns || defaultColumns,
                     visibility: spreadsheet.visibility || 'team',
                     createdBy: currentAuthUser.uid,  // IMMUTABLE: set only on create
@@ -10481,6 +10533,7 @@ function initTasks() {
                     type: spreadsheet.type || 'tasks',
                     icon: spreadsheet.icon || 'fa-table',
                     color: spreadsheet.color || '#0070f3',
+                    pinned: spreadsheet.pinned === true,
                     columns: spreadsheet.columns || defaultColumns,
                     visibility: spreadsheet.visibility || 'team',
                     updatedAt: serverTimestamp(),
@@ -10574,6 +10627,7 @@ function initTasks() {
                     type: spreadsheetType, // CRITICAL: Load the type!
                     icon: data.icon || 'fa-table',
                     color: data.color || '#0070f3',
+                    pinned: data.pinned === true,
                     columns: data.columns || defaultColumns,
                     visibility: data.visibility || 'team',
                     createdBy: data.createdBy,
@@ -11261,7 +11315,8 @@ function initTasks() {
             appState.docsUnsub = onSnapshot(q, (snapshot) => {
                 appState.docs = [];
                 snapshot.forEach(doc => {
-                    appState.docs.push({ id: doc.id, ...doc.data() });
+                    const data = doc.data();
+                    appState.docs.push({ id: doc.id, ...data, pinned: data.pinned === true });
                 });
                 
                 debugLog(`📄 Loaded ${appState.docs.length} docs`);
@@ -11302,8 +11357,18 @@ function initTasks() {
             return;
         }
         
-        // Render doc cards
-        appState.docs.forEach(doc => {
+        // Render doc cards (pinned first, then updatedAt desc)
+        const sortedDocs = [...appState.docs].sort((a, b) => {
+            const aPinned = a.pinned === true ? 1 : 0;
+            const bPinned = b.pinned === true ? 1 : 0;
+            if (aPinned !== bPinned) return bPinned - aPinned;
+
+            const aTime = a.updatedAt?.toDate ? a.updatedAt.toDate().getTime() : new Date(a.updatedAt || 0).getTime();
+            const bTime = b.updatedAt?.toDate ? b.updatedAt.toDate().getTime() : new Date(b.updatedAt || 0).getTime();
+            return (bTime || 0) - (aTime || 0);
+        });
+
+        sortedDocs.forEach(doc => {
             const card = buildDocCard(doc);
             container.insertBefore(card, createCard);
         });
@@ -11316,6 +11381,7 @@ function initTasks() {
         const card = document.createElement('div');
         card.className = 'doc-card';
         card.dataset.docId = doc.id;
+        const pinBadge = doc.pinned ? '<div class="card-pin-badge pinned" title="Pinned"><i class="fas fa-thumbtack"></i></div>' : '';
         
         // Extract preview text (first 80 chars of plain text)
         const preview = (doc.contentText || '').substring(0, 80) || 'Empty document';
@@ -11331,6 +11397,7 @@ function initTasks() {
         const privateBadge = doc.visibility === 'private' 
             ? '<span class="doc-private-badge" title="Private"><i class="fas fa-lock"></i></span>'
             : '';
+        const badgeRow = (privateBadge || pinBadge) ? `<div class="card-badge-row">${privateBadge}${pinBadge}</div>` : '';
         
         card.innerHTML = `
             <button class="doc-card-menu-btn" title="More options">
@@ -11340,13 +11407,14 @@ function initTasks() {
                 <i class="fas fa-file-lines"></i>
             </div>
             <div class="doc-card-content">
-                <h4 class="doc-card-title">${escapeHtml(doc.title || 'Untitled')} ${privateBadge}</h4>
+                <h4 class="doc-card-title">${escapeHtml(doc.title || 'Untitled')}</h4>
                 <p class="doc-card-preview">${escapeHtml(preview)}</p>
             </div>
             <div class="doc-card-meta">
                 <i class="fas fa-clock"></i>
                 <span>${updatedStr || 'Just now'}</span>
             </div>
+            ${badgeRow}
         `;
         
         // Click handler - open doc
@@ -11394,11 +11462,19 @@ function initTasks() {
         
         // Store doc for handlers
         htmlMenu.dataset.docId = doc.id;
+
+        // Set pin label dynamically
+        const pinItem = document.getElementById('docContextMenuPin');
+        if (pinItem) {
+            const pinLabel = pinItem.querySelector('span');
+            if (pinLabel) pinLabel.textContent = doc.pinned ? 'Unpin' : 'Pin';
+        }
         
         // Setup action handlers (replace to remove old listeners)
         const actions = [
             { id: 'docContextMenuOpen', handler: () => { closeFloatingMenu(); openDoc(doc.id); } },
             { id: 'docContextMenuRename', handler: () => { closeFloatingMenu(); renameDoc(doc); } },
+            { id: 'docContextMenuPin', handler: () => { closeFloatingMenu(); toggleDocPinned(doc, !doc.pinned); } },
             { id: 'docContextMenuPrivacy', handler: () => { closeFloatingMenu(); openDocVisibilityModal(doc); } },
             { id: 'docContextMenuDelete', handler: () => { closeFloatingMenu(); deleteDoc(doc); } }
         ];
@@ -11414,6 +11490,29 @@ function initTasks() {
         
         // Toggle menu using unified helper
         toggleFloatingMenu(htmlMenu, anchorEl);
+    }
+
+    async function toggleDocPinned(doc, shouldPin) {
+        const target = appState.docs.find(d => d.id === doc.id) || doc;
+        const prevPinned = target.pinned === true;
+        target.pinned = shouldPin;
+
+        try {
+            const { doc: docRefFn, updateDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+            const docRef = docRefFn(db, 'teams', appState.currentTeamId, 'docs', target.id);
+            await updateDoc(docRef, {
+                pinned: shouldPin,
+                updatedAt: serverTimestamp(),
+                updatedBy: currentAuthUser?.uid || null
+            });
+            renderDocCards();
+            showToast(shouldPin ? 'Pinned to top' : 'Unpinned', 'success');
+        } catch (err) {
+            console.error('Failed to toggle doc pin:', err);
+            target.pinned = prevPinned;
+            renderDocCards();
+            showToast('Could not update pin status', 'error');
+        }
     }
     
     /**
@@ -11496,6 +11595,7 @@ function initTasks() {
                 title: title,
                 contentHtml: '<p></p>',
                 contentText: '',
+                pinned: false,
                 teamId: appState.currentTeamId,
                 createdBy: currentAuthUser.uid,
                 createdAt: serverTimestamp(),

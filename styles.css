@@ -5835,6 +5835,46 @@ body.dark-mode .calendar-day.drag-over {
     color: var(--text-main);
 }
 
+.card-badge-row {
+    position: absolute;
+    right: 12px;
+    bottom: 16px;
+    display: inline-flex;
+    align-items: center;
+    gap: 8px;
+    pointer-events: auto;
+    z-index: 4;
+}
+
+.card-badge-row .spreadsheet-private-tag,
+.card-badge-row .doc-private-badge {
+    position: static;
+    margin: 0;
+}
+
+.card-pin-badge {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
+    border-radius: 50%;
+    background: rgba(142, 142, 147, 0.12);
+    color: var(--text-muted);
+    font-size: 12px;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
+}
+
+.card-pin-badge i {
+    transform: rotate(-12deg);
+}
+
+.card-pin-badge.pinned {
+    color: var(--text-muted);
+    border-color: var(--border-medium);
+    background: var(--bg-body);
+}
+
 .spreadsheet-card-icon {
     width: 52px;
     height: 52px;
@@ -15817,23 +15857,21 @@ body.dark-mode .activity-item:hover {
 .spreadsheet-private-tag {
     display: inline-flex;
     align-items: center;
-    gap: 5px;
+    justify-content: center;
+    width: 24px;
+    height: 24px;
     background: rgba(142, 142, 147, 0.12);
     color: var(--text-muted);
-    font-size: 11px;
-    font-weight: 600;
-    padding: 4px 10px;
-    border-radius: 100px;
-    letter-spacing: 0.02em;
-    white-space: nowrap;
-    position: absolute;
-    bottom: 32px;
-    right: 20px;
+    font-size: 12px;
+    padding: 0;
+    border-radius: 50%;
+    position: static;
     z-index: 2;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
 }
 
 .spreadsheet-private-tag i {
-    font-size: 9px;
+    font-size: 12px;
 }
 
 body.dark-mode .spreadsheet-private-tag {
@@ -18427,12 +18465,15 @@ body.dark-mode .pill-toggle:hover .pill-toggle-slider {
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    margin-left: 6px;
-    padding: 2px 6px;
-    background: var(--bg-surface-soft);
-    border-radius: 4px;
-    font-size: 11px;
+    width: 24px;
+    height: 24px;
+    margin: 0;
+    padding: 0;
+    background: rgba(142, 142, 147, 0.12);
+    border-radius: 50%;
+    font-size: 12px;
     color: var(--text-muted);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.05);
 }
 
 .doc-private-badge i {
@@ -23299,7 +23340,8 @@ body.dark-mode .add-metric-option-action {
    SPREADSHEET CONTEXT MENU
    Right-click menu for sheet actions
    =================================== */
-.spreadsheet-context-menu {
+.spreadsheet-context-menu,
+.doc-context-menu {
     position: fixed;
     background: var(--bg-surface);
     border: 1px solid var(--border-subtle);
@@ -23315,7 +23357,8 @@ body.dark-mode .add-metric-option-action {
     pointer-events: none;
 }
 
-.spreadsheet-context-menu.visible {
+.spreadsheet-context-menu.visible,
+.doc-context-menu.visible {
     opacity: 1;
     transform: scale(1) translateY(0);
     pointer-events: auto;
@@ -23367,7 +23410,8 @@ body.dark-mode .add-metric-option-action {
 }
 
 /* Dark mode */
-body.dark-mode .spreadsheet-context-menu {
+body.dark-mode .spreadsheet-context-menu,
+body.dark-mode .doc-context-menu {
     background: #2c2c2e;
     border-color: rgba(255, 255, 255, 0.1);
     box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
@@ -25120,10 +25164,12 @@ body.dark-mode .visibility-segment .segment-indicator {
     justify-content: space-between;
     gap: 16px;
     cursor: pointer;
+    flex-wrap: nowrap;
 }
 
 .doc-readonly-info {
     flex: 1;
+    min-width: 0;
 }
 
 .doc-readonly-text {
@@ -25131,6 +25177,7 @@ body.dark-mode .visibility-segment .segment-indicator {
     font-weight: 600;
     color: var(--text-primary);
     margin-bottom: 4px;
+    text-transform: none;
 }
 
 .doc-readonly-text i {
@@ -25141,6 +25188,7 @@ body.dark-mode .visibility-segment .segment-indicator {
 .doc-readonly-desc {
     font-size: 12px;
     color: var(--text-muted);
+    text-transform: none;
 }
 
 .visibility-modal-actions {
