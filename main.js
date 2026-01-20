@@ -11819,8 +11819,9 @@ function initTasks() {
             // SECURITY: Sanitize HTML with DOMPurify to prevent XSS
             const sanitizedHtml = typeof DOMPurify !== 'undefined' 
                 ? DOMPurify.sanitize(doc.contentHtml || '<p></p>', {
-                    ALLOWED_TAGS: ['p', 'br', 'strong', 'em', 'u', 's', 'a', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'blockquote', 'code', 'pre', 'span', 'div'],
-                    ALLOWED_ATTR: ['href', 'target', 'rel', 'class', 'style', 'data-task-id', 'data-spreadsheet-id', 'data-type', 'contenteditable'],
+                    // Keep the same tags we allow on save so formatting (e.g., bold) persists when reopening
+                    ALLOWED_TAGS: ['p', 'br', 'b', 'strong', 'i', 'em', 'u', 's', 'strike', 'del', 'a', 'ul', 'ol', 'li', 'h1', 'h2', 'h3', 'h4', 'h5', 'h6', 'blockquote', 'code', 'pre', 'span', 'div', 'sub', 'sup', 'table', 'thead', 'tbody', 'tr', 'th', 'td', 'button', 'img'],
+                    ALLOWED_ATTR: ['href', 'target', 'rel', 'class', 'style', 'data-task-id', 'data-spreadsheet-id', 'data-type', 'data-chip-type', 'data-embed-type', 'data-id', 'contenteditable', 'src', 'alt', 'onerror'],
                     ALLOW_DATA_ATTR: true
                 })
                 : doc.contentHtml || '<p></p>';
@@ -16942,141 +16943,497 @@ function createTrendChart(data, options = {}, timePeriod = '7days') {
         return createChartEmptyState('No trend data');
     }
     
-    // Don't show "Data coming soon" for zero values - show the graph with zeros
-    // This allows users to see the timeline even when no activity occurred
-    
     const {
-        showSecondaryAxis = false,
-        secondaryData = null,
         primaryColor = '#2563EB',
-        secondaryColor = '#34C759',
-        yAxisMin = 0,
-        yAxisMax = null,
-        yAxisStep = null,
-        tickCount = 3 // Default tick count, can be overridden by tickDensity
+        tickCount = 5
     } = options;
     
+    const barCount = data.length;
     const dataMax = Math.max(...data.map(d => d.count), 1);
-    const dataMin = Math.min(...data.map(d => d.count), 0);
-    const secondaryMax = secondaryData ? Math.max(...secondaryData.map(d => d.count), 1) : dataMax;
     
-    // Use custom Y-axis config if provided
-    const effectiveMin = Math.max(yAxisMin ?? 0, 0); // Never go below 0
-    const effectiveMax = yAxisMax ?? dataMax;
-    
-    // Generate Y-axis ticks based on config
-    let yTicks;
-    if (yAxisStep && yAxisStep > 0) {
-        // Custom step: generate ticks from max down to min
-        yTicks = [];
-        for (let v = effectiveMax; v >= effectiveMin; v -= yAxisStep) {
-            yTicks.push(Math.round(v * 100) / 100);
-        }
-        if (yTicks[yTicks.length - 1] !== effectiveMin) {
-            yTicks.push(effectiveMin);
-        }
-    } else {
-        // Auto ticks - use tickCount from options
-        yTicks = generateCleanAxisTicks(effectiveMax, tickCount);
-    }
-    
-    const displayMax = yTicks[0]; // Use the nice max for scaling
+    // Generate clean Y-axis ticks
+    const yTicks = generateCleanAxisTicks(dataMax, tickCount);
+    const displayMax = yTicks[0];
     const displayMin = yTicks[yTicks.length - 1];
     const displayRange = displayMax - displayMin;
     
-    // Calculate bar width based on data length
-    const barCount = data.length;
-    const isCompact = barCount > 9 || (typeof window !== 'undefined' && window.innerWidth <= 640);
-    const minBarWidth = 8;
-    const maxBarWidth = 40;
-    const calculatedWidth = Math.floor(100 / barCount) - 2;
-    const barWidth = Math.min(maxBarWidth, Math.max(minBarWidth, calculatedWidth));
-    
-    // Determine label frequency based on time period
-    // For month view, show roughly every week; for year view, show monthly
-    let labelStep = 1;
-    let heightClass = 'normal-height';
-    if (timePeriod === '30days') {
-        labelStep = 7; // Show every ~7 days (weekly)
-        heightClass = 'tall-height';
-    } else if (timePeriod === '90days' || timePeriod === 'year') {
-        labelStep = Math.ceil(barCount / 10); // Show ~10 labels for 90 days (roughly biweekly)
-        heightClass = 'tall-height';
-    }
+    // Determine height class based on data density
+    const isTall = timePeriod === '30days' || timePeriod === '90days' || timePeriod === 'year' || barCount > 14;
+    const heightClass = isTall ? 'tall' : '';
     
     // Determine which X-labels to show (avoid overlap)
-    let xLabelIndices;
-    if (labelStep > 1) {
-        // For sparse labels, show every Nth label
-        xLabelIndices = new Set();
-        xLabelIndices.add(0); // Always show first
-        xLabelIndices.add(barCount - 1); // Always show last
-        for (let i = labelStep; i < barCount; i += labelStep) {
-            xLabelIndices.add(i);
+    let labelStep = 1;
+    if (timePeriod === '30days') {
+        labelStep = 7; // Weekly labels
+    } else if (timePeriod === '90days') {
+        labelStep = Math.ceil(barCount / 12); // ~12 labels
+    } else if (timePeriod === 'year') {
+        labelStep = Math.ceil(barCount / 12); // Monthly labels
+    } else if (barCount > 10) {
+        labelStep = Math.ceil(barCount / 10);
+    }
+    
+    // Build label visibility set
+    const showLabelAt = new Set([0, barCount - 1]); // Always show first and last
+    for (let i = labelStep; i < barCount - 1; i += labelStep) {
+        showLabelAt.add(i);
+    }
+    
+    // Format labels for compact display
+    const formatLabel = (label) => {
+        if (!label) return '';
+        // Try to abbreviate day names or dates
+        const dayMap = { 'Monday': 'Mon', 'Tuesday': 'Tue', 'Wednesday': 'Wed', 'Thursday': 'Thu', 'Friday': 'Fri', 'Saturday': 'Sat', 'Sunday': 'Sun' };
+        if (dayMap[label]) return dayMap[label];
+        // For dates like "Jan 15", keep as is
+        return label.length > 6 ? label.substring(0, 6) : label;
+    };
+    
+    const isWeek = timePeriod === '7days';
+    const isMonth = timePeriod === '30days';
+    const roundedClass = `${isWeek ? 'rounded-week' : ''} ${isMonth ? 'rounded-month' : ''}`.trim();
+    // Build HTML
+    let html = `<div class="bar-chart-v3 ${heightClass} ${roundedClass}" data-bar-count="${barCount}">`;
+    
+    // Y-axis labels (top to bottom: max to min)
+    html += `<div class="bar-chart-v3-y-axis">`;
+    for (const tick of yTicks) {
+        html += `<span class="bar-chart-v3-y-label">${formatAxisValue(tick)}</span>`;
+    }
+    html += `</div>`;
+    
+    // Chart area with grid lines and bars
+    html += `<div class="bar-chart-v3-area">`;
+    
+    // Grid lines (one per y-tick)
+    html += `<div class="bar-chart-v3-grid">`;
+    for (let i = 0; i < yTicks.length; i++) {
+        html += `<div class="bar-chart-v3-grid-line"></div>`;
+    }
+    html += `</div>`;
+    
+    // Bars
+    html += `<div class="bar-chart-v3-bars">`;
+    data.forEach((item, index) => {
+        const isZero = item.count <= 0;
+        const value = Math.max(0, Math.min(displayMax, item.count));
+        const heightPct = isZero ? 0 : (displayRange > 0 ? ((value - displayMin) / displayRange) * 100 : 0);
+        const delay = index * 0.03;
+        
+        html += `
+            <div class="bar-chart-v3-bar-wrap" data-tooltip="${escapeHtml(item.label)}: ${item.count}" data-index="${index}">
+                <div class="bar-chart-v3-bar ${isZero ? 'zero' : ''}" style="height: ${heightPct}%; background: ${primaryColor}; transition-delay: ${delay}s;"></div>
+            </div>`;
+    });
+    html += `</div>`;
+    html += `</div>`; // end chart area
+    
+    // X-axis labels
+    html += `<div class="bar-chart-v3-x-axis">`;
+    data.forEach((item, index) => {
+        const showLabel = showLabelAt.has(index);
+        const labelText = showLabel ? formatLabel(item.label) : '';
+        html += `<span class="bar-chart-v3-x-label ${showLabel ? '' : 'hidden'}">${escapeHtml(labelText)}</span>`;
+    });
+    html += `</div>`;
+    
+    html += `</div>`; // end container
+    
+    return html;
+}
+
+/**
+ * ======================================
+ * X-AXIS LABEL RENDERER - TWO-ROW SYSTEM
+ * ======================================
+ * 
+ * Generates a two-row X-axis for bar charts:
+ * - Mode "last30days": Row 1 = Day numbers (sparse), Row 2 = Month names (grouped)
+ * - Mode "allTime": Row 1 = Month names (sparse), Row 2 = Years (grouped)
+ * 
+ * @param {Array} data - Array of data objects with date info
+ * @param {string} viewMode - "last30days" or "allTime"
+ * @returns {string} HTML string for the two-row X-axis
+ */
+function renderXAxis(data, viewMode, primaryColor = '#2563EB') {
+    if (!data || data.length === 0) return '';
+    
+    const count = data.length;
+    const parsedDates = data.map(parseDataDate);
+    const validDates = parsedDates.filter(Boolean);
+    const uniqueYears = new Set(validDates.map(d => d.getFullYear()));
+    const daySpan = validDates.length >= 2
+        ? (Math.max(...validDates.map(d => d.getTime())) - Math.min(...validDates.map(d => d.getTime()))) / (1000 * 60 * 60 * 24)
+        : 0;
+    const isLast7 = viewMode === 'last7days';
+    
+    // Decide grouping for allTime: use years if span is long or multiple years, else months
+    const shouldGroupByYear = viewMode === 'allTime'
+        ? (uniqueYears.size > 1 && (daySpan > 120 || count > 8))
+        : false;
+    
+    // Configuration for each mode
+    const config = {
+        last30days: {
+            // Show day numbers every 5-7 days
+            topLabelInterval: count <= 15 ? 3 : count <= 20 ? 5 : 7,
+            getTopLabel: (item) => {
+                const date = parseDataDate(item);
+                return date ? date.getDate().toString() : '';
+            },
+            getGroupLabel: (item) => {
+                const date = parseDataDate(item);
+                if (!date) return '';
+                const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                return months[date.getMonth()];
+            },
+            getGroupKey: (item) => {
+                const date = parseDataDate(item);
+                return date ? `${date.getFullYear()}-${date.getMonth()}` : '';
+            }
+        },
+        allTime: {
+            // For all-time, top row shows one month label per month; bottom row shows years
+            getTopLabel: (item) => {
+                const date = parseDataDate(item);
+                if (!date) return '';
+                const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+                return months[date.getMonth()];
+            },
+            getGroupLabel: (item) => {
+                const date = parseDataDate(item);
+                if (!date) return '';
+                return date.getFullYear().toString();
+            },
+            getGroupKey: (item) => {
+                const date = parseDataDate(item);
+                if (!date) return '';
+                return `${date.getFullYear()}`;
+            }
+        }
+    };
+    
+    const mode = config[viewMode] || config.last30days;
+    
+    // Build top row labels
+    const topLabels = [];
+    if (viewMode === 'allTime' && !shouldGroupByYear) {
+        // One label per month (grouped)
+        let currentMonthKey = null;
+        for (let i = 0; i < count; i++) {
+            const date = parsedDates[i];
+            const monthKey = date ? `${date.getFullYear()}-${date.getMonth()}` : `m-${i}`;
+            const isFirstInMonth = monthKey !== currentMonthKey;
+            currentMonthKey = monthKey;
+            topLabels.push({
+                text: isFirstInMonth ? mode.getTopLabel(data[i]) : '',
+                visible: isFirstInMonth,
+                spanStart: isFirstInMonth ? i : null
+            });
         }
     } else {
-        // Use existing logic for 7-day view
-        xLabelIndices = getXLabelIndices(data.length, isCompact);
-    }
-    
-    let html = `<div class="metrics-trend-chart-v2 ${isCompact ? 'compact' : 'full'} ${heightClass}" data-bar-count="${barCount}">`;
-    
-    // Y-axis with clean scale markers
-    html += `
-        <div class="trend-y-axis">
-            ${yTicks.map(tick => `<span class="y-axis-label">${formatAxisValue(tick)}</span>`).join('')}
-        </div>
-    `;
-    
-    // Secondary Y-axis if enabled
-    if (showSecondaryAxis && secondaryData) {
-        const secYTicks = generateCleanAxisTicks(secondaryMax, 3);
-        html += `
-            <div class="trend-y-axis-secondary">
-                ${secYTicks.map(tick => `<span class="y-axis-label">${formatAxisValue(tick)}</span>`).join('')}
-            </div>
-        `;
-    }
-    
-    html += '<div class="trend-chart-area">';
-    
-    // Grid lines (match Y tick count)
-    html += `
-        <div class="trend-grid-lines">
-            ${yTicks.map(() => '<div class="grid-line"></div>').join('')}
-        </div>
-    `;
-    
-    html += '<div class="trend-bars-container">';
-    
-    data.forEach((item, index) => {
-        // Calculate height using the effective range (supports custom Y-axis)
-        const clampedValue = Math.max(displayMin, Math.min(displayMax, item.count));
-        const heightRaw = displayRange > 0 ? ((clampedValue - displayMin) / displayRange) * 100 : 0;
-        const height = clampedValue === 0 ? 0 : Math.max(heightRaw, 5);
-        const delay = index * 0.04;
-        const showLabel = xLabelIndices.has(index);
-        const labelText = showLabel ? (isCompact ? formatCompactLabel(item.label) : item.label) : '';
-        
-        let secondaryBarHtml = '';
-        if (showSecondaryAxis && secondaryData && secondaryData[index]) {
-            const secDisplayMax = generateCleanAxisTicks(secondaryMax, 3)[0];
-            const secHeight = secDisplayMax > 0 ? Math.max((secondaryData[index].count / secDisplayMax) * 100, 3) : 3;
-            secondaryBarHtml = `<div class="trend-bar-secondary" style="height: ${secHeight}%; background: ${secondaryColor}; transition-delay: ${delay + 0.05}s"></div>`;
+        // Default sparse labels
+        const step = viewMode === 'last30days' ? mode.topLabelInterval : Math.max(2, Math.ceil(count / 6));
+        for (let i = 0; i < count; i++) {
+            const showLabel = (i % step === 0) || i === count - 1;
+            topLabels.push({
+                text: showLabel ? mode.getTopLabel(data[i]) : '',
+                visible: showLabel
+            });
         }
+    }
+    
+    // Build bottom row labels (grouped month or year)
+    // Only show the label once per group, centered
+    const bottomLabels = [];
+    let currentGroupKey = null;
+    let groupStartIndex = 0;
+    
+    for (let i = 0; i <= count; i++) {
+        const item = data[i];
+        const groupKey = item ? mode.getGroupKey(item) : null;
+        
+        // Group boundary detected (or end of data)
+        if (groupKey !== currentGroupKey || i === count) {
+            if (currentGroupKey !== null && groupStartIndex < i) {
+                // Calculate center position for this group
+                const groupEndIndex = i - 1;
+                const centerIndex = Math.floor((groupStartIndex + groupEndIndex) / 2);
+                const groupLabel = mode.getGroupLabel(data[groupStartIndex]);
+                const groupSpan = groupEndIndex - groupStartIndex + 1;
+                
+                // Mark the center position for this group
+                bottomLabels.push({
+                    startIndex: groupStartIndex,
+                    endIndex: groupEndIndex,
+                    centerIndex: centerIndex,
+                    text: groupLabel,
+                    span: groupSpan
+                });
+            }
+            currentGroupKey = groupKey;
+            groupStartIndex = i;
+        }
+    }
+    
+    // Decide if we should render segment bars (avoid for 7-day and very tight layouts)
+    const shouldRenderSegments = !isLast7 && count >= 6 && bottomLabels.length > 0;
+    const segmentPalette = [
+        'var(--segment-color-1, rgba(0,0,0,0.18))',
+        'var(--segment-color-2, rgba(0,0,0,0.10))'
+    ];
+    
+    // Generate HTML
+    let html = `<div class="bar-chart-x-axis-v2">`;
+    
+    // Row 0: Thin segment bars dividing months/years (optional)
+    if (shouldRenderSegments) {
+        html += `<div class="bar-chart-x-row bar-chart-x-row-segments" style="grid-template-columns: repeat(${count}, 1fr);">`;
+        let segmentsProcessed = 0;
+        let segIndex = 0;
+        bottomLabels.forEach((group) => {
+            while (segmentsProcessed < group.startIndex) {
+                html += `<span class="bar-chart-x-cell bar-chart-x-segment-spacer"></span>`;
+                segmentsProcessed++;
+            }
+            const segColor = segmentPalette[segIndex % segmentPalette.length];
+            html += `<span class="bar-chart-x-cell bar-chart-x-segment" style="grid-column: span ${group.span}; background: ${segColor};"></span>`;
+            segmentsProcessed = group.endIndex + 1;
+            segIndex++;
+        });
+        while (segmentsProcessed < count) {
+            html += `<span class="bar-chart-x-cell bar-chart-x-segment-spacer"></span>`;
+            segmentsProcessed++;
+        }
+        html += `</div>`;
+    }
+    
+    // Row 1: Top labels
+    if (viewMode === 'allTime' && !shouldGroupByYear) {
+        // Render one label per month as spanning cells
+        html += `<div class="bar-chart-x-row bar-chart-x-row-top" style="grid-template-columns: repeat(${count}, 1fr);">`;
+        let processed = 0;
+        let currentMonthKey = null;
+        let spanStart = 0;
+        const monthLabels = [];
+        for (let i = 0; i <= count; i++) {
+            const date = i < count ? parsedDates[i] : null;
+            const key = date ? `${date.getFullYear()}-${date.getMonth()}` : null;
+            if (key !== currentMonthKey) {
+                if (currentMonthKey !== null) {
+                    const end = i - 1;
+                    monthLabels.push({ start: spanStart, end, span: end - spanStart + 1, text: mode.getTopLabel(data[spanStart]) });
+                }
+                currentMonthKey = key;
+                spanStart = i;
+            }
+        }
+        monthLabels.forEach((m) => {
+            while (processed < m.start) {
+                html += `<span class="bar-chart-x-cell bar-chart-x-group-spacer"></span>`;
+                processed++;
+            }
+            html += `<span class="bar-chart-x-cell bar-chart-x-group-label" style="grid-column: span ${m.span};">${escapeHtml(m.text)}</span>`;
+            processed = m.end + 1;
+        });
+        while (processed < count) {
+            html += `<span class="bar-chart-x-cell bar-chart-x-group-spacer"></span>`;
+            processed++;
+        }
+        html += `</div>`;
+    } else {
+        // Default per-slot labels
+        html += `<div class="bar-chart-x-row bar-chart-x-row-top" style="grid-template-columns: repeat(${count}, 1fr);">`;
+        topLabels.forEach((label, index) => {
+            const visibleClass = label.visible ? '' : 'hidden';
+            html += `<span class="bar-chart-x-cell ${visibleClass}" data-index="${index}">${escapeHtml(label.text)}</span>`;
+        });
+        html += `</div>`;
+    }
+    
+    // Row 2: Bottom labels (grouped month or year) - spans across groups
+    html += `<div class="bar-chart-x-row bar-chart-x-row-bottom" style="grid-template-columns: repeat(${count}, 1fr);">`;
+    
+    // We need to create cells that span the correct number of columns
+    let processedIndex = 0;
+    bottomLabels.forEach((group) => {
+        // Fill empty cells before this group if needed
+        while (processedIndex < group.startIndex) {
+            html += `<span class="bar-chart-x-cell bar-chart-x-group-spacer"></span>`;
+            processedIndex++;
+        }
+        // Render the group label spanning its columns
+        html += `<span class="bar-chart-x-cell bar-chart-x-group-label" style="grid-column: span ${group.span};">${escapeHtml(group.text)}</span>`;
+        processedIndex = group.endIndex + 1;
+    });
+    // Fill remaining empty cells
+    while (processedIndex < count) {
+        html += `<span class="bar-chart-x-cell bar-chart-x-group-spacer"></span>`;
+        processedIndex++;
+    }
+    
+    html += `</div>`;
+    html += `</div>`;
+    
+    return html;
+}
+
+/**
+ * Parse date from data item
+ * Handles various date formats in data objects
+ */
+function parseDataDate(item) {
+    if (!item) return null;
+    
+    // Check common date properties
+    if (item.date instanceof Date) return item.date;
+    if (item.date) {
+        const d = new Date(item.date);
+        return isNaN(d.getTime()) ? null : d;
+    }
+    // Explicit year/month support (month can be 0-11 or 1-12)
+    if (item.year !== undefined) {
+        const y = Number(item.year);
+        const mRaw = item.month ?? item.monthIndex ?? item.monthNumber;
+        if (mRaw !== undefined) {
+            const m = Number(mRaw) - (mRaw >= 1 && mRaw <= 12 ? 1 : 0);
+            const d = new Date(y, m, 1);
+            return isNaN(d.getTime()) ? null : d;
+        }
+        const d = new Date(y, 0, 1);
+        return isNaN(d.getTime()) ? null : d;
+    }
+    if (item.timestamp) {
+        const d = new Date(item.timestamp);
+        return isNaN(d.getTime()) ? null : d;
+    }
+    // Parse label only if it contains a year or a digit to avoid defaulting to 2001
+    if (item.label && /\d/.test(item.label)) {
+        const d = new Date(item.label);
+        if (!isNaN(d.getTime())) return d;
+    }
+    return null;
+}
+
+/**
+ * Build time segments for line charts to draw thin grouping bars
+ * Rules:
+ * - Hide when <=7 points (7-day view)
+ * - Use years when span crosses years and is long/dense; otherwise months
+ * - Return both segments and grouping mode
+ */
+function getLineTimeSegments(data) {
+    if (!data || data.length === 0 || data.length <= 7) return { segments: [], groupByYear: false };
+    const parsed = data.map(parseDataDate);
+    if (parsed.every(d => !d)) return { segments: [], groupByYear: false };
+    
+    const validDates = parsed.filter(Boolean);
+    const minDate = new Date(Math.min(...validDates.map(d => d.getTime())));
+    const maxDate = new Date(Math.max(...validDates.map(d => d.getTime())));
+    const daySpan = (maxDate - minDate) / (1000 * 60 * 60 * 24);
+    const uniqueYears = new Set(validDates.map(d => d.getFullYear()));
+    
+    const groupByYear = uniqueYears.size > 1 && (daySpan > 120 || data.length > 10);
+    const groups = [];
+    let currentKey = null;
+    let startIndex = 0;
+    
+    const buildKey = (d) => {
+        if (!d) return 'unknown';
+        const month = d.getMonth();
+        const year = d.getFullYear();
+        return groupByYear ? `${year}` : `${year}-${month}`;
+    };
+    
+    for (let i = 0; i <= data.length; i++) {
+        const date = parsed[i];
+        const key = i < data.length ? buildKey(date) : null;
+        if (key !== currentKey) {
+            if (currentKey !== null) {
+                groups.push({ startIndex, endIndex: i - 1, key: currentKey });
+            }
+            currentKey = key;
+            startIndex = i;
+        }
+    }
+    return { segments: groups, groupByYear };
+}
+
+/**
+ * Create a bar chart with two-row X-axis
+ * Combines bar chart with the new axis system
+ * @param {Array} data - Array of { date, count, label } objects
+ * @param {Object} options - Chart options
+ * @param {string} viewMode - "last30days" or "allTime"
+ * @returns {string} Complete chart HTML
+ */
+function createBarChartWithAxis(data, options = {}, viewMode = 'last30days') {
+    if (!data || data.length === 0) {
+        return createChartEmptyState('No data available');
+    }
+    
+    const {
+        primaryColor = '#2563EB',
+        tickCount = 5
+    } = options;
+    
+    const barCount = data.length;
+    const dataMax = Math.max(...data.map(d => d.count), 1);
+    
+    // Generate Y-axis ticks
+    const yTicks = generateCleanAxisTicks(dataMax, tickCount);
+    const displayMax = yTicks[0];
+    const displayMin = yTicks[yTicks.length - 1];
+    const displayRange = displayMax - displayMin;
+    
+    // Height based on view mode
+    const isTall = viewMode === 'allTime' || barCount > 15;
+    const heightClass = isTall ? 'tall' : '';
+    
+    // Build HTML
+    // Compute segment color accents based on primary color
+    const segColor1 = primaryColor;
+    const segColor2 = `${primaryColor}1f`; // slight transparency if supported
+    let html = `<div class="bar-chart-v4 ${heightClass}" data-bar-count="${barCount}" data-view-mode="${viewMode}" style="--segment-color-1: ${segColor1}; --segment-color-2: ${segColor2};">`;
+    
+    // Y-axis labels
+    html += `<div class="bar-chart-v4-y-axis">`;
+    for (const tick of yTicks) {
+        html += `<span class="bar-chart-v4-y-label">${formatAxisValue(tick)}</span>`;
+    }
+    html += `</div>`;
+    
+    // Chart area (grid + bars)
+    html += `<div class="bar-chart-v4-area">`;
+    
+    // Grid lines
+    html += `<div class="bar-chart-v4-grid">`;
+    for (let i = 0; i < yTicks.length; i++) {
+        html += `<div class="bar-chart-v4-grid-line"></div>`;
+    }
+    html += `</div>`;
+    
+    // Bars - use CSS Grid with same column count as X-axis
+    html += `<div class="bar-chart-v4-bars" style="grid-template-columns: repeat(${barCount}, 1fr);">`;
+    data.forEach((item, index) => {
+        const isZero = item.count <= 0;
+        const value = Math.max(0, Math.min(displayMax, item.count));
+        const heightPct = isZero ? 0 : (displayRange > 0 ? ((value - displayMin) / displayRange) * 100 : 0);
+        const delay = index * 0.02;
         
         html += `
-            <div class="trend-bar-group" style="--bar-width: ${barWidth}px">
-                <div class="trend-bar-wrapper" data-tooltip="${escapeHtml(item.label)}: ${item.count}">
-                    <div class="trend-bar-primary" style="height: ${height}%; background: ${primaryColor}; transition-delay: ${delay}s"></div>
-                    ${secondaryBarHtml}
-                </div>
-                <span class="trend-bar-label ${showLabel ? '' : 'hidden'}">${escapeHtml(labelText)}</span>
-            </div>
-        `;
+            <div class="bar-chart-v4-bar-wrap" data-tooltip="${escapeHtml(item.label || '')}: ${item.count}" data-index="${index}">
+                <div class="bar-chart-v4-bar ${isZero ? 'zero' : ''}" style="height: ${heightPct}%; background: ${primaryColor}; transition-delay: ${delay}s;"></div>
+            </div>`;
     });
+    html += `</div>`;
+    html += `</div>`; // end area
     
-    html += '</div></div></div>';
+    // X-axis (two rows) - uses same column count for alignment
+    html += renderXAxis(data, viewMode, primaryColor);
+    
+    html += `</div>`; // end container
+    
     return html;
 }
 
@@ -17262,6 +17619,10 @@ function renderGraphByType(data, type, dataType = 'trend') {
         return createChartEmptyState('No data available');
     }
     
+    // Map metricsTimeFilter to viewMode for new axis system
+    const viewModeMap = { '7days': 'last7days', '30days': 'last30days', 'all': 'allTime' };
+    const viewMode = viewModeMap[metricsTimeFilter] || 'last7days';
+    
     switch (type) {
         case 'line':
             return dataType === 'breakdown' 
@@ -17275,7 +17636,7 @@ function renderGraphByType(data, type, dataType = 'trend') {
         default:
             return dataType === 'breakdown'
                 ? createBarChart(data)
-                : createTrendChart(data, {}, metricsTimeFilter);
+                : createBarChartWithAxis(data, {}, viewMode);
     }
 }
 
@@ -17308,6 +17669,10 @@ function renderGraphByTypeWithConfig(data, type, dataType = 'trend', config = {}
         palette: config.palette || 'default'
     };
     
+    // Map metricsTimeFilter to viewMode for new axis system
+    const viewModeMap = { '7days': 'last7days', '30days': 'last30days', 'all': 'allTime' };
+    const viewMode = viewModeMap[metricsTimeFilter] || 'last7days';
+    
     switch (type) {
         case 'line':
             return dataType === 'breakdown' 
@@ -17321,7 +17686,7 @@ function renderGraphByTypeWithConfig(data, type, dataType = 'trend', config = {}
         default:
             return dataType === 'breakdown'
                 ? createBarChart(data, null, options)
-                : createTrendChart(data, options, metricsTimeFilter);
+                : createBarChartWithAxis(data, options, viewMode);
     }
 }
 
@@ -17621,8 +17986,16 @@ function createLineChart(data, options = {}) {
     const gradientId = `line-grad-${Math.random().toString(36).substr(2, 9)}`;
     const gradientId2 = `line-grad2-${Math.random().toString(36).substr(2, 9)}`;
     
-    // Determine label display using the helper function
-    const labelIndices = getXLabelIndices(data.length);
+    // Determine label display using the helper function (compact when dense)
+    const isCompact = data.length > 10;
+    const labelIndices = getXLabelIndices(data.length, isCompact);
+    
+    // Build time segments for visual dividers (months/years)
+    const segmentInfo = getLineTimeSegments(data);
+    const timeSegments = segmentInfo.segments;
+    const xStep = data.length > 1 ? (getX(1, data.length) - getX(0, data.length)) : drawWidth;
+    const segmentY = chartHeight - 22; // sits above x-labels
+    const segmentH = 6;
     
     return `
         <div class="line-chart-v2">
@@ -17698,6 +18071,26 @@ function createLineChart(data, options = {}) {
                                 data-tooltip="${escapeHtml(p.label)}: ${formatAxisValue(p.value)}"
                             />
                         `).join('')}
+                    </g>
+                ` : ''}
+                
+                <!-- Time segment bars (months/years) -->
+                ${timeSegments.length && xStep >= 8 ? `
+                    <g class="line-chart-segments">
+                        ${timeSegments.map((seg, idx) => {
+                            const startX = seg.startIndex === 0 
+                                ? padding.left 
+                                : getX(seg.startIndex, data.length) - xStep / 2;
+                            const endX = seg.endIndex === data.length - 1 
+                                ? padding.left + drawWidth 
+                                : getX(seg.endIndex, data.length) + xStep / 2;
+                            const width = Math.max(6, endX - startX);
+                            const clampedX = Math.max(padding.left, startX);
+                            const maxWidth = (padding.left + drawWidth) - clampedX;
+                            const finalWidth = Math.max(6, Math.min(width, maxWidth));
+                            const fill = idx % 2 === 0 ? 'var(--border-strong, rgba(0,0,0,0.18))' : 'var(--border-card, rgba(0,0,0,0.10))';
+                            return `<rect class="line-chart-segment-bar" x="${clampedX}" y="${segmentY}" rx="3" ry="3" width="${finalWidth}" height="${segmentH}" fill="${fill}" />`;
+                        }).join('')}
                     </g>
                 ` : ''}
                 
@@ -18858,38 +19251,43 @@ async function renderMetrics() {
  * Initialize trend bar tooltips (reuse line chart tooltip pattern)
  */
 function initTrendBarTooltips(container) {
-    const charts = container.querySelectorAll('.metrics-trend-chart-v2');
+    // Support both old v2 charts and new v3 charts
+    const charts = container.querySelectorAll('.bar-chart-v3, .metrics-trend-chart-v2');
     
     charts.forEach(chart => {
-        const chartArea = chart.querySelector('.trend-chart-area');
+        // Find chart area (different class names for v2 vs v3)
+        const chartArea = chart.querySelector('.bar-chart-v3-area') || chart.querySelector('.trend-chart-area');
         if (!chartArea) return;
         
-        // Remove ALL existing tooltips from the entire chart to avoid duplicates
-        const existingTooltips = chart.querySelectorAll('.trend-bar-tooltip');
-        existingTooltips.forEach(t => t.remove());
+        // Reuse a single tooltip per chart to avoid duplicates
+        let tooltip = chart.querySelector('.bar-chart-v3-tooltip') || chart.querySelector('.trend-bar-tooltip');
+        if (!tooltip) {
+            tooltip = document.createElement('div');
+            tooltip.className = 'bar-chart-v3-tooltip';
+            chartArea.appendChild(tooltip);
+        }
+        tooltip.classList.remove('visible');
         
-        const barWrappers = chart.querySelectorAll('.trend-bar-wrapper[data-tooltip]');
+        // Find bar wrappers (different class names for v2 vs v3)
+        const barWrappers = chart.querySelectorAll('.bar-chart-v3-bar-wrap[data-tooltip], .trend-bar-wrapper[data-tooltip]');
         
         barWrappers.forEach(wrapper => {
-            // Create a tooltip for each bar
-            const tooltip = document.createElement('div');
-            tooltip.className = 'trend-bar-tooltip';
-            chartArea.appendChild(tooltip);
-            
-            wrapper.addEventListener('mouseenter', () => {
+            wrapper.addEventListener('mouseenter', (e) => {
                 const tooltipText = wrapper.getAttribute('data-tooltip');
                 if (!tooltipText) return;
                 
                 tooltip.textContent = tooltipText;
                 
-                // Position tooltip above the actual bar element (not wrapper)
-                // This makes shorter bars have lower tooltips, tall bars have higher tooltips
-                const bar = wrapper.querySelector('.trend-bar-primary');
+                // Position tooltip above the bar, centered on bar width
+                const bar = wrapper.querySelector('.bar-chart-v3-bar') || wrapper.querySelector('.trend-bar-primary');
                 if (!bar) return;
                 
                 const barRect = bar.getBoundingClientRect();
                 const chartAreaRect = chartArea.getBoundingClientRect();
+                
+                // Center tooltip horizontally on bar
                 const x = barRect.left - chartAreaRect.left + barRect.width / 2;
+                // Position tooltip at top of bar
                 const y = barRect.top - chartAreaRect.top;
                 
                 tooltip.style.left = x + 'px';
