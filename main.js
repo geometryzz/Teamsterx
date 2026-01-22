@@ -17061,7 +17061,10 @@ function renderXAxis(data, viewMode, primaryColor = '#2563EB') {
     const count = data.length;
     const parsedDates = data.map(parseDataDate);
     const validDates = parsedDates.filter(Boolean);
+    const hasDates = validDates.length > 0;
     const uniqueYears = new Set(validDates.map(d => d.getFullYear()));
+    const uniqueMonths = new Set(validDates.map(d => `${d.getFullYear()}-${d.getMonth()}`));
+    const monthCount = uniqueMonths.size;
     const daySpan = validDates.length >= 2
         ? (Math.max(...validDates.map(d => d.getTime())) - Math.min(...validDates.map(d => d.getTime()))) / (1000 * 60 * 60 * 24)
         : 0;
@@ -17069,7 +17072,7 @@ function renderXAxis(data, viewMode, primaryColor = '#2563EB') {
     
     // Decide grouping for allTime: use years if span is long or multiple years, else months
     const shouldGroupByYear = viewMode === 'allTime'
-        ? (uniqueYears.size > 1 && (daySpan > 120 || count > 8))
+        ? monthCount > 12
         : false;
     
     // Configuration for each mode
@@ -17079,7 +17082,7 @@ function renderXAxis(data, viewMode, primaryColor = '#2563EB') {
             topLabelInterval: count <= 15 ? 3 : count <= 20 ? 5 : 7,
             getTopLabel: (item) => {
                 const date = parseDataDate(item);
-                return date ? date.getDate().toString() : '';
+                return date ? date.getDate().toString() : (item.label || '');
             },
             getGroupLabel: (item) => {
                 const date = parseDataDate(item);
@@ -17093,10 +17096,10 @@ function renderXAxis(data, viewMode, primaryColor = '#2563EB') {
             }
         },
         allTime: {
-            // For all-time, top row shows one month label per month; bottom row shows years
+            // All-time: top row months (once each), bottom row years to avoid duplicate month labels
             getTopLabel: (item) => {
                 const date = parseDataDate(item);
-                if (!date) return '';
+                if (!date) return item.label || '';
                 const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
                 return months[date.getMonth()];
             },
@@ -17132,8 +17135,8 @@ function renderXAxis(data, viewMode, primaryColor = '#2563EB') {
             });
         }
     } else {
-        // Default sparse labels
-        const step = viewMode === 'last30days' ? mode.topLabelInterval : Math.max(2, Math.ceil(count / 6));
+        // Default per-slot labels
+        const step = viewMode === 'last7days' ? 1 : (viewMode === 'last30days' ? mode.topLabelInterval : Math.max(2, Math.ceil(count / 6)));
         for (let i = 0; i < count; i++) {
             const showLabel = (i % step === 0) || i === count - 1;
             topLabels.push({
@@ -17143,30 +17146,38 @@ function renderXAxis(data, viewMode, primaryColor = '#2563EB') {
         }
     }
     
-    // Build bottom row labels (grouped month or year)
-    // Only show the label once per group, centered
+    // Build month segments (for visual separators) and bottom labels (years)
+    const monthSegments = [];
+    if (hasDates) {
+        let monthKeyCurrent = null;
+        let monthStart = 0;
+        for (let i = 0; i <= count; i++) {
+            const date = i < count ? parsedDates[i] : null;
+            const mKey = date ? `${date.getFullYear()}-${date.getMonth()}` : null;
+            if (mKey !== monthKeyCurrent) {
+                if (monthKeyCurrent !== null) {
+                    monthSegments.push({ startIndex: monthStart, endIndex: i - 1, span: i - monthStart });
+                }
+                monthKeyCurrent = mKey;
+                monthStart = i;
+            }
+        }
+    }
+
     const bottomLabels = [];
     let currentGroupKey = null;
     let groupStartIndex = 0;
-    
     for (let i = 0; i <= count; i++) {
         const item = data[i];
         const groupKey = item ? mode.getGroupKey(item) : null;
-        
-        // Group boundary detected (or end of data)
         if (groupKey !== currentGroupKey || i === count) {
             if (currentGroupKey !== null && groupStartIndex < i) {
-                // Calculate center position for this group
                 const groupEndIndex = i - 1;
-                const centerIndex = Math.floor((groupStartIndex + groupEndIndex) / 2);
                 const groupLabel = mode.getGroupLabel(data[groupStartIndex]);
                 const groupSpan = groupEndIndex - groupStartIndex + 1;
-                
-                // Mark the center position for this group
                 bottomLabels.push({
                     startIndex: groupStartIndex,
                     endIndex: groupEndIndex,
-                    centerIndex: centerIndex,
                     text: groupLabel,
                     span: groupSpan
                 });
@@ -17177,10 +17188,14 @@ function renderXAxis(data, viewMode, primaryColor = '#2563EB') {
     }
     
     // Decide if we should render segment bars (avoid for 7-day and very tight layouts)
-    const shouldRenderSegments = !isLast7 && count >= 6 && bottomLabels.length > 0;
+    const shouldRenderSegments = hasDates && !isLast7 && count >= 2 && monthSegments.length > 0;
     const segmentPalette = [
-        'var(--segment-color-1, rgba(0,0,0,0.18))',
-        'var(--segment-color-2, rgba(0,0,0,0.10))'
+        '#d8b4fe', // muted lavender
+        '#f3c6f0', // soft pink
+        '#cdb4db', // dusty lilac
+        '#f4b4d7', // pale rose
+        '#bfa0e6', // muted purple
+        '#f7d1f0'  // light blush
     ];
     
     // Generate HTML
@@ -17191,7 +17206,7 @@ function renderXAxis(data, viewMode, primaryColor = '#2563EB') {
         html += `<div class="bar-chart-x-row bar-chart-x-row-segments" style="grid-template-columns: repeat(${count}, 1fr);">`;
         let segmentsProcessed = 0;
         let segIndex = 0;
-        bottomLabels.forEach((group) => {
+        monthSegments.forEach((group) => {
             while (segmentsProcessed < group.startIndex) {
                 html += `<span class="bar-chart-x-cell bar-chart-x-segment-spacer"></span>`;
                 segmentsProcessed++;
@@ -17307,10 +17322,22 @@ function parseDataDate(item) {
         const d = new Date(item.timestamp);
         return isNaN(d.getTime()) ? null : d;
     }
-    // Parse label only if it contains a year or a digit to avoid defaulting to 2001
-    if (item.label && /\d/.test(item.label)) {
-        const d = new Date(item.label);
-        if (!isNaN(d.getTime())) return d;
+    // Parse label smartly:
+    // - If it contains a 4-digit year, trust Date parsing
+    // - If it contains a month name but no year, use the current year to avoid 2001 default
+    if (item.label) {
+        const label = item.label;
+        if (/\b\d{4}\b/.test(label)) {
+            const d = new Date(label);
+            if (!isNaN(d.getTime())) return d;
+        } else {
+            const monthMatch = label.match(/jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec/i);
+            if (monthMatch) {
+                const yr = new Date().getFullYear();
+                const d = new Date(`${monthMatch[0]} 1 ${yr}`);
+                if (!isNaN(d.getTime())) return d;
+            }
+        }
     }
     return null;
 }
@@ -17391,9 +17418,9 @@ function createBarChartWithAxis(data, options = {}, viewMode = 'last30days') {
     const heightClass = isTall ? 'tall' : '';
     
     // Build HTML
-    // Compute segment color accents based on primary color
-    const segColor1 = primaryColor;
-    const segColor2 = `${primaryColor}1f`; // slight transparency if supported
+    // Segment colors distinct from bar fill
+    const segColor1 = 'var(--border-strong, rgba(0,0,0,0.22))';
+    const segColor2 = 'var(--border-card, rgba(0,0,0,0.10))';
     let html = `<div class="bar-chart-v4 ${heightClass}" data-bar-count="${barCount}" data-view-mode="${viewMode}" style="--segment-color-1: ${segColor1}; --segment-color-2: ${segColor2};">`;
     
     // Y-axis labels
