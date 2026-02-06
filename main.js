@@ -2067,8 +2067,9 @@ window.switchTab = function(sectionName) {
     
     // Render finances when navigating to finances tab
     if (sectionName === 'finances') {
-        // Load subscriptions first, then transactions (which calls renderFinances)
+        // Load subscriptions first, then transactions (which calls renderFinances), also load customers
         loadSubscriptions().then(() => loadTransactions());
+        loadCustomers();
     }
 };
 
@@ -2144,6 +2145,7 @@ function initNavigation() {
                 }
                 // Load subscriptions first, then transactions
                 loadSubscriptions().then(() => loadTransactions());
+                loadCustomers();
             }
         });
     });
@@ -8021,6 +8023,14 @@ function initTasks() {
                     updatedAt: serverTimestamp()
                 });
                 debugLog(`✅ Task ${columnId} updated:`, task.id, newValue);
+
+                // Auto-create customer when a lead is marked as Won
+                if (columnId === 'status' && newValue === 'Won') {
+                    const spreadsheet = appState.spreadsheets.find(s => s.id === task.spreadsheetId);
+                    if (spreadsheet && spreadsheet.type === 'leads') {
+                        autoCreateCustomerFromLead(task);
+                    }
+                }
             } catch (error) {
                 console.error(`Error updating task ${columnId}:`, error);
                 task[columnId] = oldValue;
@@ -35006,6 +35016,13 @@ function openTransactionModal(transaction = null, defaultType = 'income') {
         subtitle.textContent = `Record a new ${typeLabel.toLowerCase()} transaction`;
     }
     
+    // Populate customer name suggestions from customers registry
+    const customerSuggestions = document.getElementById('customerSuggestions');
+    if (customerSuggestions) {
+        const names = getCustomerNameSuggestions();
+        customerSuggestions.innerHTML = names.map(n => `<option value="${escapeHtml(n)}">`).join('');
+    }
+
     modal.classList.add('active');
 }
 
@@ -35255,6 +35272,9 @@ async function loadTransactions() {
         console.log('💰 Loaded and normalized transactions:', appState.transactions.length, 'Type breakdown:', typeBreakdown);
         
         renderFinances();
+        if (document.getElementById('customersList')) {
+            renderCustomers();
+        }
         
         // Check for milestone achievements
         checkRevenueMilestones();
@@ -35946,6 +35966,535 @@ function getFinanceMetricsData() {
 // Expose functions to window for inline onclick handlers
 window.editTransaction = editTransaction;
 window.openDeleteTransactionModal = openDeleteTransactionModal;
+
+// ===================================
+// CUSTOMERS MANAGEMENT (Unified Customer Registry)
+// ===================================
+
+/**
+ * Load customers from Firestore into appState.customers
+ */
+async function loadCustomers() {
+    if (!db || !appState.currentTeamId) {
+        appState.customers = [];
+        return;
+    }
+
+    try {
+        const { collection, query, orderBy, getDocs } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+        const customersRef = collection(db, 'teams', appState.currentTeamId, 'customers');
+        const q = query(customersRef, orderBy('name', 'asc'));
+        const snapshot = await getDocs(q);
+
+        appState.customers = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        }));
+
+        console.log('👥 Loaded customers:', appState.customers.length);
+        renderCustomers();
+    } catch (error) {
+        console.error('Error loading customers:', error);
+        appState.customers = [];
+    }
+}
+
+/**
+ * Render the customers list in the Finances tab
+ */
+function renderCustomers() {
+    const customers = appState.customers || [];
+    const listEl = document.getElementById('customersList');
+    const emptyEl = document.getElementById('customersEmptyState');
+    const countEl = document.getElementById('customersCount');
+    const searchRow = document.getElementById('customersSearchRow');
+    const canEdit = hasPermission('editFinances');
+
+    // Update count badge
+    if (countEl) countEl.textContent = customers.length;
+
+    // Show/hide add buttons based on permissions
+    const addBtn = document.getElementById('addCustomerBtn');
+    const addFirstBtn = document.getElementById('addFirstCustomerBtn');
+    if (addBtn) addBtn.style.display = canEdit ? 'inline-flex' : 'none';
+    if (addFirstBtn) addFirstBtn.style.display = canEdit ? 'inline-flex' : 'none';
+
+    // Show search bar when >= 5 customers
+    if (searchRow) searchRow.style.display = customers.length >= 5 ? 'block' : 'none';
+
+    if (customers.length === 0) {
+        if (listEl) listEl.innerHTML = '';
+        if (emptyEl) emptyEl.style.display = 'flex';
+        return;
+    }
+
+    if (emptyEl) emptyEl.style.display = 'none';
+
+    // Get search filter
+    const searchInput = document.getElementById('customerSearchInput');
+    const searchTerm = (searchInput?.value || '').trim().toLowerCase();
+
+    // Compute revenue per customer from transactions
+    const revenueByCustomer = {};
+    (appState.transactions || []).forEach(t => {
+        if (t.type === 'income' && t.party) {
+            const normalized = t.party.trim().toLowerCase();
+            revenueByCustomer[normalized] = (revenueByCustomer[normalized] || 0) + (t.amount || 0);
+        }
+    });
+
+    // Filter and render
+    let filteredCustomers = customers;
+    if (searchTerm) {
+        filteredCustomers = customers.filter(c => {
+            const name = (c.name || '').toLowerCase();
+            const company = (c.company || '').toLowerCase();
+            const email = (c.email || '').toLowerCase();
+            return name.includes(searchTerm) || company.includes(searchTerm) || email.includes(searchTerm);
+        });
+    }
+
+    if (listEl) {
+        listEl.innerHTML = filteredCustomers.map(c => renderCustomerRow(c, revenueByCustomer, canEdit)).join('');
+    }
+}
+
+/**
+ * Render a single customer row
+ */
+function renderCustomerRow(customer, revenueByCustomer, canEdit) {
+    const c = customer;
+    const normalizedName = (c.name || '').trim().toLowerCase();
+    const revenue = revenueByCustomer[normalizedName] || 0;
+
+    // Build meta items
+    const metaParts = [];
+    if (c.company) metaParts.push(escapeHtml(c.company));
+    if (c.email) metaParts.push(escapeHtml(c.email));
+
+    const metaHtml = metaParts.length > 0
+        ? metaParts.join('<span class="customer-meta-dot"></span>')
+        : '<span style="opacity:0.5;">No details</span>';
+
+    // Source badge
+    const sourceLabel = c.source === 'lead' ? 'Lead' : c.source === 'transaction' ? 'Transaction' : 'Manual';
+    const sourceClass = c.source === 'lead' ? 'source-lead' : c.source === 'transaction' ? 'source-transaction' : 'source-manual';
+
+    // Get creator info
+    let addedBy = 'Unknown';
+    if (c.createdByName) {
+        addedBy = c.createdByName;
+    } else if (c.createdBy) {
+        const identity = getIdentity(c.createdBy);
+        if (identity && identity.displayName) addedBy = identity.displayName;
+    }
+    const createdAtDate = c.createdAt?.toDate?.() || (c.createdAt ? new Date(c.createdAt) : null);
+    const createdAtStr = createdAtDate
+        ? createdAtDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+        : '';
+
+    return `
+        <div class="customer-row" data-id="${c.id}" onclick="toggleCustomerRow(this)">
+            <div class="customer-row-header">
+                <div class="customer-row-info">
+                    <div class="customer-row-name">${escapeHtml(c.name)}</div>
+                    <div class="customer-row-meta">${metaHtml}</div>
+                </div>
+                ${revenue > 0 ? `
+                <div class="customer-row-revenue">
+                    <div class="customer-revenue-amount">${formatCurrency(revenue)}</div>
+                    <div class="customer-revenue-label">total revenue</div>
+                </div>
+                ` : ''}
+                <span class="customer-row-source ${sourceClass}">${sourceLabel}</span>
+            </div>
+            <div class="customer-row-details">
+                <div class="customer-detail-grid">
+                    ${c.company ? `
+                    <div class="customer-detail-item">
+                        <span class="detail-label">Company</span>
+                        <span class="detail-value">${escapeHtml(c.company)}</span>
+                    </div>` : ''}
+                    ${c.email ? `
+                    <div class="customer-detail-item">
+                        <span class="detail-label">Email</span>
+                        <span class="detail-value">${escapeHtml(c.email)}</span>
+                    </div>` : ''}
+                    ${c.phone ? `
+                    <div class="customer-detail-item">
+                        <span class="detail-label">Phone</span>
+                        <span class="detail-value">${escapeHtml(c.phone)}</span>
+                    </div>` : ''}
+                    <div class="customer-detail-item">
+                        <span class="detail-label">Total Revenue</span>
+                        <span class="detail-value" style="color: #22c55e; font-weight: 600;">${formatCurrency(revenue)}</span>
+                    </div>
+                    ${c.notes ? `
+                    <div class="customer-detail-item full-width">
+                        <span class="detail-label">Notes</span>
+                        <span class="detail-value">${escapeHtml(c.notes)}</span>
+                    </div>` : ''}
+                    <div class="customer-detail-item">
+                        <span class="detail-label">Added By</span>
+                        <span class="detail-value">${escapeHtml(addedBy)}</span>
+                    </div>
+                    ${createdAtStr ? `
+                    <div class="customer-detail-item">
+                        <span class="detail-label">Added On</span>
+                        <span class="detail-value">${createdAtStr}</span>
+                    </div>` : ''}
+                </div>
+                ${canEdit ? `
+                <div class="customer-row-actions">
+                    <button class="btn-sm btn-edit" onclick="event.stopPropagation(); editCustomer('${c.id}')">
+                        <i class="fas fa-pen"></i> Edit
+                    </button>
+                    <button class="btn-sm btn-delete" onclick="event.stopPropagation(); openDeleteCustomerModal('${c.id}')">
+                        <i class="fas fa-trash"></i> Delete
+                    </button>
+                </div>` : ''}
+            </div>
+        </div>
+    `;
+}
+
+/**
+ * Toggle customer row expansion
+ */
+function toggleCustomerRow(el) {
+    el.classList.toggle('expanded');
+}
+
+/**
+ * Open customer modal for adding or editing
+ */
+function openCustomerModal(customer = null) {
+    const modal = document.getElementById('customerModal');
+    const form = document.getElementById('customerForm');
+    const title = document.getElementById('customerModalTitle');
+    const subtitle = document.getElementById('customerModalSubtitle');
+
+    if (!modal || !form) return;
+
+    form.reset();
+    document.getElementById('customerId').value = '';
+
+    // Reset source field
+    const sourceField = document.getElementById('customerSourceField');
+    if (sourceField) sourceField.style.display = 'none';
+
+    if (customer) {
+        // Edit mode
+        title.innerHTML = '<i class="fas fa-user-edit"></i> Edit Customer';
+        subtitle.textContent = 'Update customer information';
+        document.getElementById('customerId').value = customer.id;
+        document.getElementById('customerName').value = customer.name || '';
+        document.getElementById('customerCompany').value = customer.company || '';
+        document.getElementById('customerEmail').value = customer.email || '';
+        document.getElementById('customerPhone').value = customer.phone || '';
+        document.getElementById('customerNotes').value = customer.notes || '';
+
+        // Show source if auto-created
+        if (customer.source && customer.source !== 'manual') {
+            if (sourceField) sourceField.style.display = 'block';
+            const sourceDisplay = document.getElementById('customerSourceDisplay');
+            if (sourceDisplay) {
+                sourceDisplay.value = customer.source === 'lead' ? 'Auto-created from won lead' : 'Auto-created from transaction';
+            }
+        }
+    } else {
+        title.innerHTML = '<i class="fas fa-user-plus"></i> New Customer';
+        subtitle.textContent = 'Add a new customer to your registry';
+    }
+
+    modal.classList.add('active');
+}
+
+/**
+ * Close customer modal
+ */
+function closeCustomerModalFn() {
+    const modal = document.getElementById('customerModal');
+    if (modal) modal.classList.remove('active');
+}
+
+/**
+ * Handle customer form save
+ */
+async function handleCustomerSave(event) {
+    event.preventDefault();
+
+    if (!db || !appState.currentTeamId || !currentAuthUser) {
+        showToast('Unable to save customer. Please try again.', 'error');
+        return;
+    }
+
+    const customerId = document.getElementById('customerId').value;
+    const isEdit = !!customerId;
+
+    const name = document.getElementById('customerName').value.trim();
+    if (!name) {
+        showToast('Please enter a customer name', 'error');
+        return;
+    }
+
+    // Check for duplicate name (case-insensitive) when adding new
+    if (!isEdit) {
+        const normalizedNew = name.toLowerCase();
+        const duplicate = (appState.customers || []).find(c => (c.name || '').trim().toLowerCase() === normalizedNew);
+        if (duplicate) {
+            showToast(`Customer "${duplicate.name}" already exists`, 'error');
+            return;
+        }
+    }
+
+    const customerData = {
+        name,
+        email: document.getElementById('customerEmail').value.trim(),
+        phone: document.getElementById('customerPhone').value.trim(),
+        company: document.getElementById('customerCompany').value.trim(),
+        notes: document.getElementById('customerNotes').value.trim(),
+        updatedAt: new Date()
+    };
+
+    try {
+        const { doc, collection, addDoc, updateDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+
+        if (isEdit) {
+            const customerRef = doc(db, 'teams', appState.currentTeamId, 'customers', customerId);
+            await updateDoc(customerRef, {
+                ...customerData,
+                updatedAt: serverTimestamp()
+            });
+            showToast('Customer updated', 'success');
+        } else {
+            const customersRef = collection(db, 'teams', appState.currentTeamId, 'customers');
+            const identity = getIdentity(currentAuthUser.uid, currentAuthUser.displayName || currentAuthUser.email);
+            await addDoc(customersRef, {
+                ...customerData,
+                source: 'manual',
+                createdBy: currentAuthUser.uid,
+                createdByName: identity.displayName || currentAuthUser.displayName || currentAuthUser.email || '',
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp()
+            });
+            showToast('Customer added', 'success');
+        }
+
+        closeCustomerModalFn();
+        loadCustomers();
+
+    } catch (error) {
+        console.error('Error saving customer:', error);
+        showToast('Failed to save customer', 'error');
+    }
+}
+
+/**
+ * Edit a customer by ID
+ */
+function editCustomer(customerId) {
+    const customer = (appState.customers || []).find(c => c.id === customerId);
+    if (customer) {
+        openCustomerModal(customer);
+    }
+}
+
+/**
+ * Open delete customer confirmation modal
+ */
+function openDeleteCustomerModal(customerId) {
+    const modal = document.getElementById('deleteCustomerModal');
+    const idInput = document.getElementById('deleteCustomerId');
+    if (modal && idInput) {
+        idInput.value = customerId;
+        modal.classList.add('active');
+    }
+}
+
+/**
+ * Close delete customer modal
+ */
+function closeDeleteCustomerModalFn() {
+    const modal = document.getElementById('deleteCustomerModal');
+    if (modal) modal.classList.remove('active');
+}
+
+/**
+ * Handle customer deletion
+ */
+async function handleDeleteCustomer() {
+    const customerId = document.getElementById('deleteCustomerId').value;
+
+    if (!db || !appState.currentTeamId || !customerId) {
+        showToast('Unable to delete customer', 'error');
+        return;
+    }
+
+    try {
+        const { doc, deleteDoc } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+        const customerRef = doc(db, 'teams', appState.currentTeamId, 'customers', customerId);
+        await deleteDoc(customerRef);
+
+        showToast('Customer deleted', 'success');
+        closeDeleteCustomerModalFn();
+        loadCustomers();
+
+    } catch (error) {
+        console.error('Error deleting customer:', error);
+        showToast('Failed to delete customer', 'error');
+    }
+}
+
+/**
+ * Find a customer by name (case-insensitive match)
+ * @param {string} name - Customer name to search for
+ * @returns {Object|null} The matching customer or null
+ */
+function findCustomerByName(name) {
+    if (!name || !appState.customers) return null;
+    const normalized = name.trim().toLowerCase();
+    return appState.customers.find(c => (c.name || '').trim().toLowerCase() === normalized) || null;
+}
+
+/**
+ * Auto-create a customer from a won lead
+ * Called when a lead status changes to 'won'
+ * @param {Object} lead - The lead task object
+ */
+async function autoCreateCustomerFromLead(lead) {
+    if (!db || !appState.currentTeamId || !currentAuthUser) return;
+
+    const customerName = (lead.leadName || lead.title || '').trim();
+    if (!customerName) return;
+
+    // Check if customer already exists
+    if (findCustomerByName(customerName)) {
+        console.log('👥 Customer already exists for lead:', customerName);
+        return;
+    }
+
+    try {
+        const { collection, addDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+        const customersRef = collection(db, 'teams', appState.currentTeamId, 'customers');
+
+        const identity = getIdentity(currentAuthUser.uid, currentAuthUser.displayName || currentAuthUser.email);
+
+        // Extract as much info as possible from the lead row
+        const contactRaw = (lead.contact || '').trim();
+        // Determine if contact looks like an email or phone
+        const isEmail = contactRaw.includes('@');
+        const customerEmail = isEmail ? contactRaw : '';
+        const customerPhone = !isEmail && contactRaw ? contactRaw : '';
+
+        // Build notes from lead data
+        const notesParts = [];
+        notesParts.push('Auto-created from won lead.');
+        if (lead.value) notesParts.push(`Deal value: $${lead.value}`);
+        if (lead.source) notesParts.push(`Lead source: ${lead.source}`);
+        if (lead.notes) notesParts.push(lead.notes);
+        const customerNotes = notesParts.join(' ');
+
+        // Check custom fields for company or extra info
+        const customFields = lead.customFields || {};
+        const companyFromCustom = customFields.company || customFields.Company || '';
+
+        await addDoc(customersRef, {
+            name: customerName,
+            email: customerEmail,
+            phone: customerPhone,
+            company: companyFromCustom,
+            notes: customerNotes,
+            source: 'lead',
+            leadId: lead.id || '',
+            createdBy: currentAuthUser.uid,
+            createdByName: identity.displayName || currentAuthUser.displayName || currentAuthUser.email || '',
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+        });
+
+        console.log('👥 Auto-created customer from lead:', customerName);
+        showToast(`Customer "${customerName}" added from won lead`, 'success');
+        loadCustomers();
+
+    } catch (error) {
+        console.error('Error auto-creating customer from lead:', error);
+    }
+}
+
+/**
+ * Get customer name suggestions for autocomplete
+ * Returns an array of customer names
+ */
+function getCustomerNameSuggestions() {
+    return (appState.customers || []).map(c => c.name).filter(Boolean);
+}
+
+/**
+ * Initialize customer section event listeners
+ * Called from initFinances()
+ */
+function initCustomers() {
+    // Add customer buttons
+    const addCustomerBtn = document.getElementById('addCustomerBtn');
+    const addFirstCustomerBtn = document.getElementById('addFirstCustomerBtn');
+
+    if (addCustomerBtn) {
+        addCustomerBtn.addEventListener('click', () => openCustomerModal());
+    }
+    if (addFirstCustomerBtn) {
+        addFirstCustomerBtn.addEventListener('click', () => openCustomerModal());
+    }
+
+    // Modal controls
+    const closeBtn = document.getElementById('closeCustomerModal');
+    const cancelBtn = document.getElementById('cancelCustomerBtn');
+
+    if (closeBtn) closeBtn.addEventListener('click', closeCustomerModalFn);
+    if (cancelBtn) cancelBtn.addEventListener('click', closeCustomerModalFn);
+
+    // Customer form
+    const customerForm = document.getElementById('customerForm');
+    if (customerForm) {
+        customerForm.addEventListener('submit', handleCustomerSave);
+    }
+
+    // Close modal on background click
+    const customerModal = document.getElementById('customerModal');
+    if (customerModal) {
+        customerModal.addEventListener('click', (e) => {
+            if (e.target === customerModal) closeCustomerModalFn();
+        });
+    }
+
+    // Delete confirmation modal
+    const closeDeleteBtn = document.getElementById('closeDeleteCustomerModal');
+    const cancelDeleteBtn = document.getElementById('cancelDeleteCustomer');
+    const confirmDeleteBtn = document.getElementById('confirmDeleteCustomer');
+
+    if (closeDeleteBtn) closeDeleteBtn.addEventListener('click', closeDeleteCustomerModalFn);
+    if (cancelDeleteBtn) cancelDeleteBtn.addEventListener('click', closeDeleteCustomerModalFn);
+    if (confirmDeleteBtn) confirmDeleteBtn.addEventListener('click', handleDeleteCustomer);
+
+    // Close delete modal on background click
+    const deleteModal = document.getElementById('deleteCustomerModal');
+    if (deleteModal) {
+        deleteModal.addEventListener('click', (e) => {
+            if (e.target === deleteModal) closeDeleteCustomerModalFn();
+        });
+    }
+
+    // Search input
+    const searchInput = document.getElementById('customerSearchInput');
+    if (searchInput) {
+        searchInput.addEventListener('input', () => renderCustomers());
+    }
+}
+
+// Expose customer functions to window for inline onclick handlers
+window.toggleCustomerRow = toggleCustomerRow;
+window.editCustomer = editCustomer;
+window.openDeleteCustomerModal = openDeleteCustomerModal;
 
 // ===================================
 // SUBSCRIPTIONS MANAGEMENT
@@ -37054,6 +37603,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     initJoinTeamModal(); // Initialize join team modal
     initLinkLobby(); // Initialize Link Lobby
     initFinances(); // Initialize Finances tab
+    initCustomers(); // Initialize Customers section
     initSubscriptionEventListeners(); // Initialize Subscriptions
     initDropdownGuards(); // Ensure dropdown options close on selection
     initDocsModule(); // Initialize Docs feature

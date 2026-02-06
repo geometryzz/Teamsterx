@@ -29769,6 +29769,362 @@ body.dark-mode .subscription-type-toggle {
 }
 
 /* ===================================
+   CUSTOMERS SECTION (Finances Tab)
+   =================================== */
+.customers-section {
+    margin-top: 40px;
+    padding: 0;
+}
+
+.customers-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 16px;
+    padding: 0 4px;
+}
+
+.customers-title {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.customers-icon {
+    width: 36px;
+    height: 36px;
+    border-radius: 10px;
+    background: var(--accent-soft);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    color: var(--accent);
+    font-size: 16px;
+}
+
+.customers-title h2 {
+    font-size: 17px;
+    font-weight: 600;
+    color: var(--text-main);
+    margin: 0;
+}
+
+.customers-count {
+    background: var(--accent-soft);
+    color: var(--accent);
+    font-size: 12px;
+    font-weight: 700;
+    padding: 3px 9px;
+    border-radius: 999px;
+    min-width: 24px;
+    text-align: center;
+}
+
+.btn-add-customer {
+    width: 36px;
+    height: 36px;
+    border-radius: 50%;
+    background: var(--accent);
+    color: white;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 14px;
+    transition: all var(--transition-fast);
+    flex-shrink: 0;
+}
+
+.btn-add-customer:hover {
+    background: #0066dd;
+    transform: scale(1.05);
+}
+
+/* Customer Search */
+.customers-search-row {
+    margin-bottom: 12px;
+}
+
+.customers-search-wrapper {
+    position: relative;
+    display: flex;
+    align-items: center;
+}
+
+.customers-search-wrapper i {
+    position: absolute;
+    left: 12px;
+    color: var(--text-muted);
+    font-size: 13px;
+    pointer-events: none;
+}
+
+.customers-search-input {
+    width: 100%;
+    padding: 9px 12px 9px 36px;
+    border: 1px solid var(--border-subtle);
+    border-radius: 10px;
+    font-size: 13px;
+    background: var(--bg-body);
+    color: var(--text-main);
+    transition: border-color var(--transition-fast);
+    outline: none;
+}
+
+.customers-search-input:focus {
+    border-color: var(--accent);
+}
+
+/* Customer List */
+.customers-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+}
+
+/* Customer Row */
+.customer-row {
+    display: flex;
+    flex-direction: column;
+    padding: 14px 16px;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: 14px;
+    cursor: pointer;
+    transition: all 0.18s ease;
+    position: relative;
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.04);
+}
+
+.customer-row:hover {
+    border-color: var(--border-medium);
+    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.08);
+    transform: translateY(-1px);
+}
+
+.customer-row-header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    width: 100%;
+}
+
+.customer-row-info {
+    flex: 1;
+    min-width: 0;
+}
+
+.customer-row-name {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--text-main);
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.customer-row-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    margin-top: 2px;
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
+.customer-row-meta span {
+    white-space: nowrap;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+.customer-row-meta .customer-meta-dot {
+    width: 3px;
+    height: 3px;
+    border-radius: 50%;
+    background: var(--text-muted);
+    flex-shrink: 0;
+    opacity: 0.5;
+}
+
+.customer-row-revenue {
+    text-align: right;
+    flex-shrink: 0;
+}
+
+.customer-revenue-amount {
+    font-size: 14px;
+    font-weight: 600;
+    color: #22c55e;
+}
+
+.customer-revenue-label {
+    font-size: 11px;
+    color: var(--text-muted);
+    margin-top: 1px;
+}
+
+.customer-row-source {
+    font-size: 10px;
+    font-weight: 600;
+    padding: 2px 7px;
+    border-radius: 999px;
+    flex-shrink: 0;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.customer-row-source.source-lead {
+    background: rgba(168, 85, 247, 0.1);
+    color: #a855f7;
+}
+
+.customer-row-source.source-manual {
+    background: var(--accent-soft);
+    color: var(--accent);
+}
+
+.customer-row-source.source-transaction {
+    background: rgba(34, 197, 94, 0.1);
+    color: #22c55e;
+}
+
+/* Customer Row Expanded / Detail View */
+.customer-row-details {
+    display: none;
+    width: 100%;
+    padding-top: 10px;
+    margin-top: 10px;
+    border-top: 1px solid var(--border-subtle);
+}
+
+.customer-row.expanded .customer-row-details {
+    display: block;
+}
+
+.customer-detail-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 8px 16px;
+}
+
+.customer-detail-item {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+}
+
+.customer-detail-item.full-width {
+    grid-column: 1 / -1;
+}
+
+.customer-detail-item .detail-label {
+    font-size: 11px;
+    font-weight: 500;
+    color: var(--text-muted);
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.customer-detail-item .detail-value {
+    font-size: 13px;
+    color: var(--text-main);
+    word-break: break-word;
+}
+
+.customer-row-actions {
+    display: flex;
+    gap: 8px;
+    margin-top: 10px;
+    justify-content: flex-end;
+}
+
+.customer-row-actions .btn-sm {
+    padding: 8px 16px;
+    font-size: 12px;
+    border-radius: 999px;
+    border: none;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-weight: 500;
+    transition: all 0.2s ease;
+}
+
+.customer-row-actions .btn-edit {
+    background: var(--accent-soft);
+    color: var(--accent);
+    border: 1px solid var(--accent);
+}
+
+.customer-row-actions .btn-edit:hover {
+    background: var(--accent);
+    color: white;
+    border-color: var(--accent);
+}
+
+.customer-row-actions .btn-delete {
+    background: rgba(239, 68, 68, 0.12);
+    color: #ef4444;
+    border: 1px solid rgba(239, 68, 68, 0.35);
+}
+
+.customer-row-actions .btn-delete:hover {
+    background: #ef4444;
+    color: white;
+    border-color: #ef4444;
+}
+
+/* Customer Empty State */
+.customers-empty-state {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    padding: 40px 20px;
+    text-align: center;
+    color: var(--text-muted);
+}
+
+.customers-empty-state i {
+    font-size: 32px;
+    margin-bottom: 12px;
+    opacity: 0.4;
+}
+
+.customers-empty-state p {
+    font-size: 14px;
+    font-weight: 500;
+    margin: 0 0 6px 0;
+    color: var(--text-main);
+}
+
+.customers-empty-hint {
+    font-size: 12px;
+    color: var(--text-muted);
+    margin-bottom: 14px;
+    max-width: 300px;
+}
+
+/* Dark Mode Customers */
+body.dark-mode .customers-section {
+    background: var(--bg-surface);
+    border-color: var(--border-subtle);
+}
+
+body.dark-mode .customer-row {
+    background: var(--bg-base);
+}
+
+body.dark-mode .customers-search-input {
+    background: var(--bg-base);
+    border-color: var(--border-subtle);
+    color: var(--text-main);
+}
+
+/* ===================================
    FINANCE ANALYTICS SECTION (in Metrics Tab)
    =================================== */
 .finance-analytics-section {
