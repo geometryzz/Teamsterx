@@ -16195,64 +16195,6 @@ window.deleteTask = async function(taskId, event) {
     
     // Show custom delete popup near cursor
     showDeleteConfirmPopup(taskId, task?.title || 'this task', event);
-        if (DEBUG) {
-            console.log('📊 Current state:', {
-                db: !!db,
-                currentAuthUser: !!currentAuthUser,
-                currentTeamId: appState.currentTeamId
-            });
-        }
-        
-        const taskTitle = task ? task.title : 'Unknown';
-        if (DEBUG) console.log('📌 Found task:', task);
-        
-        // Delete from Firestore FIRST (before removing from local state)
-        if (db && currentAuthUser && appState.currentTeamId) {
-            try {
-                const { doc, deleteDoc } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
-                const taskPath = `teams/${appState.currentTeamId}/tasks/${taskIdStr}`;
-                if (DEBUG) console.log('🔥 Attempting to delete from Firestore path:', taskPath);
-                
-                const taskRef = doc(db, 'teams', appState.currentTeamId, 'tasks', taskIdStr);
-                await deleteDoc(taskRef);
-                debugLog('✅ Task deleted from Firestore successfully');
-                
-                // Add to activity feed only if NOT a private spreadsheet task
-                const spreadsheet = appState.spreadsheets.find(s => s.id === task?.spreadsheetId);
-                const isPrivateSpreadsheet = spreadsheet && spreadsheet.visibility === 'private';
-                
-                if (!isPrivateSpreadsheet) {
-                    addActivity({
-                        type: 'task',
-                        description: `deleted task "${taskTitle}"`,
-                        entityType: 'task',
-                        entityId: taskIdStr,
-                        entityName: taskTitle,
-                        sheetId: task?.spreadsheetId || task?.sheetId
-                    });
-                }
-            } catch (error) {
-                console.error('❌ Error deleting task from Firestore:', error.code || error.message);
-                
-                // If task doesn't exist in Firestore (old task), allow local deletion
-                if (error.code === 'not-found' || error.message.includes('No document to update')) {
-                    console.log('⚠️ Task not found in Firestore (probably an old task). Deleting locally only.');
-                } else {
-                    showToast('Error deleting task from database. Please try again.', 'error', 5000, 'Delete Failed');
-                    return; // Don't delete from local state if it's a real error
-                }
-            }
-        } else {
-            console.warn('⚠️ Skipping Firestore deletion - missing requirements');
-        }
-        
-        // Remove from local state AFTER successful Firestore deletion
-        appState.tasks = appState.tasks.filter(t => String(t.id) !== taskIdStr);
-        saveToLocalStorage('tasks', appState.tasks);
-        console.log('✅ Task removed from local state');
-        
-        // Update display
-        window.displayTasks();
 };
 
 // Show custom delete confirmation popup near cursor
@@ -21460,7 +21402,7 @@ function createSwitchableGraphCard(graphId, title, icon, data, dataType = 'trend
                         <div class="graph-menu-dropdown" data-graph-id="${graphId}">
                             <div class="graph-menu-title">Graph Type</div>
                             <button class="graph-menu-option ${currentType === 'bar' ? 'active' : ''}" data-type="bar" onclick="switchGraphType('${graphId}', 'bar')">
-                                <i class="fas fa-chart-bar"></i>
+                                <i class="fas fa-align-left" style="transform: rotate(-90deg);"></i>
                                 <span>Vertical Bar</span>
                             </button>
                             <button class="graph-menu-option ${currentType === 'hbar' ? 'active' : ''}" data-type="hbar" onclick="switchGraphType('${graphId}', 'hbar')">

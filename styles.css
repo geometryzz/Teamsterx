@@ -3329,6 +3329,13 @@ body.dark-mode .calendar-container {
     overflow: visible; /* Allow dropdowns to extend */
 }
 
+.calendar-header-actions {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    margin-left: auto;
+}
+
 .calendar-title-section {
     display: grid;
     grid-template-columns: 40px 1fr 40px;
@@ -3518,7 +3525,6 @@ body.dark-mode .calendar-month-option.selected {
     padding: 4px;
     gap: 4px;
     border: 1px solid var(--border-subtle);
-    margin-left: auto; /* Push toward add button */
 }
 
 body.dark-mode .calendar-view-toggle {
@@ -17040,21 +17046,23 @@ body.dark-mode .toast-close:hover {
 
 .delete-popup-btn {
     padding: 8px 16px;
-    border-radius: 8px;
+    border-radius: 999px;
     font-size: 13px;
     font-weight: 500;
     cursor: pointer;
-    border: none;
+    border: 1px solid transparent;
     transition: all 0.15s ease;
 }
 
 .delete-popup-btn.cancel {
     background: var(--bg-surface-soft);
     color: var(--text-main);
+    border-color: var(--border-subtle);
 }
 
 .delete-popup-btn.cancel:hover {
     background: var(--bg-main);
+    border-color: var(--border-medium);
 }
 
 .delete-popup-btn.confirm {
