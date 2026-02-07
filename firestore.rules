@@ -38,9 +38,22 @@ service cloud.firestore {
         : 'none';
     }
 
+    // Get a specific user's role for a team (safe default)
+    function getMemberRoleFor(teamId, userId) {
+      let teamData = getTeamData(teamId);
+      return (userId in teamData.members)
+        ? teamData.members[userId].role
+        : 'none';
+    }
+
     // Check if user is owner
     function isOwner(teamId) {
       return isMemberInTeam(teamId) && getMemberRole(teamId) == "owner";
+    }
+
+    // Check if a specific user is the team owner
+    function isOwnerUser(teamId, userId) {
+      return isMemberInTeam(teamId) && getMemberRoleFor(teamId, userId) == "owner";
     }
 
     // Check if user is admin or owner
@@ -309,10 +322,13 @@ service cloud.firestore {
             'assignee', 'assigneeId', 'priority', 'dueAt', 'dueDate', 'createdAt', 'updatedAt',
             'tags', 'completed', 'completedAt', 'completedBy', 'progress', 'estimatedTime',
             'budget', 'spreadsheetId', 'showOnCalendar', 'isRecurring', 'recurrence',
+            'xpA',
             // Lead-specific fields
             'leadName', 'source', 'value', 'contact', 'notes',
             // Custom fields map
-            'customFields'
+            'customFields',
+            // Customer field (who the task is for)
+            'customer'
           ])
           && request.resource.data.teamId == teamId
           && request.resource.data.title is string
@@ -338,9 +354,13 @@ service cloud.firestore {
               request.resource.data.contact == null || (request.resource.data.contact is string && request.resource.data.contact.size() <= 500))
           && (!('notes' in request.resource.data) || 
               request.resource.data.notes == null || (request.resource.data.notes is string && request.resource.data.notes.size() <= 2000))
+            && (!('xpA' in request.resource.data) || request.resource.data.xpA is bool)
           // Custom fields map validation (max 50 fields, each value <= 10KB)
           && (!('customFields' in request.resource.data) || 
-              (request.resource.data.customFields is map && request.resource.data.customFields.keys().size() <= 50));
+              (request.resource.data.customFields is map && request.resource.data.customFields.keys().size() <= 50))
+          // Customer field validation
+          && (!('customer' in request.resource.data) || 
+              (request.resource.data.customer is string && request.resource.data.customer.size() <= 200));
 
         // Update: admin/owner can update any; creator can update their own; assignee can update progress/status
         // Cannot change immutable fields: createdBy, teamId
@@ -367,10 +387,13 @@ service cloud.firestore {
             'title', 'description', 'status', 'assignee', 'assigneeId', 'priority', 'dueAt', 'dueDate', 'updatedAt',
             'tags', 'completed', 'completedAt', 'completedBy', 'progress', 'estimatedTime',
             'budget', 'spreadsheetId', 'showOnCalendar', 'isRecurring', 'recurrence',
+            'xpA',
             // Lead-specific fields
             'leadName', 'source', 'value', 'contact', 'notes',
             // Custom fields map
-            'customFields'
+            'customFields',
+            // Customer field (who the task is for)
+            'customer'
           ])
         ) && (
           // SECURITY: Immutable fields cannot change (conditional checks for legacy docs without teamId/createdAt)
@@ -401,9 +424,13 @@ service cloud.firestore {
               request.resource.data.contact == null || (request.resource.data.contact is string && request.resource.data.contact.size() <= 500)) &&
           (!('notes' in request.resource.data) || 
               request.resource.data.notes == null || (request.resource.data.notes is string && request.resource.data.notes.size() <= 2000)) &&
+            (!('xpA' in request.resource.data) || request.resource.data.xpA is bool) &&
           // Custom fields map validation
           (!('customFields' in request.resource.data) || 
-              (request.resource.data.customFields is map && request.resource.data.customFields.keys().size() <= 50))
+              (request.resource.data.customFields is map && request.resource.data.customFields.keys().size() <= 50)) &&
+          // Customer field validation
+          (!('customer' in request.resource.data) || 
+              (request.resource.data.customer is string && request.resource.data.customer.size() <= 200))
         );
 
         // Delete: admin/owner or creator
@@ -439,9 +466,9 @@ service cloud.firestore {
           && (!('mentions' in request.resource.data) || 
               (request.resource.data.mentions is list && request.resource.data.mentions.size() <= 20));
 
-        // Delete: admins or own message
-        allow delete: if isAdmin(teamId) ||
-          (isMemberInTeam(teamId) && resource.data.userId == request.auth.uid);
+        // Delete: own message, or admin deleting non-owner messages
+        allow delete: if (isMemberInTeam(teamId) && resource.data.userId == request.auth.uid) ||
+          (isAdmin(teamId) && !isOwnerUser(teamId, resource.data.userId));
 
         // Update rules:
         // - Original author can update their own message content (except userId)
@@ -1023,7 +1050,7 @@ service cloud.firestore {
           && (!('notes' in request.resource.data) ||
               (request.resource.data.notes is string && request.resource.data.notes.size() <= 1000))
           && (!('source' in request.resource.data) ||
-              (request.resource.data.source is string && request.resource.data.source in ['manual', 'lead', 'transaction']))
+              (request.resource.data.source is string && request.resource.data.source in ['manual', 'lead', 'transaction', 'spreadsheet']))
           && (!('leadId' in request.resource.data) ||
               (request.resource.data.leadId is string && request.resource.data.leadId.size() <= 100));
 

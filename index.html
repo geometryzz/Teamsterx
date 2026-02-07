@@ -1426,22 +1426,22 @@
                                     <!-- Avatar Color -->
                                     <div class="settings-field-minimal">
                                         <label>Avatar Color</label>
-                                        <div class="color-picker-inline preset-only" id="avatarColorPicker">
+                                        <div class="color-picker-inline preset-only" id="avatarColorPicker" data-picker="avatar" data-input="settingsAvatarColor" data-swatch="avatarColorSwatch">
                                             <div class="color-picker-inner-pill">
-                                                <div class="color-picker-current-swatch" id="avatarColorSwatch" style="background: #007AFF;"></div>
+                                                <div class="color-picker-current-swatch" id="avatarColorSwatch" style="background: #0A84FF;"></div>
                                             </div>
                                             <div class="color-picker-recent">
-                                                <button type="button" class="color-picker-recent-btn" data-color="#FF3B30" style="background: #FF3B30;"></button>
-                                                <button type="button" class="color-picker-recent-btn" data-color="#FF9500" style="background: #FF9500;"></button>
-                                                <button type="button" class="color-picker-recent-btn" data-color="#FFCC00" style="background: #FFCC00;"></button>
-                                                <button type="button" class="color-picker-recent-btn" data-color="#34C759" style="background: #34C759;"></button>
-                                                <button type="button" class="color-picker-recent-btn" data-color="#00C7BE" style="background: #00C7BE;"></button>
-                                                <button type="button" class="color-picker-recent-btn" data-color="#007AFF" style="background: #007AFF;"></button>
-                                                <button type="button" class="color-picker-recent-btn" data-color="#5856D6" style="background: #5856D6;"></button>
-                                                <button type="button" class="color-picker-recent-btn" data-color="#AF52DE" style="background: #AF52DE;"></button>
+                                                <button type="button" class="color-picker-recent-btn" data-color="#EF4444" style="background: #EF4444;"></button>
+                                                <button type="button" class="color-picker-recent-btn" data-color="#EC4899" style="background: #EC4899;"></button>
+                                                <button type="button" class="color-picker-recent-btn" data-color="#8B5CF6" style="background: #8B5CF6;"></button>
+                                                <button type="button" class="color-picker-recent-btn" data-color="rgb(127, 211, 255)" style="background: rgb(127, 211, 255);"></button>
+                                                <button type="button" class="color-picker-recent-btn" data-color="#0A84FF" style="background: #0A84FF;"></button>
+                                                <button type="button" class="color-picker-recent-btn" data-color="#14B8A6" style="background: #14B8A6;"></button>
+                                                <button type="button" class="color-picker-recent-btn" data-color="#22C55E" style="background: #22C55E;"></button>
+                                                <button type="button" class="color-picker-recent-btn" data-color="#F59E0B" style="background: #F59E0B;"></button>
                                             </div>
                                         </div>
-                                            <input type="hidden" id="settingsAvatarColor" value="#007AFF">
+                                            <input type="hidden" id="settingsAvatarColor" value="#0A84FF">
                                         <input type="hidden" id="avatarFileInput" accept="image/*">
                                     </div>
 
@@ -1475,17 +1475,17 @@
                                     <!-- Accent Color -->
                                     <div class="settings-field-minimal">
                                         <label>Accent Color</label>
-                                        <div class="color-picker-inline preset-only" id="accentColorPicker">
+                                        <div class="color-picker-inline preset-only" id="accentColorPicker" data-picker="accent" data-swatch="accentColorSwatch">
                                             <div class="color-picker-inner-pill">
-                                                <div class="color-picker-current-swatch" id="accentColorSwatch" style="background: #FF9500;"></div>
+                                                <div class="color-picker-current-swatch" id="accentColorSwatch" style="background: #0A84FF;"></div>
                                             </div>
                                             <div class="color-picker-recent">
-                                                <button type="button" class="color-picker-recent-btn" data-color="#007AFF" data-accent="blue" style="background: #007AFF;"></button>
-                                                <button type="button" class="color-picker-recent-btn" data-color="#00C7BE" data-accent="teal" style="background: #00C7BE;"></button>
-                                                <button type="button" class="color-picker-recent-btn" data-color="#34C759" data-accent="green" style="background: #34C759;"></button>
-                                                <button type="button" class="color-picker-recent-btn" data-color="#AF52DE" data-accent="purple" style="background: #AF52DE;"></button>
-                                                <button type="button" class="color-picker-recent-btn" data-color="#FF3B30" data-accent="red" style="background: #FF3B30;"></button>
-                                                <button type="button" class="color-picker-recent-btn selected" data-color="#FF9500" data-accent="orange" style="background: #FF9500;"></button>
+                                                <button type="button" class="color-picker-recent-btn selected" data-color="#0A84FF" data-accent="blue" style="background: #0A84FF;"></button>
+                                                <button type="button" class="color-picker-recent-btn" data-color="#14B8A6" data-accent="teal" style="background: #14B8A6;"></button>
+                                                <button type="button" class="color-picker-recent-btn" data-color="#22C55E" data-accent="green" style="background: #22C55E;"></button>
+                                                <button type="button" class="color-picker-recent-btn" data-color="#8B5CF6" data-accent="purple" style="background: #8B5CF6;"></button>
+                                                <button type="button" class="color-picker-recent-btn" data-color="#EF4444" data-accent="red" style="background: #EF4444;"></button>
+                                                <button type="button" class="color-picker-recent-btn" data-color="#F59E0B" data-accent="orange" style="background: #F59E0B;"></button>
                                             </div>
                                         </div>
                                     </div>
@@ -2152,21 +2152,21 @@
                             <label class="unified-form-label">
                                 Color
                             </label>
-                            <input type="hidden" id="eventColor" value="#007AFF">
-                            <div class="color-picker-inline narrow" id="eventColorPicker">
+                            <input type="hidden" id="eventColor" value="#ef4444">
+                            <div class="color-picker-inline narrow" id="eventColorPicker" style="max-width: 432px;">
                                 <div class="color-picker-inner-pill">
-                                    <div class="color-picker-current-swatch" id="eventColorSwatch" style="background: #007AFF;"></div>
-                                    <input type="text" id="eventColorHex" value="#007AFF" maxlength="7" spellcheck="false" autocomplete="off" inputmode="text" aria-label="Hex color" style="color:#ff2d9f;background:transparent;border:0;outline:0;box-shadow:none;padding:0;margin:0;font:600 15px/1 -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif;letter-spacing:0.4px;text-transform:uppercase;">
+                                    <div class="color-picker-current-swatch" id="eventColorSwatch" style="background: #ef4444;"></div>
+                                    <input type="text" id="eventColorHex" value="#ef4444" maxlength="7" spellcheck="false" autocomplete="off" inputmode="text" aria-label="Hex color" style="color:#ff2d9f;background:transparent;border:0;outline:0;box-shadow:none;padding:0;margin:0;font:600 15px/1 -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif;letter-spacing:0.4px;text-transform:uppercase;">
                                 </div>
                                 <div class="color-picker-recent" id="eventColorRecent">
-                                    <button type="button" class="color-picker-recent-btn" data-color="#FF3B30" style="background: #FF3B30;"></button>
-                                    <button type="button" class="color-picker-recent-btn" data-color="#FF9500" style="background: #FF9500;"></button>
-                                    <button type="button" class="color-picker-recent-btn" data-color="#FFCC00" style="background: #FFCC00;"></button>
-                                    <button type="button" class="color-picker-recent-btn" data-color="#34C759" style="background: #34C759;"></button>
-                                    <button type="button" class="color-picker-recent-btn" data-color="#007AFF" style="background: #007AFF;"></button>
-                                    <button type="button" class="color-picker-recent-btn" data-color="#5856D6" style="background: #5856D6;"></button>
-                                    <button type="button" class="color-picker-recent-btn" data-color="#AF52DE" style="background: #AF52DE;"></button>
-                                    <button type="button" class="color-picker-recent-btn" data-color="#FF2D55" style="background: #FF2D55;"></button>
+                                    <button type="button" class="color-picker-recent-btn" data-color="#ef4444" style="background: #ef4444;"></button>
+                                    <button type="button" class="color-picker-recent-btn" data-color="#f59e0b" style="background: #f59e0b;"></button>
+                                    <button type="button" class="color-picker-recent-btn" data-color="#22c55e" style="background: #22c55e;"></button>
+                                    <button type="button" class="color-picker-recent-btn" data-color="#14b8a6" style="background: #14b8a6;"></button>
+                                    <button type="button" class="color-picker-recent-btn" data-color="#0ea5e9" style="background: #0ea5e9;"></button>
+                                    <button type="button" class="color-picker-recent-btn" data-color="#6d5dfc" style="background: #6d5dfc;"></button>
+                                    <button type="button" class="color-picker-recent-btn" data-color="#a855f7" style="background: #a855f7;"></button>
+                                    <button type="button" class="color-picker-recent-btn" data-color="#475569" style="background: #475569;"></button>
                                 </div>
                             </div>
                         </div>
@@ -3337,9 +3337,8 @@
                                 Amount <span class="required">*</span>
                             </label>
                             <div class="amount-input-wrapper">
-                                <span class="currency-symbol">$</span>
                                 <input type="number" class="unified-input amount-input" id="transactionAmount" 
-                                       required min="0.01" step="0.01" placeholder="0.00">
+                                       required min="0.01" step="0.01" placeholder="$0.00">
                             </div>
                         </div>
 
@@ -3652,9 +3651,8 @@
                                 Amount <span class="required">*</span>
                             </label>
                             <div class="amount-input-wrapper">
-                                <span class="currency-symbol">$</span>
                                 <input type="number" class="unified-input amount-input" id="subscriptionAmount" 
-                                       required min="0.01" step="0.01" placeholder="0.00">
+                                       required min="0.01" step="10" placeholder="$0.00">
                             </div>
                         </div>
 

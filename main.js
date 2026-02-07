@@ -589,7 +589,7 @@ window.generateJoinLink = function() {
 // TABLE PRESETS
 // ===================================
 const TASKS_TABLE_PRESET = {
-    columns: ['title', 'status', 'assignee', 'priority', 'dueDate', 'progress'],
+    columns: ['title', 'status', 'assignee', 'customer', 'priority', 'dueDate', 'progress'],
     columnSettings: {
         status: {
             options: [
@@ -782,7 +782,7 @@ function normalizeProfile(uid, raw = {}) {
     // Ensure avatarColor is always a valid hex string
     let avatarColor = raw.avatarColor;
     if (!avatarColor || typeof avatarColor !== 'string' || !avatarColor.startsWith('#')) {
-        avatarColor = '#0078D4'; // Default blue
+        avatarColor = '#0A84FF'; // Default blue
     }
     
     return {
@@ -894,7 +894,7 @@ function calculateNextDueDate(currentDueDate, frequency, interval = 1) {
 function getIdentity(uid, fallbackName = null) {
     // Default values
     let displayName = 'Unknown';
-    let avatarColor = '#0078D4';
+    let avatarColor = '#0A84FF';
     let photoURL = null;
     
     if (!uid) {
@@ -923,7 +923,7 @@ function getIdentity(uid, fallbackName = null) {
             pub?.avatarColor ||
             teammate?.avatarColor ||
             member?.avatarColor ||
-            '#0078D4';
+            '#0A84FF';
         
         // Resolve photoURL
         photoURL = 
@@ -1525,7 +1525,7 @@ async function updateUserProfile(user) {
         const userDoc = await getDoc(userRef);
         
         let displayName = user.displayName || user.email.split('@')[0];
-        let avatarColor = '#0078D4'; // Default color
+        let avatarColor = '#0A84FF'; // Default color
         
         if (userDoc.exists()) {
             const userData = userDoc.data();
@@ -2444,7 +2444,7 @@ function initChat() {
 
         // Get current user's avatar color from teammates
         const currentTeammate = appState.teammates?.find(t => t.id === currentAuthUser?.uid);
-        const avatarColor = currentTeammate?.avatarColor || '#0078D4';
+        const avatarColor = currentTeammate?.avatarColor || '#0A84FF';
 
         const message = {
             author: appState.currentUser,
@@ -4636,20 +4636,15 @@ function renderWeekView(titleEl, daysEl) {
         console.log(`📋 Total events in appState: ${appState.events.length}`);
     }
     
-    // Mobile: shortened format "Jan. 12-18", Desktop: full format
-    if (isMobile) {
-        const startMonth = startOfWeek.toLocaleDateString('en-US', { month: 'short' });
-        const endMonth = endOfWeek.toLocaleDateString('en-US', { month: 'short' });
-        const startDay = startOfWeek.getDate();
-        const endDay = endOfWeek.getDate();
-        // If same month: "Jan. 12-18", if different: "Jan. 28 - Feb. 3"
-        if (startMonth === endMonth) {
-            titleEl.textContent = `${startMonth} ${startDay}-${endDay}`;
-        } else {
-            titleEl.textContent = `${startMonth} ${startDay} - ${endMonth} ${endDay}`;
-        }
+    // Week view title: "JAN 26 - FEB 1"
+    const startMonth = startOfWeek.toLocaleDateString('en-US', { month: 'short' }).toUpperCase();
+    const endMonth = endOfWeek.toLocaleDateString('en-US', { month: 'short' }).toUpperCase();
+    const startDay = startOfWeek.getDate();
+    const endDay = endOfWeek.getDate();
+    if (startMonth === endMonth) {
+        titleEl.textContent = `${startMonth} ${startDay} - ${endDay}`;
     } else {
-        titleEl.textContent = `${startOfWeek.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })} - ${endOfWeek.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`;
+        titleEl.textContent = `${startMonth} ${startDay} - ${endMonth} ${endDay}`;
     }
     
     // Generate occurrences for the week range
@@ -6615,6 +6610,7 @@ function initTasks() {
         const taskColumns = [
             { id: 'status', label: 'Status' },
             { id: 'assignee', label: 'Assignee' },
+            { id: 'customer', label: 'Customer' },
             { id: 'priority', label: 'Priority' },
             { id: 'dueDate', label: 'Due Date' },
             { id: 'progress', label: 'Progress' },
@@ -7518,6 +7514,7 @@ function initTasks() {
                         ]
                 },
                 'assignee': { label: 'Assignee', icon: 'fa-user', type: 'dropdown' },
+                'customer': { label: 'Customer', icon: 'fa-user-tag', type: 'dropdown' },
                 'priority': { 
                     label: 'Priority', icon: 'fa-flag', type: 'dropdown',
                     defaultOptions: [
@@ -7575,7 +7572,8 @@ function initTasks() {
                 }
                 
                 // For assignee column - disable type selector (it must stay as dropdown with teammate options)
-                if (columnId === 'assignee') {
+                // For customer column - disable type selector (it must stay as dropdown with customer options)
+                if (columnId === 'assignee' || columnId === 'customer') {
                     if (typeSelector) {
                         typeSelector.style.opacity = '0.5';
                         typeSelector.style.pointerEvents = 'none';
@@ -7747,13 +7745,15 @@ function initTasks() {
 
         if (tasks.length === 0) {
             tableContainer.innerHTML = `
-                <div class="spreadsheet-empty">
-                    <i class="fas fa-search"></i>
-                    <h4>No matching ${itemNamePlural}</h4>
-                    <p>Try adjusting your search or filters</p>
-                    <button class="btn-secondary empty-state-btn" onclick="clearFilters()">
-                        <i class="fas fa-times"></i> Clear Filters
+                <div class="spreadsheet-empty-wrapper">
+                    <button class="add-row-btn empty-state-add-btn" onclick="openAddItemModal()">
+                        <i class="fas fa-plus"></i> Add new ${isLeadsTable ? 'lead' : 'task'}
                     </button>
+                    <div class="spreadsheet-empty">
+                        <i class="fas fa-${isLeadsTable ? 'user-plus' : 'clipboard-list'}"></i>
+                        <h4>No ${itemNamePlural} yet</h4>
+                        <p>Create your first ${itemName} to get started</p>
+                    </div>
                 </div>
             `;
             return;
@@ -7874,6 +7874,11 @@ function initTasks() {
         // INLINE EDITING: Custom Columns
         // ===================================
         initCustomColumnEditing(tableContainer, spreadsheet);
+        
+        // ===================================
+        // INLINE EDITING: Customer Dropdown
+        // ===================================
+        initInlineCustomerEditing(tableContainer);
         
         // ===================================
         // INLINE EDITING: Built-in Dropdowns (Status/Priority with custom settings)
@@ -8399,6 +8404,7 @@ function initTasks() {
                 const task = appState.tasks.find(t => t.id === taskId);
                 if (!task) return;
                 
+                const oldStatus = task.status;
                 const oldProgress = task.progress || 0;
                 if (oldProgress === newProgress) return;
                 
@@ -8432,8 +8438,27 @@ function initTasks() {
                             status: newStatus,
                             updatedAt: serverTimestamp() 
                         };
+                        const shouldAwardXP = newStatus === 'done' && oldStatus !== 'done' && oldStatus !== 'won' && !task.xpA;
+                        if (shouldAwardXP) {
+                            payload.xpA = true;
+                        }
                         await updateDoc(taskRef, payload);
                         debugLog('✅ Task progress and status updated:', taskId, newProgress, newStatus);
+
+                        // Award XP if this change completes the task (non-private sheets only)
+                        if (shouldAwardXP) {
+                            const spreadsheet = appState.spreadsheets.find(s => s.id === task.spreadsheetId);
+                            const isPrivateSpreadsheet = spreadsheet && spreadsheet.visibility === 'private';
+                            if (!isPrivateSpreadsheet) {
+                                updateAchievementStat('tasksCompleted', 1);
+                                const priority = (task.priority || '').toLowerCase();
+                                const taskXP = priority === 'high' ? XP_CONFIG.taskCompleteHigh
+                                    : priority === 'medium' ? XP_CONFIG.taskCompleteMedium
+                                    : XP_CONFIG.taskCompleteLow;
+                                awardXP(taskXP, `completing a ${priority || 'low'} priority task`);
+                                task.xpA = true;
+                            }
+                        }
                         
                         // Refresh the spreadsheet to show updated status badge
                         const currentSpreadsheet = appState.spreadsheets.find(s => s.id === appState.currentSpreadsheetId);
@@ -8777,9 +8802,267 @@ function initTasks() {
     }
     
     function closeDropdownOnOutsideClick(e) {
-        if (!e.target.closest('.inline-edit-dropdown') && !e.target.closest('.priority-badge-inline') && !e.target.closest('.assignee-cell-inline') && !e.target.closest('.custom-dropdown-cell')) {
+        if (!e.target.closest('.inline-edit-dropdown') && !e.target.closest('.priority-badge-inline') && !e.target.closest('.assignee-cell-inline') && !e.target.closest('.customer-cell-inline') && !e.target.closest('.custom-dropdown-cell')) {
             closeAllInlineDropdowns();
         }
+    }
+    
+    // ===================================
+    // INLINE EDITING: Customer Dropdown (with search + add new)
+    // ===================================
+    function initInlineCustomerEditing(container) {
+        container.querySelectorAll('.customer-cell-inline').forEach(cell => {
+            cell.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const taskId = cell.dataset.taskId;
+                const task = appState.tasks.find(t => t.id === taskId);
+                if (!task) return;
+                
+                closeAllInlineDropdowns();
+                showCustomerDropdown(cell, task);
+            });
+        });
+    }
+    
+    function showCustomerDropdown(cell, task) {
+        const dropdown = document.createElement('div');
+        dropdown.className = 'inline-edit-dropdown customer-dropdown';
+        
+        const customers = appState.customers || [];
+        
+        let html = `
+            <div class="customer-dropdown-search">
+                <input type="text" class="customer-search-input" placeholder="Search or add customer..." autocomplete="off" spellcheck="false">
+            </div>
+            <div class="customer-dropdown-options">
+        `;
+        
+        // "None" option
+        html += `
+            <div class="inline-dropdown-option ${!task.customer ? 'active' : ''}" data-value="">
+                <div class="assignee-option-avatar" style="background: #8E8E93"><i class="fas fa-user-tag" style="font-size: 10px"></i></div>
+                <span>None</span>
+                ${!task.customer ? '<i class="fas fa-check"></i>' : ''}
+            </div>
+        `;
+        
+        // Customer options from appState.customers
+        customers.forEach(cust => {
+            const isActive = task.customer === cust.name;
+            const custInitials = (cust.name || '').split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
+            const custColorHash = (cust.name || '').split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
+            const custColors = ['#ef4444', '#f59e0b', '#22c55e', '#14b8a6', '#0ea5e9', '#6d5dfc', '#a855f7', '#475569'];
+            const custColor = custColors[custColorHash % custColors.length];
+            html += `
+                <div class="inline-dropdown-option ${isActive ? 'active' : ''}" data-value="${escapeHtml(cust.name)}" data-customer-id="${cust.id}">
+                    <div class="assignee-option-avatar" style="background: ${custColor}">${custInitials}</div>
+                    <span>${escapeHtml(cust.name)}</span>
+                    ${cust.company ? `<span class="customer-company-tag">${escapeHtml(cust.company)}</span>` : ''}
+                    ${isActive ? '<i class="fas fa-check"></i>' : ''}
+                </div>
+            `;
+        });
+        
+        html += '</div>';
+        
+        dropdown.innerHTML = html;
+        
+        // Position dropdown
+        positionInlineDropdown(dropdown, cell);
+        
+        requestAnimationFrame(() => dropdown.classList.add('visible'));
+        
+        // Wire up search input
+        const searchInput = dropdown.querySelector('.customer-search-input');
+        const optionsContainer = dropdown.querySelector('.customer-dropdown-options');
+        
+        if (searchInput) {
+            searchInput.focus();
+            
+            searchInput.addEventListener('input', () => {
+                const query = searchInput.value.trim().toLowerCase();
+                const options = optionsContainer.querySelectorAll('.inline-dropdown-option');
+                let hasMatch = false;
+                
+                options.forEach(opt => {
+                    const val = (opt.dataset.value || '').toLowerCase();
+                    const isNone = val === '';
+                    if (!query || val.includes(query) || isNone) {
+                        opt.style.display = '';
+                        if (val.includes(query) && val !== '') hasMatch = true;
+                    } else {
+                        opt.style.display = 'none';
+                    }
+                });
+                
+                // Show/hide "add new" option
+                let addNewOpt = optionsContainer.querySelector('.customer-add-new-option');
+                if (query && !hasMatch) {
+                    if (!addNewOpt) {
+                        addNewOpt = document.createElement('div');
+                        addNewOpt.className = 'inline-dropdown-option customer-add-new-option';
+                        optionsContainer.appendChild(addNewOpt);
+                    }
+                    addNewOpt.innerHTML = `
+                        <div class="customer-add-new-icon"><i class="fas fa-plus"></i></div>
+                        <span class="customer-add-new-label">Create <strong>${escapeHtml(searchInput.value.trim())}</strong></span>
+                    `;
+                    addNewOpt.style.display = '';
+                    addNewOpt.onclick = async () => {
+                        const newName = searchInput.value.trim();
+                        await addNewCustomerFromDropdown(newName);
+                        await updateTaskCustomer(task, newName, cell);
+                        closeAllInlineDropdowns();
+                    };
+                } else if (query && hasMatch) {
+                    // Also show add option when searching, even if partial matches exist
+                    // Check if exact match exists
+                    const exactMatch = customers.find(c => c.name.toLowerCase() === query);
+                    if (!exactMatch) {
+                        if (!addNewOpt) {
+                            addNewOpt = document.createElement('div');
+                            addNewOpt.className = 'inline-dropdown-option customer-add-new-option';
+                            optionsContainer.appendChild(addNewOpt);
+                        }
+                        addNewOpt.innerHTML = `
+                            <div class="customer-add-new-icon"><i class="fas fa-plus"></i></div>
+                            <span class="customer-add-new-label">Create <strong>${escapeHtml(searchInput.value.trim())}</strong></span>
+                        `;
+                        addNewOpt.style.display = '';
+                        addNewOpt.onclick = async () => {
+                            const newName = searchInput.value.trim();
+                            await addNewCustomerFromDropdown(newName);
+                            await updateTaskCustomer(task, newName, cell);
+                            closeAllInlineDropdowns();
+                        };
+                    } else if (addNewOpt) {
+                        addNewOpt.style.display = 'none';
+                    }
+                } else if (addNewOpt) {
+                    addNewOpt.style.display = 'none';
+                }
+            });
+            
+            // Enter key to select first visible option or add new
+            searchInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const query = searchInput.value.trim();
+                    if (!query) return;
+                    
+                    // Check if there's an exact match
+                    const exactMatch = customers.find(c => c.name.toLowerCase() === query.toLowerCase());
+                    if (exactMatch) {
+                        updateTaskCustomer(task, exactMatch.name, cell);
+                        closeAllInlineDropdowns();
+                    } else {
+                        // Add as new customer
+                        const addNewOpt = optionsContainer.querySelector('.customer-add-new-option');
+                        if (addNewOpt) addNewOpt.click();
+                    }
+                } else if (e.key === 'Escape') {
+                    closeAllInlineDropdowns();
+                }
+            });
+        }
+        
+        // Handle option selection
+        optionsContainer.querySelectorAll('.inline-dropdown-option:not(.customer-add-new-option)').forEach(option => {
+            option.addEventListener('click', async () => {
+                const newCustomerName = option.dataset.value || '';
+                await updateTaskCustomer(task, newCustomerName, cell);
+                closeAllInlineDropdowns();
+            });
+        });
+        
+        // Close on outside click
+        setTimeout(() => {
+            document.addEventListener('click', closeDropdownOnOutsideClick);
+        }, 10);
+    }
+    
+    async function addNewCustomerFromDropdown(name) {
+        if (!db || !appState.currentTeamId || !currentAuthUser) return;
+        
+        // Check for duplicate
+        const existing = (appState.customers || []).find(c => c.name.toLowerCase() === name.toLowerCase());
+        if (existing) return; // Already exists
+        
+        try {
+            const { collection, addDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+            const customersRef = collection(db, 'teams', appState.currentTeamId, 'customers');
+            const identity = getIdentity(currentAuthUser.uid, currentAuthUser.displayName || currentAuthUser.email);
+            const docRef = await addDoc(customersRef, {
+                name: name,
+                email: '',
+                phone: '',
+                company: '',
+                notes: '',
+                source: 'spreadsheet',
+                createdBy: currentAuthUser.uid,
+                createdByName: identity.displayName || currentAuthUser.displayName || currentAuthUser.email || '',
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp()
+            });
+            
+            // Add to local state immediately
+            appState.customers = appState.customers || [];
+            appState.customers.push({ id: docRef.id, name: name, source: 'spreadsheet', createdBy: currentAuthUser.uid });
+            appState.customers.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+            
+            showToast(`Customer "${name}" added`, 'success');
+        } catch (error) {
+            console.error('Error adding customer from dropdown:', error);
+            showToast('Failed to add customer', 'error');
+        }
+    }
+    
+    async function updateTaskCustomer(task, customerName, cell) {
+        const oldCustomer = task.customer;
+        if (oldCustomer === customerName) return;
+        
+        // Update local state
+        task.customer = customerName || '';
+        
+        // Update cell visual
+        if (customerName) {
+            const custInitials = customerName.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
+            const custColorHash = customerName.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
+            const custColors = ['#ef4444', '#f59e0b', '#22c55e', '#14b8a6', '#0ea5e9', '#6d5dfc', '#a855f7', '#475569'];
+            const custColor = custColors[custColorHash % custColors.length];
+            cell.innerHTML = `
+                <div class="assignee-avatar" style="background: ${custColor}">${custInitials}</div>
+                <span class="assignee-name">${escapeHtml(customerName)}</span>
+            `;
+            cell.title = customerName;
+        } else {
+            cell.innerHTML = `
+                <div class="assignee-avatar" style="background: #8E8E93"><i class="fas fa-user-tag" style="font-size: 11px"></i></div>
+                <span class="assignee-name" style="opacity:0.5">None</span>
+            `;
+            cell.title = 'No customer';
+        }
+        
+        // Show save feedback
+        showInlineSaveFeedback(cell.closest('td'));
+        
+        // Save to Firestore
+        if (db && currentAuthUser && appState.currentTeamId) {
+            try {
+                const { doc, updateDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+                const taskRef = doc(db, 'teams', appState.currentTeamId, 'tasks', String(task.id));
+                await updateDoc(taskRef, {
+                    customer: customerName || '',
+                    updatedAt: serverTimestamp()
+                });
+                debugLog('✅ Task customer updated:', task.id, customerName);
+            } catch (error) {
+                console.error('Error updating task customer:', error);
+                task.customer = oldCustomer;
+            }
+        }
+        
+        saveToLocalStorage('tasks', appState.tasks);
     }
     
     // ===================================
@@ -9483,6 +9766,19 @@ function initTasks() {
                 const avatarBg = isTeamAssignee ? '#000' : color;
                 return `<td class="cell-editable"><div class="assignee-cell assignee-cell-inline" data-task-id="${task.id}" title="${escapeHtml(fullName)}"><div class="${avatarClasses}" style="background: ${avatarBg}">${avatarContent}</div><span class="assignee-name">${escapeHtml(firstName)}</span></div></td>`;
             
+            case 'customer':
+                // INLINE EDITABLE: Customer cell with click-to-edit dropdown + search
+                const customerName = task.customer || '';
+                if (customerName) {
+                    // Generate initials and color for customer
+                    const custInitials = customerName.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
+                    const custColorHash = customerName.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
+                    const custColors = ['#ef4444', '#f59e0b', '#22c55e', '#14b8a6', '#0ea5e9', '#6d5dfc', '#a855f7', '#475569'];
+                    const custColor = custColors[custColorHash % custColors.length];
+                    return `<td class="cell-editable"><div class="assignee-cell assignee-cell-inline customer-cell-inline" data-task-id="${task.id}" title="${escapeHtml(customerName)}"><div class="assignee-avatar" style="background: ${custColor}">${custInitials}</div><span class="assignee-name">${escapeHtml(customerName)}</span></div></td>`;
+                }
+                return `<td class="cell-editable"><div class="assignee-cell assignee-cell-inline customer-cell-inline" data-task-id="${task.id}" title="No customer"><div class="assignee-avatar" style="background: #8E8E93"><i class="fas fa-user-tag" style="font-size: 11px"></i></div><span class="assignee-name" style="opacity:0.5">None</span></div></td>`;
+            
             case 'priority':
                 // Check for custom settings with colors
                 const prioritySettings = spreadsheet?.columnSettings?.priority;
@@ -9664,6 +9960,7 @@ function initTasks() {
             assignee: 'Assignee',
             priority: 'Priority',
             dueDate: 'Due Date',
+            customer: 'Customer',
             progress: 'Progress',
             budget: 'Budget',
             estimatedTime: 'Est. Time',
@@ -9698,6 +9995,7 @@ function initTasks() {
             assignee: 'fa-user',
             priority: 'fa-flag',
             dueDate: 'fa-calendar',
+            customer: 'fa-user-tag',
             progress: 'fa-chart-line',
             budget: 'fa-dollar-sign',
             estimatedTime: 'fa-clock',
@@ -10383,9 +10681,11 @@ function initTasks() {
                 
                 showToast(`Spreadsheet "${name}" created!`, 'success');
                 
-                // Award XP and update stats
-                updateAchievementStat('sheetsCreated', 1);
-                awardXP(XP_CONFIG.sheetCreate, 'creating a spreadsheet');
+                // Award XP and update stats (only for non-private sheets)
+                if (visibility !== 'private') {
+                    updateAchievementStat('sheetsCreated', 1);
+                    awardXP(XP_CONFIG.sheetCreate, 'creating a spreadsheet');
+                }
                 
                 // Log activity for sheet creation
                 addActivity({
@@ -11831,7 +12131,7 @@ function initTasks() {
             const projectTileHTML = window.buildProjectTile ? window.buildProjectTile() : '';
             if (projectTileHTML) {
                 const projectTileWrapper = document.createElement('div');
-                projectTileWrapper.className = 'doc-card';
+                projectTileWrapper.className = 'doc-card project-tile-card';
                 projectTileWrapper.innerHTML = projectTileHTML;
                 container.insertBefore(projectTileWrapper, createCard);
                 
@@ -12383,6 +12683,13 @@ function initTasks() {
             }
             
             debugLog('📄 Doc saved:', appState.activeDocId);
+
+            // Effort-based XP: award XP for new content (only for non-private docs)
+            const currentDoc = appState.docs.find(d => d.id === appState.activeDocId);
+            const isPrivateDoc = currentDoc && currentDoc.visibility === 'private';
+            if (!isPrivateDoc) {
+                awardDocEffortXP(appState.activeDocId, contentText);
+            }
             
         } catch (error) {
             console.error('Error saving doc:', error);
@@ -14429,13 +14736,13 @@ function initTasks() {
         // Navigation arrows (only shown if more than 1 page)
         const navHTML = totalPages > 1 ? `
             <div class="project-tile-nav">
-                <button class="project-tile-nav-btn project-tile-prev" onclick="navigateProjectPage(-1)" disabled>
+                <button class="project-tile-nav-btn project-tile-prev" onclick="navigateProjectPage(-1, this)" disabled>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
                 </button>
                 <span class="project-tile-nav-dots">
                     ${Array.from({length: totalPages}, (_, i) => `<span class="project-tile-dot ${i === 0 ? 'active' : ''}" data-page="${i}"></span>`).join('')}
                 </span>
-                <button class="project-tile-nav-btn project-tile-next" onclick="navigateProjectPage(1)" ${totalPages <= 1 ? 'disabled' : ''}>
+                <button class="project-tile-nav-btn project-tile-next" onclick="navigateProjectPage(1, this)" ${totalPages <= 1 ? 'disabled' : ''}>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
                 </button>
             </div>
@@ -14460,8 +14767,9 @@ function initTasks() {
     /**
      * Navigate between project pages
      */
-    window.navigateProjectPage = function(direction) {
-        const list = document.querySelector('.project-tile-list');
+    window.navigateProjectPage = function(direction, source) {
+        const scope = source?.closest('.project-tile-card, .doc-card') || document;
+        const list = scope.querySelector('.project-tile-list');
         if (!list) return;
         
         const currentPage = parseInt(list.dataset.currentPage || '0');
@@ -14479,13 +14787,13 @@ function initTasks() {
         });
         
         // Update navigation buttons
-        const prevBtn = document.querySelector('.project-tile-prev');
-        const nextBtn = document.querySelector('.project-tile-next');
+        const prevBtn = scope.querySelector('.project-tile-prev');
+        const nextBtn = scope.querySelector('.project-tile-next');
         if (prevBtn) prevBtn.disabled = newPage === 0;
         if (nextBtn) nextBtn.disabled = newPage === totalPages - 1;
         
         // Update dots
-        document.querySelectorAll('.project-tile-dot').forEach((dot, i) => {
+        scope.querySelectorAll('.project-tile-dot').forEach((dot, i) => {
             dot.classList.toggle('active', i === newPage);
         });
     };
@@ -15455,9 +15763,9 @@ function initTasks() {
         return { setColor, getColor, addToRecent, updateRecentButtons };
     };
     
-    // Initialize all inline color pickers on page
+    // Initialize all inline color pickers on page (excluding preset-only pickers which have their own system)
     window.colorPickers = {};
-    document.querySelectorAll('.color-picker-inline').forEach(picker => {
+    document.querySelectorAll('.color-picker-inline:not(.preset-only)').forEach(picker => {
         const id = picker.id;
         if (id) {
             window.colorPickers[id] = window.initInlineColorPicker(id);
@@ -15606,6 +15914,7 @@ async function updateTaskStatus(taskId, newStatus) {
                         progress: 0,
                         dueDate: Timestamp.fromMillis(task.dueDate),
                         recurrence: task.recurrence,
+                        xpA: false,
                         updatedAt: serverTimestamp()
                     });
                     
@@ -15625,6 +15934,16 @@ async function updateTaskStatus(taskId, newStatus) {
                             entityName: task.title,
                             sheetId: task.spreadsheetId || task.sheetId
                         });
+
+                        if (!task.xpA) {
+                            updateAchievementStat('tasksCompleted', 1);
+                            const priority = (task.priority || '').toLowerCase();
+                            const taskXP = priority === 'high' ? XP_CONFIG.taskCompleteHigh
+                                : priority === 'medium' ? XP_CONFIG.taskCompleteMedium
+                                : XP_CONFIG.taskCompleteLow;
+                            awardXP(taskXP, `completing a ${priority || 'low'} priority task`);
+                            task.xpA = true;
+                        }
                     }
                     
                 } catch (error) {
@@ -15651,19 +15970,26 @@ async function updateTaskStatus(taskId, newStatus) {
         try {
             const { doc, updateDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
             const taskRef = doc(db, 'teams', appState.currentTeamId, 'tasks', String(taskId));
-            await updateDoc(taskRef, { 
+
+            const spreadsheet = appState.spreadsheets.find(s => s.id === task.spreadsheetId);
+            const isPrivateSpreadsheet = spreadsheet && spreadsheet.visibility === 'private';
+            const shouldAwardXP = (newStatus === 'done' || newStatus === 'won') && !isPrivateSpreadsheet && !task.xpA;
+
+            const updatePayload = { 
                 status: newStatus,
                 updatedAt: serverTimestamp()
-            });
+            };
+            if (shouldAwardXP) {
+                updatePayload.xpA = true;
+            }
+
+            await updateDoc(taskRef, updatePayload);
             
             debugLog('✅ Task status updated:', taskId, newStatus);
             
             // Add activity only if NOT a private spreadsheet task
-            const spreadsheet = appState.spreadsheets.find(s => s.id === task.spreadsheetId);
-            const isPrivateSpreadsheet = spreadsheet && spreadsheet.visibility === 'private';
-            
             if (!isPrivateSpreadsheet) {
-                const statusText = newStatus === 'todo' ? 'To Do' : newStatus === 'in-progress' ? 'In Progress' : 'Done';
+                const statusText = newStatus === 'todo' ? 'To Do' : newStatus === 'inprogress' ? 'In Progress' : 'Done';
                 addActivity({
                     type: 'task',
                     description: `marked task "${task.title}" as ${statusText}`,
@@ -15675,10 +16001,17 @@ async function updateTaskStatus(taskId, newStatus) {
             }
             
             // Check for task completion milestones and award XP
-            if (newStatus === 'done') {
+            // Only award XP for tasks in non-private spreadsheets
+            if (shouldAwardXP) {
                 checkAndAwardMilestone();
                 updateAchievementStat('tasksCompleted', 1);
-                awardXP(XP_CONFIG.taskComplete, 'completing a task');
+                // Priority-based XP: high=10, medium=6, low/none=4
+                const priority = (task.priority || '').toLowerCase();
+                const taskXP = priority === 'high' ? XP_CONFIG.taskCompleteHigh
+                    : priority === 'medium' ? XP_CONFIG.taskCompleteMedium
+                    : XP_CONFIG.taskCompleteLow;
+                awardXP(taskXP, `completing a ${priority || 'low'} priority task`);
+                task.xpA = true;
             }
             
         } catch (error) {
@@ -16382,21 +16715,112 @@ async function addActivity(activity) {
  * XP Configuration
  */
 const XP_CONFIG = {
-    taskComplete: 25,          // XP for completing a task
+    taskCompleteHigh: 10,      // XP for completing a HIGH priority task
+    taskCompleteMedium: 6,     // XP for completing a MEDIUM priority task
+    taskCompleteLow: 4,        // XP for completing a LOW/no priority task
     docCreate: 15,             // XP for creating a doc
     sheetCreate: 20,           // XP for creating a sheet
     messageSend: 2,            // XP for sending a message
     eventCreate: 10,           // XP for creating an event
     levelBaseXP: 100,          // Base XP needed for level 2
-    levelMultiplier: 1.5       // XP requirement multiplier per level
+    levelMultiplier: 1.5,      // XP requirement multiplier per level
+    // Effort-based writing XP
+    docEffortXPPer200Chars: 3, // XP awarded per 200 chars of NEW content
+    docEffortCharBlock: 200,   // Character block size for effort XP
+    docMinWhitespaceRatio: 0.05 // Minimum whitespace ratio to pass gibberish filter (5%)
 };
+
+const LEVEL_CAP = 40;
+const LEVEL_TOTAL_XP = 100000;
+const LEVEL_SEED_XP = [
+    50, 100, 200, 300, 400, 500,
+    800, 1000, 1200, 1500, 1800, 2100,
+    2500, 3000
+];
+
+function buildLevelXpTable() {
+    const steps = LEVEL_CAP - 1;
+    if (steps <= 0) return [0, 0];
+
+    const xpByLevel = new Array(LEVEL_CAP + 1).fill(0);
+    const seedTotals = LEVEL_SEED_XP.slice(0, Math.min(LEVEL_SEED_XP.length, steps));
+    const seedIncrements = [];
+    let prevTotal = 0;
+
+    for (let i = 0; i < seedTotals.length; i++) {
+        const total = Math.max(seedTotals[i], prevTotal);
+        const increment = total - prevTotal;
+        seedIncrements.push(increment);
+        xpByLevel[i + 2] = increment;
+        prevTotal = total;
+    }
+
+    const remainingSteps = steps - seedIncrements.length;
+    if (remainingSteps <= 0) return xpByLevel;
+
+    const lastSeedTotal = prevTotal;
+    const remainingTotal = LEVEL_TOTAL_XP - lastSeedTotal;
+    if (remainingTotal <= 0) return xpByLevel;
+
+    const step = 50;
+    const minIncrement = 50;
+    const easingPower = 2.1; // Slightly steeper late curve
+    const remainingTotals = [];
+
+    for (let i = 1; i <= remainingSteps; i++) {
+        const t = remainingSteps === 1 ? 1 : i / remainingSteps;
+        const eased = Math.pow(t, easingPower);
+        const total = lastSeedTotal + remainingTotal * eased;
+        remainingTotals.push(Math.round(total / step) * step);
+    }
+
+    for (let i = 0; i < remainingTotals.length; i++) {
+        const minTotal = lastSeedTotal + minIncrement * (i + 1);
+        if (remainingTotals[i] < minTotal) remainingTotals[i] = minTotal;
+        if (i > 0 && remainingTotals[i] <= remainingTotals[i - 1]) {
+            remainingTotals[i] = remainingTotals[i - 1] + minIncrement;
+        }
+    }
+
+    let diff = LEVEL_TOTAL_XP - remainingTotals[remainingTotals.length - 1];
+    if (diff !== 0) {
+        let remaining = Math.round(diff / step);
+        let idx = remainingTotals.length - 1;
+
+        while (remaining !== 0) {
+            const delta = remaining > 0 ? step : -step;
+            const prev = idx > 0 ? remainingTotals[idx - 1] : lastSeedTotal;
+            const candidate = remainingTotals[idx] + delta;
+
+            if (candidate >= prev + minIncrement) {
+                remainingTotals[idx] = candidate;
+                remaining += remaining > 0 ? -1 : 1;
+            }
+
+            idx--;
+            if (idx < 0) idx = remainingTotals.length - 1;
+        }
+    }
+
+    prevTotal = lastSeedTotal;
+    for (let i = 0; i < remainingTotals.length; i++) {
+        const increment = remainingTotals[i] - prevTotal;
+        xpByLevel[seedIncrements.length + i + 2] = increment;
+        prevTotal = remainingTotals[i];
+    }
+
+    return xpByLevel;
+}
+
+const LEVEL_XP_TABLE = buildLevelXpTable();
 
 /**
  * Calculate XP needed for a specific level
  */
 function getXPForLevel(level) {
     if (level <= 1) return 0;
-    return Math.floor(XP_CONFIG.levelBaseXP * Math.pow(XP_CONFIG.levelMultiplier, level - 2));
+    if (level > LEVEL_CAP) return 0;
+    return LEVEL_XP_TABLE[level] || 0;
 }
 
 /**
@@ -16421,7 +16845,7 @@ function getLevelFromXP(totalXP) {
         if (totalXP < xpNeeded + nextLevelXP) break;
         xpNeeded += nextLevelXP;
         level++;
-        if (level > 100) break; // Safety cap
+        if (level >= LEVEL_CAP) break; // Safety cap
     }
     return { level, xpInCurrentLevel: totalXP - xpNeeded, xpNeededForNext: getXPForLevel(level + 1) };
 }
@@ -16501,6 +16925,47 @@ function saveUserAchievementData(data) {
     localStorage.setItem(`achievements_${userId}`, JSON.stringify(data));
 }
 
+// TEMP: Local-only XP recalculation (easy to remove)
+function recalculateAchievementXPFromBadges() {
+    if (!currentAuthUser || !isGamificationEnabled()) return;
+
+    const data = getUserAchievementData();
+    let totalXP = 0;
+
+    const allBadges = [
+        ...ACHIEVEMENT_BADGES.tasks,
+        ...ACHIEVEMENT_BADGES.docs,
+        ...ACHIEVEMENT_BADGES.messages,
+        ...ACHIEVEMENT_BADGES.sheets,
+        ...ACHIEVEMENT_BADGES.streaks,
+        ...ACHIEVEMENT_BADGES.special
+    ];
+
+    for (const badge of allBadges) {
+        if (data.earnedBadges?.includes(badge.id) && badge.xpReward) {
+            totalXP += badge.xpReward;
+        }
+    }
+
+    data.xp = totalXP;
+    saveUserAchievementData(data);
+    const levelInfo = getLevelFromXP(data.xp);
+    const totalForCurrentLevel = getTotalXPForLevel(levelInfo.level);
+    const totalForNextLevel = getTotalXPForLevel(levelInfo.level + 1);
+    const levelText = document.getElementById('userLevel');
+    const xpBar = document.getElementById('xpProgressBar');
+    const currentXP = document.getElementById('currentXP');
+    const nextLevelXP = document.getElementById('nextLevelXP');
+
+    if (levelText) levelText.textContent = levelInfo.level;
+    if (xpBar) xpBar.style.width = `${Math.min(100, (levelInfo.xpInCurrentLevel / levelInfo.xpNeededForNext) * 100)}%`;
+    if (currentXP) currentXP.textContent = levelInfo.xpInCurrentLevel;
+    if (nextLevelXP) nextLevelXP.textContent = levelInfo.xpNeededForNext;
+
+    renderAchievementsTab();
+    showToast('XP recalculated', 'success');
+}
+
 /**
  * Check if gamification is enabled
  */
@@ -16553,12 +17018,13 @@ function updateLoginStreak() {
  * Calculate retroactive stats from Firestore and sync achievements
  */
 async function syncRetroactiveAchievements() {
-    if (!currentAuthUser || !currentTeamId) return;
+    const teamId = appState.currentTeamId;
+    if (!currentAuthUser || !teamId) return;
     
     const userId = currentAuthUser.uid;
     const data = getUserAchievementData();
-    const syncVersion = 2; // Increment this to force resync when calculation changes
-    const syncKey = `achievements_synced_v${syncVersion}_${userId}_${currentTeamId}`;
+    const syncVersion = 4; // Increment this to force resync when calculation changes
+    const syncKey = `achievements_synced_v${syncVersion}_${userId}_${teamId}`;
     const alreadySynced = localStorage.getItem(syncKey);
     
     if (alreadySynced) {
@@ -16570,18 +17036,21 @@ async function syncRetroactiveAchievements() {
     
     try {
         // Count completed tasks by this user
-        const tasksRef = collection(db, 'teams', currentTeamId, 'tasks');
+        // Check status === 'done' or 'won' (leads), and match by assignee, completedBy, or createdBy
+        const tasksRef = collection(db, 'teams', teamId, 'tasks');
         const tasksSnap = await getDocs(tasksRef);
         let tasksCompleted = 0;
         tasksSnap.forEach(doc => {
             const task = doc.data();
-            if (task.completed && (task.completedBy === userId || task.createdBy === userId)) {
+            const isDone = task.status === 'done' || task.status === 'won' || task.completed === true;
+            const isUserTask = task.completedBy === userId || task.assigneeId === userId || task.createdBy === userId;
+            if (isDone && isUserTask) {
                 tasksCompleted++;
             }
         });
         
         // Count docs created by this user
-        const docsRef = collection(db, 'teams', currentTeamId, 'docs');
+        const docsRef = collection(db, 'teams', teamId, 'docs');
         const docsSnap = await getDocs(docsRef);
         let docsCreated = 0;
         docsSnap.forEach(doc => {
@@ -16592,7 +17061,7 @@ async function syncRetroactiveAchievements() {
         });
         
         // Count sheets created by this user
-        const sheetsRef = collection(db, 'teams', currentTeamId, 'spreadsheets');
+        const sheetsRef = collection(db, 'teams', teamId, 'spreadsheets');
         const sheetsSnap = await getDocs(sheetsRef);
         let sheetsCreated = 0;
         sheetsSnap.forEach(doc => {
@@ -16603,12 +17072,12 @@ async function syncRetroactiveAchievements() {
         });
         
         // Count messages sent by this user
-        const channelsRef = collection(db, 'teams', currentTeamId, 'channels');
+        const channelsRef = collection(db, 'teams', teamId, 'channels');
         const channelsSnap = await getDocs(channelsRef);
         let messagesSent = 0;
         
         for (const channelDoc of channelsSnap.docs) {
-            const messagesRef = collection(db, 'teams', currentTeamId, 'channels', channelDoc.id, 'messages');
+            const messagesRef = collection(db, 'teams', teamId, 'channels', channelDoc.id, 'messages');
             const messagesSnap = await getDocs(messagesRef);
             messagesSnap.forEach(msgDoc => {
                 const msg = msgDoc.data();
@@ -16626,14 +17095,33 @@ async function syncRetroactiveAchievements() {
         data.stats.sheetsCreated = Math.max(data.stats.sheetsCreated || 0, sheetsCreated);
         data.stats.messagesSent = Math.max(data.stats.messagesSent || 0, messagesSent);
         
-        // Calculate retroactive XP from activity stats
-        let retroXP = 0;
-        retroXP += data.stats.tasksCompleted * XP_CONFIG.taskComplete;
-        retroXP += data.stats.docsCreated * XP_CONFIG.docCreate;
-        retroXP += data.stats.sheetsCreated * XP_CONFIG.sheetCreate;
-        retroXP += Math.floor(data.stats.messagesSent * XP_CONFIG.messageSend);
+        // First, award all qualifying badges that haven't been earned yet
+        // This ensures earnedBadges is complete before we calculate total XP
+        const categoriesToCheck = [
+            { key: 'tasks', stat: data.stats.tasksCompleted },
+            { key: 'docs', stat: data.stats.docsCreated },
+            { key: 'sheets', stat: data.stats.sheetsCreated },
+            { key: 'messages', stat: data.stats.messagesSent }
+        ];
         
-        // Also add XP from any previously earned badges
+        for (const { key, stat } of categoriesToCheck) {
+            const badges = ACHIEVEMENT_BADGES[key] || [];
+            for (const badge of badges) {
+                if (stat >= badge.threshold && !data.earnedBadges.includes(badge.id)) {
+                    data.earnedBadges.push(badge.id);
+                    debugLog(`🏆 Retroactively awarded badge: ${badge.name}`);
+                }
+            }
+        }
+        
+        // Now calculate total XP from scratch: activity XP + ALL earned badge XP
+        let totalXP = 0;
+        totalXP += data.stats.tasksCompleted * XP_CONFIG.taskCompleteMedium;
+        totalXP += data.stats.docsCreated * XP_CONFIG.docCreate;
+        totalXP += data.stats.sheetsCreated * XP_CONFIG.sheetCreate;
+        totalXP += Math.floor(data.stats.messagesSent * XP_CONFIG.messageSend);
+        
+        // Add XP from ALL earned badges (including ones just awarded above)
         const allBadges = [
             ...ACHIEVEMENT_BADGES.tasks,
             ...ACHIEVEMENT_BADGES.docs,
@@ -16645,25 +17133,19 @@ async function syncRetroactiveAchievements() {
         
         for (const badge of allBadges) {
             if (data.earnedBadges.includes(badge.id) && badge.xpReward) {
-                retroXP += badge.xpReward;
+                totalXP += badge.xpReward;
             }
         }
         
-        // Set XP to the calculated retroactive amount (always recalculate to fix missing XP)
-        data.xp = retroXP;
+        // Set XP to the fully calculated amount
+        data.xp = totalXP;
         
         saveUserAchievementData(data);
-        
-        // Check for all badge categories (this will award new badges and add their XP)
-        checkAndAwardBadges('tasks', data.stats.tasksCompleted);
-        checkAndAwardBadges('docs', data.stats.docsCreated);
-        checkAndAwardBadges('sheets', data.stats.sheetsCreated);
-        checkAndAwardBadges('messages', data.stats.messagesSent);
         
         // Mark as synced for this team with version
         localStorage.setItem(syncKey, 'true');
         
-        debugLog(`✅ Retroactive sync complete: ${tasksCompleted} tasks, ${docsCreated} docs, ${sheetsCreated} sheets, ${messagesSent} messages, ${retroXP} XP`);
+        debugLog(`✅ Retroactive sync complete: ${tasksCompleted} tasks, ${docsCreated} docs, ${sheetsCreated} sheets, ${messagesSent} messages, ${totalXP} XP, ${data.earnedBadges.length} badges`);
         
         renderAchievementsTab();
         
@@ -16673,26 +17155,86 @@ async function syncRetroactiveAchievements() {
 }
 
 /**
- * Award XP to the current user
+ * Award XP to the current user & show custom XP toast
  */
 function awardXP(amount, reason = '') {
-    if (!currentAuthUser || !isGamificationEnabled()) return;
+    if (!currentAuthUser || !isGamificationEnabled() || amount <= 0) return;
     
     const data = getUserAchievementData();
     const oldLevel = getLevelFromXP(data.xp).level;
+    const oldLevelInfo = getLevelFromXP(data.xp);
     data.xp += amount;
     const newLevelInfo = getLevelFromXP(data.xp);
     
     saveUserAchievementData(data);
     
-    // Check for level up
-    if (newLevelInfo.level > oldLevel) {
-        showToast(`🎉 Level Up! You're now level ${newLevelInfo.level}!`, 'success', 4000);
-    }
+    const didLevelUp = newLevelInfo.level > oldLevel;
+    
+    // Show the custom XP toast
+    showXPToast({
+        amount,
+        reason,
+        level: newLevelInfo.level,
+        xpInLevel: newLevelInfo.xpInCurrentLevel,
+        xpNeeded: newLevelInfo.xpNeededForNext,
+        oldPercent: oldLevelInfo.xpNeededForNext > 0
+            ? Math.min(100, (oldLevelInfo.xpInCurrentLevel / oldLevelInfo.xpNeededForNext) * 100)
+            : 0,
+        newPercent: newLevelInfo.xpNeededForNext > 0
+            ? Math.min(100, (newLevelInfo.xpInCurrentLevel / newLevelInfo.xpNeededForNext) * 100)
+            : 100,
+        levelUp: didLevelUp
+    });
     
     // Update UI
     renderAchievementsTab();
     debugLog(`⭐ Awarded ${amount} XP${reason ? ` for ${reason}` : ''}`);
+}
+
+/**
+ * Show a custom XP toast with level badge, mini XP bar, and animated amount
+ */
+function showXPToast({ amount, reason, level, xpInLevel, xpNeeded, oldPercent, newPercent, levelUp }) {
+    const container = document.getElementById('toastContainer');
+    if (!container) return;
+    
+    const reasonText = reason || 'Activity';
+    const displayReason = reasonText.charAt(0).toUpperCase() + reasonText.slice(1);
+    
+    const toast = document.createElement('div');
+    toast.className = `toast xp${levelUp ? ' level-up' : ''}`;
+    toast.innerHTML = `
+        <div class="toast-content">
+            <div class="toast-title">${levelUp ? 'Level Up!' : 'XP Earned'}</div>
+            <div class="toast-message">${displayReason}</div>
+            <div class="toast-xp-row">
+                <span class="toast-xp-level">Lv ${level}</span>
+                <div class="toast-xp-bar">
+                    <div class="toast-xp-bar-fill" style="width: ${levelUp ? 0 : oldPercent}%"></div>
+                </div>
+                <span class="toast-xp-amount">+${amount} XP</span>
+            </div>
+        </div>
+        <button class="toast-close" onclick="this.parentElement.remove()">×</button>
+    `;
+    
+    container.appendChild(toast);
+    
+    // Animate bar fill after paint
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+            const bar = toast.querySelector('.toast-xp-bar-fill');
+            if (bar) {
+                bar.style.width = `${newPercent}%`;
+            }
+        });
+    });
+    
+    // Auto remove after longer duration for XP toasts
+    setTimeout(() => {
+        toast.classList.add('closing');
+        setTimeout(() => toast.remove(), 300);
+    }, 6000);
 }
 
 /**
@@ -16791,6 +17333,8 @@ function renderAchievementsTab() {
     
     const data = getUserAchievementData();
     const levelInfo = getLevelFromXP(data.xp);
+    const totalForCurrentLevel = getTotalXPForLevel(levelInfo.level);
+    const totalForNextLevel = getTotalXPForLevel(levelInfo.level + 1);
     
     // Update XP display
     const levelText = document.getElementById('userLevel');
@@ -16799,7 +17343,7 @@ function renderAchievementsTab() {
     const nextLevelXP = document.getElementById('nextLevelXP');
     
     if (levelText) levelText.textContent = levelInfo.level;
-    if (xpBar) xpBar.style.width = `${(levelInfo.xpInCurrentLevel / levelInfo.xpNeededForNext) * 100}%`;
+    if (xpBar) xpBar.style.width = `${Math.min(100, (levelInfo.xpInCurrentLevel / levelInfo.xpNeededForNext) * 100)}%`;
     if (currentXP) currentXP.textContent = levelInfo.xpInCurrentLevel;
     if (nextLevelXP) nextLevelXP.textContent = levelInfo.xpNeededForNext;
     
@@ -16832,6 +17376,7 @@ function renderAchievementsTab() {
                 <span class="stat-value">${typeof stat.value === 'number' ? stat.value.toLocaleString() : stat.value}</span>
             </div>
         `).join('');
+
     }
     
     // Render badges
@@ -16882,8 +17427,51 @@ function renderAchievementsTab() {
     container.innerHTML = html;
 }
 
+/**
+ * Effort-Based Document XP System
+ * Uses a "high water mark" to prevent the backspace exploit.
+ * Tracks max_rewarded_length per doc in localStorage.
+ * Awards XP only when the plain-text length exceeds the previous record.
+ * Includes a gibberish filter requiring minimum whitespace ratio.
+ */
+function awardDocEffortXP(docId, plainText) {
+    if (!currentAuthUser || !isGamificationEnabled() || !docId || !plainText) return;
+
+    const currentLength = plainText.length;
+    if (currentLength < XP_CONFIG.docEffortCharBlock) return; // Too short to reward
+
+    // Gibberish filter: require at least 5% whitespace
+    const whitespaceCount = (plainText.match(/\s/g) || []).length;
+    const whitespaceRatio = whitespaceCount / currentLength;
+    if (whitespaceRatio < XP_CONFIG.docMinWhitespaceRatio) {
+        debugLog('📝 Doc effort XP skipped: gibberish detected (whitespace ratio:', (whitespaceRatio * 100).toFixed(1) + '%)');
+        return;
+    }
+
+    // High water mark: keyed per user + doc
+    const storageKey = `docHighWaterMark_${currentAuthUser.uid}_${docId}`;
+    const previousMax = parseInt(localStorage.getItem(storageKey) || '0', 10);
+
+    if (currentLength <= previousMax) return; // No new content beyond previous record
+
+    // Calculate how many NEW character blocks were written
+    const newChars = currentLength - previousMax;
+    const blocks = Math.floor(newChars / XP_CONFIG.docEffortCharBlock);
+    if (blocks <= 0) return;
+
+    const xpToAward = blocks * XP_CONFIG.docEffortXPPer200Chars;
+
+    // Update the high water mark to the highest full-block boundary
+    const newMax = previousMax + blocks * XP_CONFIG.docEffortCharBlock;
+    localStorage.setItem(storageKey, String(newMax));
+
+    awardXP(xpToAward, `writing ${blocks * XP_CONFIG.docEffortCharBlock} characters`);
+    debugLog(`📝 Doc effort XP: +${xpToAward} XP for ${blocks} blocks of ${XP_CONFIG.docEffortCharBlock} chars (doc ${docId}, high water mark: ${previousMax} → ${newMax})`);
+}
+
 // Expose functions globally
 window.awardXP = awardXP;
+window.awardDocEffortXP = awardDocEffortXP;
 window.updateAchievementStat = updateAchievementStat;
 window.renderAchievementsTab = renderAchievementsTab;
 window.isGamificationEnabled = isGamificationEnabled;
@@ -18319,6 +18907,7 @@ function toggleMetricsEditMode() {
         return;
     }
     metricsEditMode = !metricsEditMode;
+    document.body.classList.toggle('metrics-edit-mode', metricsEditMode);
     renderMetrics();
 }
 
@@ -18392,18 +18981,7 @@ const TICK_DENSITY_OPTIONS = [
     { id: 'detailed', label: 'Detailed', ticks: 6 }
 ];
 
-/**
- * Available data sources for metrics
- * These define what data a chart can display
- */
-const DATA_SOURCE_OPTIONS = [
-    { id: 'personal-tasks', label: 'My Task Completions', sourceType: 'tasks', metricKey: 'personal' },
-    { id: 'team-tasks', label: 'Team Task Completions', sourceType: 'tasks', metricKey: 'team' },
-    { id: 'task-status', label: 'Task Status Distribution', sourceType: 'tasks', metricKey: 'status' },
-    { id: 'events-week', label: 'Events This Week', sourceType: 'events', metricKey: 'weekly' },
-    { id: 'messages-week', label: 'Messages This Week', sourceType: 'messages', metricKey: 'weekly' },
-    { id: 'custom', label: 'Custom Data', sourceType: 'custom', metricKey: null }
-];
+
 
 /**
  * Default chart configuration
@@ -18873,6 +19451,7 @@ function updateSettingsPanelContent(chartId, config, currentType) {
 function toggleGraphSettings(chartId) {
     const panel = document.querySelector(`[data-settings-chart="${chartId}"]`);
     if (!panel) return;
+    const card = panel.closest('.metrics-card');
     
     const isOpen = panel.classList.contains('open');
     
@@ -18880,11 +19459,16 @@ function toggleGraphSettings(chartId) {
     document.querySelectorAll('.graph-settings-panel.open').forEach(p => {
         if (p.dataset.settingsChart !== chartId) {
             p.classList.remove('open');
+            const parentCard = p.closest('.metrics-card');
+            if (parentCard) parentCard.classList.remove('settings-open');
         }
     });
     
     // Toggle this panel
     panel.classList.toggle('open', !isOpen);
+    if (card) {
+        card.classList.toggle('settings-open', !isOpen);
+    }
 }
 
 /**
@@ -18895,6 +19479,8 @@ function closeGraphSettings(chartId) {
     const panel = document.querySelector(`[data-settings-chart="${chartId}"]`);
     if (panel) {
         panel.classList.remove('open');
+        const card = panel.closest('.metrics-card');
+        if (card) card.classList.remove('settings-open');
     }
 }
 
@@ -19073,6 +19659,325 @@ async function reorderCustomMetric(metricId, direction) {
 
 window.reorderCustomMetric = reorderCustomMetric;
 
+// ===================================
+// METRICS DRAG & DROP SYSTEM
+// Pointer-based reordering within metrics-stats-row and metrics-charts-row
+// Inspired by CalendarDragHandler pattern from calendar-drag.js
+// ===================================
+
+const MetricsDragHandler = {
+    // State
+    isDragging: false,
+    dragStarted: false,
+    startX: 0,
+    startY: 0,
+    currentX: 0,
+    currentY: 0,
+    offsetX: 0,
+    offsetY: 0,
+    pointerId: null,
+
+    // The dragged item
+    draggedElement: null,
+    draggedMetricId: null,
+    placeholder: null,
+    preview: null,
+    containerEl: null,
+
+    // Config
+    DRAG_THRESHOLD: 5,
+
+    // Bound handlers
+    _boundPointerDown: null,
+    _boundPointerMove: null,
+    _boundPointerUp: null,
+
+    /**
+     * Initialize drag handlers on metrics drag containers
+     */
+    init() {
+        // Target the custom-metrics-row and the business charts-row
+        const containers = document.querySelectorAll('.custom-metrics-row, .metrics-charts-row');
+        if (!containers.length) return;
+
+        if (!this._boundPointerDown) {
+            this._boundPointerDown = this.handlePointerDown.bind(this);
+            this._boundPointerMove = this.handlePointerMove.bind(this);
+            this._boundPointerUp = this.handlePointerUp.bind(this);
+        }
+
+        containers.forEach(container => {
+            container.removeEventListener('pointerdown', this._boundPointerDown);
+            container.addEventListener('pointerdown', this._boundPointerDown);
+        });
+    },
+
+    /**
+     * Get the draggable child element from a pointer target
+     */
+    getDraggableItem(target) {
+        // For stat cards: the .metrics-stat-card with data-metric-id
+        const statCard = target.closest('.metrics-stat-card[data-metric-id]');
+        if (statCard) return statCard;
+        // For chart cards: the wrapper .metrics-drag-item with data-metric-id
+        const dragItem = target.closest('.metrics-drag-item[data-metric-id]');
+        if (dragItem) return dragItem;
+        return null;
+    },
+
+    handlePointerDown(e) {
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
+        if (!metricsEditMode) return;
+
+        // Don't interfere with buttons, inputs, etc.
+        if (e.target.closest('button, input, select, textarea, a, .graph-settings-panel')) return;
+
+        const item = this.getDraggableItem(e.target);
+        if (!item) return;
+
+        e.preventDefault();
+
+        this.pointerId = e.pointerId;
+        this.draggedElement = item;
+        this.draggedMetricId = item.dataset.metricId;
+        this.containerEl = item.parentElement;
+
+        const rect = item.getBoundingClientRect();
+        this.offsetX = e.clientX - rect.left;
+        this.offsetY = e.clientY - rect.top;
+        this.startX = e.clientX;
+        this.startY = e.clientY;
+        this.currentX = e.clientX;
+        this.currentY = e.clientY;
+        this.isDragging = true;
+        this.dragStarted = false;
+
+        document.addEventListener('pointermove', this._boundPointerMove, { passive: false });
+        document.addEventListener('pointerup', this._boundPointerUp);
+        document.addEventListener('pointercancel', this._boundPointerUp);
+
+        item.setPointerCapture(e.pointerId);
+    },
+
+    handlePointerMove(e) {
+        if (!this.isDragging) return;
+        e.preventDefault();
+        this.currentX = e.clientX;
+        this.currentY = e.clientY;
+
+        if (!this.dragStarted) {
+            const dx = Math.abs(this.currentX - this.startX);
+            const dy = Math.abs(this.currentY - this.startY);
+            if (dx > this.DRAG_THRESHOLD || dy > this.DRAG_THRESHOLD) {
+                this.startDrag();
+            }
+            return;
+        }
+
+        this.updateDrag();
+    },
+
+    startDrag() {
+        this.dragStarted = true;
+        const el = this.draggedElement;
+        const rect = el.getBoundingClientRect();
+
+        // Create placeholder with same dimensions
+        this.placeholder = document.createElement('div');
+        this.placeholder.className = 'metrics-drag-placeholder';
+        this.placeholder.style.width = rect.width + 'px';
+        this.placeholder.style.height = rect.height + 'px';
+        el.parentNode.insertBefore(this.placeholder, el);
+
+        // Create floating preview — full-size clone of the actual card
+        this.preview = el.cloneNode(true);
+        this.preview.classList.add('metrics-drag-preview');
+        this.preview.style.position = 'fixed';
+        this.preview.style.width = rect.width + 'px';
+        this.preview.style.height = rect.height + 'px';
+        this.preview.style.left = rect.left + 'px';
+        this.preview.style.top = rect.top + 'px';
+        this.preview.style.zIndex = '10000';
+        this.preview.style.pointerEvents = 'none';
+        this.preview.style.transition = 'box-shadow 0.18s ease, transform 0.18s ease';
+        this.preview.style.boxShadow = '0 16px 48px rgba(0,0,0,0.25), 0 0 0 1px rgba(255,255,255,0.08)';
+        this.preview.style.opacity = '1';
+        this.preview.style.transform = 'scale(1.02) rotate(1deg)';
+        document.body.appendChild(this.preview);
+
+        // Hide original
+        el.style.display = 'none';
+
+        document.body.classList.add('metrics-dragging');
+    },
+
+    updateDrag() {
+        if (!this.preview || !this.containerEl) return;
+
+        // Move preview to follow pointer
+        const left = this.currentX - this.offsetX;
+        const top = this.currentY - this.offsetY;
+        this.preview.style.left = left + 'px';
+        this.preview.style.top = top + 'px';
+
+        // Determine which sibling we're hovering over — only within the SAME container
+        const children = Array.from(this.containerEl.children);
+        const siblings = children.filter(
+            child => child !== this.draggedElement &&
+                     child !== this.placeholder &&
+                     child.dataset.metricId
+        );
+
+        // Edge-based swap: trigger at 30% from the entering edge, not the center
+        const EDGE_RATIO = 0.3;
+
+        for (const sib of siblings) {
+            const rect = sib.getBoundingClientRect();
+
+            // Skip if cursor isn't within this sibling's bounds
+            if (this.currentX < rect.left || this.currentX > rect.right ||
+                this.currentY < rect.top || this.currentY > rect.bottom) continue;
+
+            const placeholderIdx = children.indexOf(this.placeholder);
+            const sibIdx = children.indexOf(sib);
+            if (placeholderIdx === sibIdx) break;
+
+            const isMovingForward = placeholderIdx < sibIdx;
+
+            // Determine if same row (horizontal swap) or different row (vertical swap)
+            const sibCenterY = rect.top + rect.height / 2;
+            const sameRow = Math.abs(this.currentY - sibCenterY) < rect.height / 2;
+
+            let shouldSwap = false;
+            if (sameRow) {
+                // Horizontal: swap when cursor passes 30% from the entering edge
+                if (isMovingForward) {
+                    shouldSwap = this.currentX > rect.left + rect.width * EDGE_RATIO;
+                } else {
+                    shouldSwap = this.currentX < rect.right - rect.width * EDGE_RATIO;
+                }
+            } else {
+                // Vertical: swap when cursor passes 30% from the entering edge
+                if (isMovingForward) {
+                    shouldSwap = this.currentY > rect.top + rect.height * EDGE_RATIO;
+                } else {
+                    shouldSwap = this.currentY < rect.bottom - rect.height * EDGE_RATIO;
+                }
+            }
+
+            if (shouldSwap) {
+                if (isMovingForward) {
+                    sib.after(this.placeholder);
+                } else {
+                    this.containerEl.insertBefore(this.placeholder, sib);
+                }
+            }
+            break;
+        }
+    },
+
+    async handlePointerUp(e) {
+        if (!this.isDragging) return;
+
+        document.removeEventListener('pointermove', this._boundPointerMove);
+        document.removeEventListener('pointerup', this._boundPointerUp);
+        document.removeEventListener('pointercancel', this._boundPointerUp);
+        document.body.classList.remove('metrics-dragging');
+
+        if (this.draggedElement) {
+            try {
+                if (this.pointerId !== null) {
+                    this.draggedElement.releasePointerCapture(this.pointerId);
+                }
+            } catch (_) {}
+        }
+
+        if (this.dragStarted && this.placeholder && this.containerEl) {
+            // Re-insert the real element at the placeholder position
+            this.containerEl.insertBefore(this.draggedElement, this.placeholder);
+            this.draggedElement.style.display = '';
+            this.placeholder.remove();
+
+            if (this.preview) {
+                this.preview.remove();
+            }
+
+            // Read new order from DOM
+            const newOrder = Array.from(this.containerEl.children)
+                .filter(ch => ch.dataset.metricId)
+                .map(ch => ch.dataset.metricId);
+
+            // Merge with existing enabled metrics preserving items not in this container
+            const enabledMetrics = [...getEnabledCustomMetrics()];
+            const idsInContainer = new Set(newOrder);
+            const otherMetrics = enabledMetrics.filter(id => !idsInContainer.has(id));
+
+            // Determine insertion point: find where the first container metric was in the original list
+            let insertIdx = enabledMetrics.length;
+            for (let i = 0; i < enabledMetrics.length; i++) {
+                if (idsInContainer.has(enabledMetrics[i])) {
+                    insertIdx = i;
+                    break;
+                }
+            }
+
+            const merged = [
+                ...otherMetrics.slice(0, insertIdx),
+                ...newOrder,
+                ...otherMetrics.slice(insertIdx)
+            ];
+
+            try {
+                await saveEnabledMetrics(merged);
+                renderMetrics();
+            } catch (error) {
+                console.error('[MetricsDrag] Error saving order:', error);
+                if (typeof showToast === 'function') {
+                    showToast('Failed to save order', 'error');
+                }
+                renderMetrics();
+            }
+        } else {
+            // Didn't actually drag — restore
+            if (this.draggedElement) {
+                this.draggedElement.style.display = '';
+            }
+            if (this.placeholder) this.placeholder.remove();
+            if (this.preview) this.preview.remove();
+        }
+
+        this.reset();
+    },
+
+    reset() {
+        this.isDragging = false;
+        this.dragStarted = false;
+        this.startX = 0;
+        this.startY = 0;
+        this.currentX = 0;
+        this.currentY = 0;
+        this.offsetX = 0;
+        this.offsetY = 0;
+        this.pointerId = null;
+        this.draggedElement = null;
+        this.draggedMetricId = null;
+        this.placeholder = null;
+        this.preview = null;
+        this.containerEl = null;
+    }
+};
+
+/**
+ * Initialize metrics drag and drop
+ * Called after renderMetrics when in edit mode
+ */
+function initMetricsDragDrop() {
+    MetricsDragHandler.init();
+}
+
+window.MetricsDragHandler = MetricsDragHandler;
+window.initMetricsDragDrop = initMetricsDragDrop;
+
 /**
  * Save enabled metrics to Firestore
  * @param {string[]} enabledMetrics - Array of metric IDs
@@ -19157,7 +20062,7 @@ function renderCustomMetricCard(metric, index, total, showHidden = false) {
     const hiddenClass = metricIsHidden ? 'metric-hidden' : '';
     
     return `
-        <div class="metrics-stat-card custom-metric-card ${metric.color} ${metricsEditMode ? 'edit-mode' : ''} ${hiddenClass}" ${tooltipAttr}>
+        <div class="metrics-stat-card custom-metric-card ${metric.color} ${metricsEditMode ? 'edit-mode' : ''} ${hiddenClass}" data-metric-id="${metric.id}" ${tooltipAttr}>
             ${editControls}
             <div class="metrics-stat-icon">
                 <i class="fas ${metric.icon}"></i>
@@ -21425,7 +22330,7 @@ function createSwitchableGraphCard(graphId, title, icon, data, dataType = 'trend
                 <div class="graph-content" style="transition: opacity 0.15s ease, transform 0.15s ease;">
                     ${graphContent}
                 </div>
-                ${settingsPanel}
+                ${showSettings ? `<div class="metrics-edit-container">${settingsPanel}</div>` : ''}
             </div>
         </div>
     `;
@@ -21447,8 +22352,7 @@ function createGraphSettingsPanel(graphId, config, currentType) {
     const primaryColor = config.primaryColor || 'var(--accent)';
     const secondaryColor = config.secondaryColor || '#34C759';
     const palette = config.palette || 'default';
-    const sourceType = config.sourceType || 'tasks';
-    const metricKey = config.metricKey || '';
+
     
     // Build color options
     const primaryColorOptions = CHART_COLOR_OPTIONS.map(c => `
@@ -21498,7 +22402,7 @@ function createGraphSettingsPanel(graphId, config, currentType) {
             <button class="graph-type-option ${currentType === 'bar' ? 'active' : ''}"
                     onclick="handleChartConfigChange('${graphId}', 'type', 'bar')"
                     title="Vertical Bar Chart">
-                <i class="fas fa-chart-bar"></i>
+                <i class="fas fa-align-left" style="transform: rotate(-90deg);"></i>
                 <span>Vertical</span>
             </button>
             <button class="graph-type-option ${currentType === 'hbar' ? 'active' : ''}"
@@ -21522,25 +22426,7 @@ function createGraphSettingsPanel(graphId, config, currentType) {
         </div>
     `;
     
-    // Build data source dropdown (custom dropdown instead of native select)
-    const currentSourceId = sourceType + '-' + metricKey;
-    const currentSource = DATA_SOURCE_OPTIONS.find(s => s.id === currentSourceId) || DATA_SOURCE_OPTIONS[0];
-    const dataSourceDropdown = `
-        <div class="settings-custom-dropdown" data-dropdown-for="${graphId}">
-            <button class="settings-dropdown-trigger" onclick="toggleSettingsDropdown('${graphId}')">
-                <span>${currentSource.label}</span>
-                <i class="fas fa-chevron-down"></i>
-            </button>
-            <div class="settings-dropdown-menu">
-                ${DATA_SOURCE_OPTIONS.map(s => `
-                    <button class="settings-dropdown-option ${s.id === currentSourceId ? 'selected' : ''}" 
-                            onclick="selectDataSource('${graphId}', '${s.id}')">
-                        ${s.label}
-                    </button>
-                `).join('')}
-            </div>
-        </div>
-    `;
+
     
     // Only show Y-axis settings for line and bar charts
     const showYAxisSettings = currentType === 'line' || currentType === 'bar';
@@ -21647,14 +22533,7 @@ function createGraphSettingsPanel(graphId, config, currentType) {
                     `}
                 </div>
                 
-                <!-- Data Source Section -->
-                <div class="settings-section">
-                    <div class="settings-section-title">Data Source</div>
-                    <div class="settings-subsection">
-                        ${dataSourceDropdown}
-                        <p class="settings-hint">Connect this chart to a different data source. More options coming soon.</p>
-                    </div>
-                </div>
+
             </div>
             
             <div class="graph-settings-footer">
@@ -21667,85 +22546,6 @@ function createGraphSettingsPanel(graphId, config, currentType) {
     `;
 }
 
-/**
- * Handle data source change from the settings dropdown
- * @param {string} graphId - Chart identifier
- * @param {string} sourceId - Selected source ID
- */
-function handleDataSourceChange(graphId, sourceId) {
-    const source = DATA_SOURCE_OPTIONS.find(s => s.id === sourceId);
-    if (source) {
-        updateChartConfig(graphId, {
-            sourceType: source.sourceType,
-            metricKey: source.metricKey
-        });
-    }
-}
-
-/**
- * Toggle the custom settings dropdown
- * @param {string} graphId - Chart identifier
- */
-function toggleSettingsDropdown(graphId) {
-    const dropdown = document.querySelector(`.settings-custom-dropdown[data-dropdown-for="${graphId}"]`);
-    if (!dropdown) return;
-    
-    const isOpen = dropdown.classList.contains('open');
-    
-    // Close all other dropdowns first
-    document.querySelectorAll('.settings-custom-dropdown.open').forEach(d => {
-        if (d !== dropdown) d.classList.remove('open');
-    });
-    
-    dropdown.classList.toggle('open', !isOpen);
-    
-    // Add click-outside handler to close
-    if (!isOpen) {
-        const closeHandler = (e) => {
-            if (!dropdown.contains(e.target)) {
-                dropdown.classList.remove('open');
-                document.removeEventListener('click', closeHandler);
-            }
-        };
-        // Delay to prevent immediate closure
-        setTimeout(() => {
-            document.addEventListener('click', closeHandler);
-        }, 0);
-    }
-}
-
-/**
- * Select a data source from the custom dropdown
- * @param {string} graphId - Chart identifier
- * @param {string} sourceId - Selected source ID
- */
-function selectDataSource(graphId, sourceId) {
-    // Close the dropdown
-    const dropdown = document.querySelector(`.settings-custom-dropdown[data-dropdown-for="${graphId}"]`);
-    if (dropdown) {
-        dropdown.classList.remove('open');
-        
-        // Update the trigger text
-        const source = DATA_SOURCE_OPTIONS.find(s => s.id === sourceId);
-        if (source) {
-            const trigger = dropdown.querySelector('.settings-dropdown-trigger span');
-            if (trigger) trigger.textContent = source.label;
-            
-            // Update selected state
-            dropdown.querySelectorAll('.settings-dropdown-option').forEach(opt => {
-                opt.classList.toggle('selected', opt.textContent.trim() === source.label);
-            });
-        }
-    }
-    
-    // Apply the change
-    handleDataSourceChange(graphId, sourceId);
-}
-
-// Expose to window
-window.handleDataSourceChange = handleDataSourceChange;
-window.toggleSettingsDropdown = toggleSettingsDropdown;
-window.selectDataSource = selectDataSource;
 
 /**
  * METRICS RENDERING FUNCTIONS
@@ -22346,6 +23146,8 @@ async function renderMetrics() {
                             </button>
                         ` : '';
                         
+                        // Wrap in a draggable container with metric ID
+                        html += `<div class="metrics-drag-item" data-metric-id="${metricId}">`;
                         html += createSwitchableGraphCard(
                             `custom-${metric.id || 'metric'}`,
                             `${metric.name}`,
@@ -22354,6 +23156,7 @@ async function renderMetrics() {
                             chartDataType,
                             { hideToggle: graphHideToggle, hiddenClass }
                         );
+                        html += '</div>';
                     }
                 });
                 
@@ -22399,6 +23202,11 @@ async function renderMetrics() {
     
     // Initialize pie chart hover effects
     initPieChartHoverEffects(container);
+    
+    // Initialize drag-and-drop for metrics (edit mode only)
+    if (metricsEditMode) {
+        initMetricsDragDrop();
+    }
 }
 
 /**
@@ -24024,20 +24832,20 @@ function openEventModalWithDate(selectedDate, startHour = 9) {
     resetEventVisibility();
     resetEventRepeat();
     
-    // Reset color to default blue using inline color picker
+    // Reset color to default red using inline color picker
     const eventColorPicker = window.colorPickers['eventColorPicker'];
     if (eventColorPicker) {
-        eventColorPicker.setColor('#007AFF');
+        eventColorPicker.setColor('#ef4444');
     } else {
         // Fallback if picker not initialized yet
         const eventColorInput = document.getElementById('eventColor');
         const eventColorSwatch = document.getElementById('eventColorSwatch');
         const eventColorNative = document.getElementById('eventColorNative');
         const eventColorHex = document.getElementById('eventColorHex');
-        if (eventColorInput) eventColorInput.value = '#007AFF';
-        if (eventColorSwatch) eventColorSwatch.style.background = '#007AFF';
-        if (eventColorNative) eventColorNative.value = '#007AFF';
-        if (eventColorHex) eventColorHex.value = '#007AFF';
+        if (eventColorInput) eventColorInput.value = '#ef4444';
+        if (eventColorSwatch) eventColorSwatch.style.background = '#ef4444';
+        if (eventColorNative) eventColorNative.value = '#ef4444';
+        if (eventColorHex) eventColorHex.value = '#ef4444';
     }
     
     // Open the modal
@@ -25256,7 +26064,8 @@ async function loadTeamData() {
             loadActivities(),
             subscribeLinkLobbyGroups(),
             ensureTeamJoinInfoExists(),
-            initTeamSection()
+            initTeamSection(),
+            loadCustomers()
         ].filter(Boolean);
 
         await Promise.all(parallelLoads);
@@ -28166,8 +28975,8 @@ function initSettings() {
     // Initialize account settings form
     loadAccountSettings();
     
-    // Setup color picker
-    setupAvatarColorPicker();
+    // Setup color pickers
+    initPresetOnlyColorPickers();
     
     // Setup form submission
     const settingsForm = document.getElementById('accountSettingsForm');
@@ -28189,9 +28998,8 @@ function initSettings() {
     
     // Initialize appearance settings (dark mode)
     initAppearanceForm();
-    
-    // Initialize accent color settings
-    initAccentColorPicker();
+
+    // Accent color settings handled by preset-only picker init
     
     // Initialize inline avatar upload (dropzone)
     initInlineAvatarUpload();
@@ -28599,7 +29407,7 @@ async function loadAccountSettings() {
             displayName: currentAuthUser.displayName || currentAuthUser.email.split('@')[0],
             email: currentAuthUser.email,
             jobTitle: '',
-            avatarColor: '#0078D4'
+            avatarColor: '#0A84FF'
         };
         
         if (db && appState.currentTeamId) {
@@ -28612,7 +29420,7 @@ async function loadAccountSettings() {
             if (userDoc.exists()) {
                 const data = userDoc.data();
                 userData.jobTitle = data.jobTitle || '';
-                userData.avatarColor = data.avatarColor || '#0078D4';
+                userData.avatarColor = data.avatarColor || '#0A84FF';
                 userData.displayName = data.displayName || userData.displayName;
             }
         }
@@ -28662,49 +29470,158 @@ function updateProfilePreview(userData) {
     }
 }
 
-// Setup avatar color picker - supports both old (.color-option), (.color-circle), and new (.color-dot) styles
-function setupAvatarColorPicker() {
-    const picker = document.getElementById('avatarColorPicker');
-    if (!picker) return;
-    
-    const colorOptions = picker.querySelectorAll('.color-picker-recent-btn');
-    const swatch = document.getElementById('avatarColorSwatch');
-    
-    colorOptions.forEach(option => {
-        option.addEventListener('click', function() {
-            // Remove selected class from all
-            colorOptions.forEach(opt => opt.classList.remove('selected'));
-            
-            // Add selected class to clicked option
-            this.classList.add('selected');
-            
-            // Update swatch
-            const color = this.getAttribute('data-color');
-            if (swatch) swatch.style.background = color;
-            
+function initPresetOnlyColorPickers() {
+    const pickers = document.querySelectorAll('.color-picker-inline.preset-only');
+    if (!pickers.length) return;
+
+    pickers.forEach(picker => {
+        // Prevent double-initialization
+        if (picker.dataset.pickerReady === 'true') return;
+        picker.dataset.pickerReady = 'true';
+
+        const type = picker.dataset.picker || 'generic'; // 'avatar' | 'accent' | 'generic'
+
+        // Gather the swatch and hidden input from data attributes
+        const swatchId = picker.dataset.swatch;
+        const swatch = swatchId ? document.getElementById(swatchId) : picker.querySelector('.color-picker-current-swatch');
+        const inputId = picker.dataset.input;
+        const hiddenInput = inputId ? document.getElementById(inputId) : null;
+
+        const normalizeColorValue = (value) => {
+            if (!value) return null;
+            const trimmed = value.trim();
+            if (trimmed.toLowerCase().startsWith('rgb')) {
+                const match = trimmed.match(/rgba?\s*\(([^)]+)\)/i);
+                if (!match) return null;
+                const parts = match[1].split(',').map(p => parseInt(p.trim(), 10));
+                if (parts.length < 3 || parts.some(n => Number.isNaN(n))) return null;
+                const [r, g, b] = parts;
+                const toHex = (n) => Math.max(0, Math.min(255, n)).toString(16).padStart(2, '0');
+                return `#${toHex(r)}${toHex(g)}${toHex(b)}`.toUpperCase();
+            }
+            return trimmed.toUpperCase();
+        };
+
+        /**
+         * Apply a color selection
+         * @param {HTMLElement} btn - The clicked button
+         * @param {Object} opts - { save: boolean, toast: boolean }
+         */
+        const applyColor = async (btn, opts = {}) => {
+            if (!btn) return;
+            // Read color directly from the button's data-color (never overwritten)
+            const rawColor = btn.dataset.color;
+            if (!rawColor) return;
+            const normalized = normalizeColorValue(rawColor);
+            if (!normalized) return;
+
+            // Update visual selection state
+            picker.querySelectorAll('.color-picker-recent-btn').forEach(b => {
+                b.classList.toggle('selected', b === btn);
+            });
+
+            // Update swatch preview
+            if (swatch) swatch.style.background = rawColor;
+
             // Update hidden input
-            document.getElementById('settingsAvatarColor').value = color;
-            
-            // Update preview
-            const userData = {
-                displayName: document.getElementById('settingsDisplayName').value,
-                email: document.getElementById('settingsEmail').value,
-                avatarColor: color
-            };
-            updateProfilePreview(userData);
+            if (hiddenInput) hiddenInput.value = normalized;
+
+            // Type-specific side effects
+            if (type === 'avatar') {
+                const nameEl = document.getElementById('settingsDisplayName');
+                const emailEl = document.getElementById('settingsEmail');
+                if (nameEl && emailEl) {
+                    updateProfilePreview({
+                        displayName: nameEl.value,
+                        email: emailEl.value,
+                        avatarColor: normalized
+                    });
+                }
+                return;
+            }
+
+            if (type === 'accent') {
+                const accentName = btn.dataset.accent;
+                if (!accentName || !ACCENT_COLORS[accentName]) return;
+                const colorData = ACCENT_COLORS[accentName];
+
+                applyAccentColor(accentName, colorData);
+
+                if (opts.save !== false) {
+                    localStorage.setItem('accentColor', accentName);
+                    await saveAccentColorPreference({ name: accentName, ...colorData });
+                }
+                if (opts.toast) {
+                    showToast('Accent color updated', 'success');
+                }
+            }
+        };
+
+        // --- Set initial selection ---
+        const buttons = Array.from(picker.querySelectorAll('.color-picker-recent-btn'));
+
+        if (type === 'accent') {
+            // Restore from localStorage, then overlay from Firestore
+            const saved = localStorage.getItem('accentColor');
+            const initial = saved
+                ? buttons.find(b => b.dataset.accent === saved)
+                : buttons.find(b => b.classList.contains('selected')) || buttons[0];
+            if (initial) applyColor(initial, { save: false });
+
+            // Async: check Firestore for remote preference
+            if (typeof loadAccentColorPreference === 'function') {
+                loadAccentColorPreference().then(data => {
+                    if (!data?.name || !ACCENT_COLORS[data.name]) return;
+                    const remote = buttons.find(b => b.dataset.accent === data.name);
+                    if (remote) {
+                        localStorage.setItem('accentColor', data.name);
+                        applyColor(remote, { save: false });
+                    }
+                });
+            }
+        } else {
+            // For avatar / generic: match hidden input value
+            const currentVal = hiddenInput?.value?.toUpperCase();
+            const initial = currentVal
+                ? buttons.find(b => b.dataset.color?.toUpperCase() === currentVal)
+                : buttons[0];
+            if (initial) applyColor(initial, { save: false });
+        }
+
+        // --- Click handler via delegation ---
+        picker.addEventListener('click', e => {
+            const btn = e.target.closest('.color-picker-recent-btn');
+            if (!btn || !picker.contains(btn) || !btn.dataset.color) return;
+            applyColor(btn, { save: true, toast: type === 'accent' });
         });
     });
 }
 
 // Select color option - supports old and new styles
 function selectColorOption(color) {
-    const colorOptions = document.querySelectorAll('.color-option, .color-circle, .color-dot, .color-picker-recent-btn');
-    colorOptions.forEach(option => {
-        if (option.getAttribute('data-color') === color) {
-            option.classList.add('selected');
-        } else {
-            option.classList.remove('selected');
+    const picker = document.getElementById('avatarColorPicker');
+    if (!picker) return;
+
+    const normalizeColorValue = (value) => {
+        if (!value) return null;
+        const trimmed = value.trim();
+        if (trimmed.toLowerCase().startsWith('rgb')) {
+            const match = trimmed.match(/rgba?\s*\(([^)]+)\)/i);
+            if (!match) return null;
+            const parts = match[1].split(',').map(p => parseInt(p.trim(), 10));
+            if (parts.length < 3 || parts.some(n => Number.isNaN(n))) return null;
+            const [r, g, b] = parts;
+            const toHex = (n) => Math.max(0, Math.min(255, n)).toString(16).padStart(2, '0');
+            return `#${toHex(r)}${toHex(g)}${toHex(b)}`.toUpperCase();
         }
+        return trimmed.toUpperCase();
+    };
+
+    const normalized = normalizeColorValue(color);
+    const colorOptions = picker.querySelectorAll('.color-picker-recent-btn');
+    colorOptions.forEach(option => {
+        const optionColor = normalizeColorValue(option.getAttribute('data-color'));
+        option.classList.toggle('selected', normalized && optionColor === normalized);
     });
 }
 
@@ -29441,12 +30358,10 @@ async function saveDarkModePreference() {
 // ACCENT COLOR SETTINGS
 // ===================================
 
-// Apply accent color theme
 function applyAccentColor(accentName, colorData) {
     const isDark = document.body.classList.contains('dark-mode');
     const root = document.documentElement;
-    
-    // Apply the appropriate colors based on light/dark mode
+
     if (isDark) {
         root.style.setProperty('--accent', colorData.dark);
         root.style.setProperty('--accent-hover', colorData.darkHover);
@@ -29456,117 +30371,36 @@ function applyAccentColor(accentName, colorData) {
         root.style.setProperty('--accent-hover', colorData.hover);
         root.style.setProperty('--accent-soft', colorData.soft);
     }
-    
-    // Also update the primary-blue alias for backward compatibility
+
     root.style.setProperty('--primary-blue', isDark ? colorData.dark : colorData.color);
     root.style.setProperty('--primary-dark', isDark ? colorData.darkHover : colorData.hover);
 }
 
-// Accent color definitions for dynamic theming
 const ACCENT_COLORS = {
-    blue: { color: '#007AFF', hover: '#0051CC', soft: 'rgba(0, 122, 255, 0.12)', dark: '#0A84FF', darkHover: '#007AFF', darkSoft: 'rgba(10, 132, 255, 0.15)' },
-    teal: { color: '#00C7BE', hover: '#00ADA6', soft: 'rgba(0, 199, 190, 0.12)', dark: '#64D2FF', darkHover: '#00C7BE', darkSoft: 'rgba(100, 210, 255, 0.15)' },
-    green: { color: '#34C759', hover: '#2DB04E', soft: 'rgba(52, 199, 89, 0.12)', dark: '#32D74B', darkHover: '#34C759', darkSoft: 'rgba(50, 215, 75, 0.15)' },
-    purple: { color: '#AF52DE', hover: '#9340C7', soft: 'rgba(175, 82, 222, 0.12)', dark: '#BF5AF2', darkHover: '#AF52DE', darkSoft: 'rgba(191, 90, 242, 0.15)' },
-    red: { color: '#FF3B30', hover: '#E6352B', soft: 'rgba(255, 59, 48, 0.12)', dark: '#FF453A', darkHover: '#FF3B30', darkSoft: 'rgba(255, 69, 58, 0.15)' },
-    orange: { color: '#FF9500', hover: '#E68600', soft: 'rgba(255, 149, 0, 0.12)', dark: '#FF9F0A', darkHover: '#FF9500', darkSoft: 'rgba(255, 159, 10, 0.15)' }
+    blue: { color: '#0A84FF', hover: '#0066CC', soft: 'rgba(10, 132, 255, 0.12)', dark: '#409CFF', darkHover: '#0A84FF', darkSoft: 'rgba(64, 156, 255, 0.15)' },
+    teal: { color: '#14B8A6', hover: '#0F8C7D', soft: 'rgba(20, 184, 166, 0.12)', dark: '#2DD4BF', darkHover: '#14B8A6', darkSoft: 'rgba(45, 212, 191, 0.15)' },
+    green: { color: '#22C55E', hover: '#1B9A4A', soft: 'rgba(34, 197, 94, 0.12)', dark: '#4ADE80', darkHover: '#22C55E', darkSoft: 'rgba(74, 222, 128, 0.15)' },
+    purple: { color: '#8B5CF6', hover: '#7C3AED', soft: 'rgba(139, 92, 246, 0.12)', dark: '#A78BFA', darkHover: '#8B5CF6', darkSoft: 'rgba(167, 139, 250, 0.15)' },
+    red: { color: '#EF4444', hover: '#DC2626', soft: 'rgba(239, 68, 68, 0.12)', dark: '#F87171', darkHover: '#EF4444', darkSoft: 'rgba(248, 113, 113, 0.15)' },
+    orange: { color: '#F59E0B', hover: '#D97706', soft: 'rgba(245, 158, 11, 0.12)', dark: '#FBBF24', darkHover: '#F59E0B', darkSoft: 'rgba(251, 191, 36, 0.15)' }
 };
 
-// Initialize accent color picker
-function initAccentColorPicker() {
-    const picker = document.getElementById('accentColorPicker');
-    if (!picker) return;
-    
-    const colorOptions = picker.querySelectorAll('.color-picker-recent-btn');
-    const swatch = document.getElementById('accentColorSwatch');
-    
-    // Load saved accent from localStorage first for instant load
-    const savedAccent = localStorage.getItem('accentColor') || 'blue';
-    
-    // Select the saved option and apply colors
-    colorOptions.forEach(opt => {
-        opt.classList.remove('selected');
-        if (opt.dataset.accent === savedAccent) {
-            opt.classList.add('selected');
-            if (swatch) swatch.style.background = opt.dataset.color;
-            const colorData = ACCENT_COLORS[savedAccent];
-            if (colorData) applyAccentColor(savedAccent, colorData);
-        }
-    });
-    
-    // Load from Firestore and override if set
-    loadAccentColorPreference().then(accentData => {
-        if (accentData && accentData.name) {
-            const option = picker.querySelector(`[data-accent="${accentData.name}"]`);
-            if (option) {
-                colorOptions.forEach(opt => opt.classList.remove('selected'));
-                option.classList.add('selected');
-                if (swatch) swatch.style.background = option.dataset.color;
-                applyAccentColor(accentData.name, accentData);
-                localStorage.setItem('accentColor', accentData.name);
-            }
-        }
-    });
-    
-    // Add click handlers for each color option
-    colorOptions.forEach(option => {
-        option.addEventListener('click', async () => {
-            // Update selected state
-            colorOptions.forEach(opt => opt.classList.remove('selected'));
-            option.classList.add('selected');
-            
-            // Update swatch
-            const color = option.dataset.color;
-            if (swatch) swatch.style.background = color;
-            
-            // Get color data from definitions
-            const accentName = option.dataset.accent;
-            const colorData = { name: accentName, ...ACCENT_COLORS[accentName] };
-            
-            // Apply instantly
-            applyAccentColor(accentName, colorData);
-            
-            // Save to localStorage for instant load next time
-            localStorage.setItem('accentColor', accentName);
-            
-            // Save to Firestore
-            await saveAccentColorPreference(colorData);
-            
-            showToast('Accent color updated', 'success');
-        });
-    });
-    
-    // Listen for dark mode changes to re-apply accent with correct dark/light variant
-    const darkModeObserver = new MutationObserver((mutations) => {
-        mutations.forEach((mutation) => {
-            if (mutation.attributeName === 'class') {
-                const selectedOption = picker.querySelector('.color-picker-recent-btn.selected');
-                if (selectedOption) {
-                    const accentName = selectedOption.dataset.accent;
-                    const colorData = ACCENT_COLORS[accentName];
-                    if (colorData) applyAccentColor(accentName, colorData);
-                }
-            }
-        });
-    });
-    darkModeObserver.observe(document.body, { attributes: true });
-}
 
-// Load accent color preference from Firestore
+
 async function loadAccentColorPreference() {
     if (!currentAuthUser || !db) {
         return null;
     }
-    
+
     try {
         const { doc, getDoc } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
         const userRef = doc(db, 'users', currentAuthUser.uid);
         const userDoc = await getDoc(userRef);
-        
+
         if (userDoc.exists()) {
             return userDoc.data().preferences?.style?.accentColor || null;
         }
-        
+
         return null;
     } catch (error) {
         console.error('Error loading accent color preference:', error);
@@ -29574,58 +30408,43 @@ async function loadAccentColorPreference() {
     }
 }
 
-// Save accent color preference to Firestore
 async function saveAccentColorPreference(colorData) {
     if (!currentAuthUser || !db) {
-        console.warn('Cannot save accent preference - not logged in');
         return;
     }
-    
+
     try {
-        await updateUserPreferences({ 
-            style: { 
-                accentColor: colorData 
-            } 
+        await updateUserPreferences({
+            style: {
+                accentColor: colorData
+            }
         });
     } catch (error) {
         console.error('Error saving accent color preference:', error);
     }
 }
 
-// Apply accent color early (before page fully loads) from localStorage
 function applyAccentColorEarly() {
     const savedAccent = localStorage.getItem('accentColor');
-    if (!savedAccent || savedAccent === 'blue') return; // Default blue, no need to change
-    
-    const accentPresets = {
-        blue: { color: '#0070F3', hover: '#0051CC', soft: 'rgba(0, 112, 243, 0.12)', dark: '#0A84FF', darkHover: '#0070F3', darkSoft: 'rgba(10, 132, 255, 0.15)' },
-        purple: { color: '#AF52DE', hover: '#9340C7', soft: 'rgba(175, 82, 222, 0.12)', dark: '#BF5AF2', darkHover: '#AF52DE', darkSoft: 'rgba(191, 90, 242, 0.15)' },
-        green: { color: '#34C759', hover: '#2DB04E', soft: 'rgba(52, 199, 89, 0.12)', dark: '#32D74B', darkHover: '#34C759', darkSoft: 'rgba(50, 215, 75, 0.15)' },
-        orange: { color: '#FF9500', hover: '#E68600', soft: 'rgba(255, 149, 0, 0.12)', dark: '#FF9F0A', darkHover: '#FF9500', darkSoft: 'rgba(255, 159, 10, 0.15)' },
-        pink: { color: '#FF2D55', hover: '#E6264D', soft: 'rgba(255, 45, 85, 0.12)', dark: '#FF375F', darkHover: '#FF2D55', darkSoft: 'rgba(255, 55, 95, 0.15)' },
-        teal: { color: '#00C7BE', hover: '#00ADA6', soft: 'rgba(0, 199, 190, 0.12)', dark: '#64D2FF', darkHover: '#00C7BE', darkSoft: 'rgba(100, 210, 255, 0.15)' }
-    };
-    
-    const preset = accentPresets[savedAccent];
-    if (preset) {
-        const isDark = localStorage.getItem('darkMode') === 'true';
-        const root = document.documentElement;
-        
-        if (isDark) {
-            root.style.setProperty('--accent', preset.dark);
-            root.style.setProperty('--accent-hover', preset.darkHover);
-            root.style.setProperty('--accent-soft', preset.darkSoft);
-        } else {
-            root.style.setProperty('--accent', preset.color);
-            root.style.setProperty('--accent-hover', preset.hover);
-            root.style.setProperty('--accent-soft', preset.soft);
-        }
-        root.style.setProperty('--primary-blue', isDark ? preset.dark : preset.color);
-        root.style.setProperty('--primary-dark', isDark ? preset.darkHover : preset.hover);
+    const preset = ACCENT_COLORS[savedAccent];
+    if (!preset) return;
+
+    const isDark = localStorage.getItem('darkMode') === 'true';
+    const root = document.documentElement;
+
+    if (isDark) {
+        root.style.setProperty('--accent', preset.dark);
+        root.style.setProperty('--accent-hover', preset.darkHover);
+        root.style.setProperty('--accent-soft', preset.darkSoft);
+    } else {
+        root.style.setProperty('--accent', preset.color);
+        root.style.setProperty('--accent-hover', preset.hover);
+        root.style.setProperty('--accent-soft', preset.soft);
     }
+    root.style.setProperty('--primary-blue', isDark ? preset.dark : preset.color);
+    root.style.setProperty('--primary-dark', isDark ? preset.darkHover : preset.hover);
 }
 
-// Call early application
 applyAccentColorEarly();
 
 // ===================================
@@ -32316,7 +33135,7 @@ async function saveTaskToFirestore(task) {
         const allowedFields = ['title', 'description', 'status', 'assignee', 'assigneeId', 'priority', 
                                'dueAt', 'dueDate', 'tags', 'completed', 'completedAt', 'completedBy', 
                                'progress', 'estimatedTime', 'budget', 'spreadsheetId', 'showOnCalendar',
-                               'isRecurring', 'recurrence',
+                       'isRecurring', 'recurrence', 'xpA',
                                // Lead-specific fields
                                'leadName', 'source', 'value', 'contact', 'notes',
                                // Custom fields
@@ -32415,7 +33234,7 @@ async function updateTaskInFirestore(task) {
         // NOTE: createdBy, teamId, createdAt are immutable - don't send on UPDATE
         const allowedFields = ['title', 'description', 'status', 'assignee', 'assigneeId', 'priority', 
                                'dueAt', 'dueDate', 'tags', 'completed', 'completedAt', 'completedBy', 
-                               'progress', 'estimatedTime',
+                       'progress', 'estimatedTime', 'xpA',
                                // Lead-specific fields
                                'leadName', 'source', 'value', 'contact', 'notes',
                                // Custom fields
@@ -36278,7 +37097,7 @@ async function handleDeleteCustomer() {
         const customerRef = doc(db, 'teams', appState.currentTeamId, 'customers', customerId);
         await deleteDoc(customerRef);
 
-        showToast('Customer deleted', 'success');
+        showToast('Customer profile deleted', 'success');
         closeDeleteCustomerModalFn();
         loadCustomers();
 
