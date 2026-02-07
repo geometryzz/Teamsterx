@@ -25752,6 +25752,11 @@ body.dark-mode .add-metric-option-action {
     background: rgba(255, 59, 48, 0.1);
 }
 
+.context-menu-item.danger:hover i {
+    color: #FF3B30;
+    opacity: 1;
+}
+
 .project-context-menu .context-menu-item.danger:hover,
 .project-context-menu .context-menu-item.danger:hover i {
     color: #FF3B30;
@@ -25789,6 +25794,11 @@ body.dark-mode .context-menu-item:hover i {
 
 body.dark-mode .context-menu-item.danger:hover {
     background: rgba(255, 59, 48, 0.15);
+}
+
+body.dark-mode .context-menu-item.danger:hover i {
+    color: #FF3B30;
+    opacity: 1;
 }
 
 /* ===================================
@@ -32115,7 +32125,7 @@ button span + i,
 .project-tile {
     display: flex;
     flex-direction: column;
-    gap: 8px;
+    gap: 4px;
     padding: 20px;
     padding-bottom: 44px;
     min-height: 160px;
@@ -32184,12 +32194,13 @@ button span + i,
     overflow: hidden;
     flex: 1;
     min-height: 0;
+    margin-left: -6px;
 }
 
 /* Project page - 2x2 grid */
 .project-tile-page {
     display: none;
-    grid-template-columns: 1fr 1fr;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
     grid-template-rows: auto auto;
     gap: 6px;
     width: 100%;
@@ -32312,8 +32323,8 @@ button span + i,
     display: flex;
     flex-direction: row;
     align-items: center;
-    gap: 8px;
-    padding: 8px 12px;
+    gap: 6px;
+    padding: 6px 8px;
     background: transparent;
     border: none;
     border-radius: 10px;
@@ -32321,7 +32332,7 @@ button span + i,
     transition: background 0.15s ease;
     text-align: left;
     width: 100%;
-    max-width: 190px;
+    max-width: none;
     justify-self: start;
     min-height: 0;
 }
@@ -32338,8 +32349,8 @@ button span + i,
     display: inline-flex;
     align-items: center;
     justify-content: center;
-    width: 24px;
-    height: 24px;
+    width: 20px;
+    height: 20px;
     flex-shrink: 0;
     border-radius: 6px;
     background: color-mix(in srgb, var(--project-color) 15%, transparent);
@@ -32347,8 +32358,8 @@ button span + i,
 }
 
 .project-badge-icon svg {
-    width: 12px;
-    height: 12px;
+    width: 10px;
+    height: 10px;
     stroke: currentColor;
 }
 
@@ -32361,7 +32372,7 @@ button span + i,
     white-space: nowrap;
     flex: 1;
     min-width: 0;
-    max-width: 14ch;
+    max-width: 100%;
 }
 
 .project-badge.active .project-badge-name {
