@@ -231,8 +231,49 @@
                     <p class="section-subtitle">Your tasks, events, and team activity at a glance</p>
                 </div>
                 
+                <!-- Skeleton Loading State -->
+                <div class="skeleton-section" id="overview-skeleton">
+                    <div class="overview-stats">
+                        <div class="skeleton-stat-card">
+                            <div class="skeleton skeleton-stat-icon"></div>
+                            <div class="skeleton-stat-content">
+                                <div class="skeleton skeleton-stat-number"></div>
+                                <div class="skeleton skeleton-stat-label"></div>
+                            </div>
+                        </div>
+                        <div class="skeleton-stat-card">
+                            <div class="skeleton skeleton-stat-icon"></div>
+                            <div class="skeleton-stat-content">
+                                <div class="skeleton skeleton-stat-number"></div>
+                                <div class="skeleton skeleton-stat-label"></div>
+                            </div>
+                        </div>
+                        <div class="skeleton-stat-card">
+                            <div class="skeleton skeleton-stat-icon"></div>
+                            <div class="skeleton-stat-content">
+                                <div class="skeleton skeleton-stat-number"></div>
+                                <div class="skeleton skeleton-stat-label"></div>
+                            </div>
+                        </div>
+                    </div>
+                    <div class="overview-two-col" style="margin-top: 24px;">
+                        <div class="skeleton-card">
+                            <div class="skeleton skeleton-title"></div>
+                            <div class="skeleton skeleton-text long"></div>
+                            <div class="skeleton skeleton-text medium"></div>
+                            <div class="skeleton skeleton-text short"></div>
+                        </div>
+                        <div class="skeleton-card">
+                            <div class="skeleton skeleton-title"></div>
+                            <div class="skeleton skeleton-text long"></div>
+                            <div class="skeleton skeleton-text medium"></div>
+                            <div class="skeleton skeleton-text short"></div>
+                        </div>
+                    </div>
+                </div>
+                
                 <!-- Quick Stats Cards -->
-                <div class="overview-stats">
+                <div class="overview-stats real-content">
                     <div class="stat-card">
                         <div class="stat-icon" style="background: var(--accent);">
                             <i class="fas fa-tasks"></i>
@@ -263,7 +304,7 @@
                 </div>
 
                 <!-- Two Column Layout: My Tasks + Upcoming Events -->
-                <div class="overview-two-col">
+                <div class="overview-two-col real-content">
                     <!-- My Tasks Section -->
                     <div class="overview-section overview-card">
                         <div class="overview-section-header">
@@ -508,7 +549,43 @@
 
             <!-- Chat Section -->
             <section class="content-section" id="chat-section">
-                <div class="section-header" style="padding: 0; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
+                <!-- Skeleton Loading State -->
+                <div class="skeleton-section" id="chat-skeleton">
+                    <div style="padding: 16px;">
+                        <div class="skeleton skeleton-title" style="width: 120px; margin-bottom: 24px;"></div>
+                        <div class="skeleton-message">
+                            <div class="skeleton skeleton-avatar"></div>
+                            <div class="skeleton-message-content">
+                                <div class="skeleton skeleton-text short"></div>
+                                <div class="skeleton skeleton-text long"></div>
+                            </div>
+                        </div>
+                        <div class="skeleton-message">
+                            <div class="skeleton skeleton-avatar"></div>
+                            <div class="skeleton-message-content">
+                                <div class="skeleton skeleton-text short"></div>
+                                <div class="skeleton skeleton-text medium"></div>
+                            </div>
+                        </div>
+                        <div class="skeleton-message">
+                            <div class="skeleton skeleton-avatar"></div>
+                            <div class="skeleton-message-content">
+                                <div class="skeleton skeleton-text short"></div>
+                                <div class="skeleton skeleton-text long"></div>
+                                <div class="skeleton skeleton-text medium"></div>
+                            </div>
+                        </div>
+                        <div class="skeleton-message">
+                            <div class="skeleton skeleton-avatar"></div>
+                            <div class="skeleton-message-content">
+                                <div class="skeleton skeleton-text short"></div>
+                                <div class="skeleton skeleton-text medium"></div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="section-header real-content" style="padding: 0; margin-bottom: 8px; display: flex; justify-content: space-between; align-items: center;">
                     <h1 style="margin: 0; font-size: 1.2rem;">Team Chat</h1>
                     <div style="display: flex; gap: 8px; align-items: center;">
                         <!-- Mentions filter toggle -->
@@ -522,7 +599,7 @@
                     </div>
                 </div>
                 
-                <div class="chat-container">
+                <div class="chat-container real-content">
                     <div class="chat-messages" id="chatMessages">
                         <!-- Messages will be dynamically added here -->
                         <div class="message">
@@ -608,7 +685,40 @@
 
             <!-- Calendar Section -->
             <section class="content-section" id="calendar-section">
-                <div class="calendar-container">
+                <!-- Skeleton Loading State -->
+                <div class="skeleton-section" id="calendar-skeleton">
+                    <div style="padding: 16px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px;">
+                            <div class="skeleton" style="width: 150px; height: 32px; border-radius: 8px;"></div>
+                            <div class="skeleton" style="width: 100px; height: 32px; border-radius: 8px;"></div>
+                        </div>
+                        <div class="skeleton-calendar-grid">
+                            <div class="skeleton skeleton-calendar-day"></div>
+                            <div class="skeleton skeleton-calendar-day"></div>
+                            <div class="skeleton skeleton-calendar-day"></div>
+                            <div class="skeleton skeleton-calendar-day"></div>
+                            <div class="skeleton skeleton-calendar-day"></div>
+                            <div class="skeleton skeleton-calendar-day"></div>
+                            <div class="skeleton skeleton-calendar-day"></div>
+                            <div class="skeleton skeleton-calendar-day"></div>
+                            <div class="skeleton skeleton-calendar-day"></div>
+                            <div class="skeleton skeleton-calendar-day"></div>
+                            <div class="skeleton skeleton-calendar-day"></div>
+                            <div class="skeleton skeleton-calendar-day"></div>
+                            <div class="skeleton skeleton-calendar-day"></div>
+                            <div class="skeleton skeleton-calendar-day"></div>
+                            <div class="skeleton skeleton-calendar-day"></div>
+                            <div class="skeleton skeleton-calendar-day"></div>
+                            <div class="skeleton skeleton-calendar-day"></div>
+                            <div class="skeleton skeleton-calendar-day"></div>
+                            <div class="skeleton skeleton-calendar-day"></div>
+                            <div class="skeleton skeleton-calendar-day"></div>
+                            <div class="skeleton skeleton-calendar-day"></div>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="calendar-container real-content">
                     <div class="calendar-header">
                         <div class="calendar-title-section">
                             <button class="calendar-nav-btn" id="prevMonth">
@@ -630,14 +740,15 @@
                             </button>
                         </div>
                         
-                        <div class="calendar-view-toggle">
-                            <button class="view-toggle-btn" data-view="week">Week</button>
-                            <button class="view-toggle-btn active" data-view="month">Month</button>
+                        <div class="calendar-header-actions">
+                            <div class="calendar-view-toggle">
+                                <button class="view-toggle-btn" data-view="week">Week</button>
+                                <button class="view-toggle-btn active" data-view="month">Month</button>
+                            </div>
+                            <button class="calendar-add-btn" id="addEventBtn" title="Add Event">
+                                <i class="fas fa-plus"></i>
+                            </button>
                         </div>
-                        
-                        <button class="calendar-add-btn" id="addEventBtn" title="Add Event">
-                            <i class="fas fa-plus"></i>
-                        </button>
                     </div>
                     
                     <div class="calendar-grid">
@@ -656,6 +767,43 @@
 
             <!-- Workspace Section -->
             <section class="content-section" id="tasks-section">
+                <!-- Skeleton Loading State -->
+                <div class="skeleton-section" id="tasks-skeleton">
+                    <div style="padding: 0 24px;">
+                        <div class="skeleton skeleton-title" style="width: 150px; margin-bottom: 8px;"></div>
+                        <div class="skeleton skeleton-text short" style="margin-bottom: 24px;"></div>
+                        <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px;">
+                            <div class="skeleton-spreadsheet-card">
+                                <div class="skeleton-spreadsheet-header">
+                                    <div class="skeleton skeleton-spreadsheet-icon"></div>
+                                    <div style="flex: 1;">
+                                        <div class="skeleton skeleton-text medium"></div>
+                                        <div class="skeleton skeleton-text short"></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="skeleton-spreadsheet-card">
+                                <div class="skeleton-spreadsheet-header">
+                                    <div class="skeleton skeleton-spreadsheet-icon"></div>
+                                    <div style="flex: 1;">
+                                        <div class="skeleton skeleton-text medium"></div>
+                                        <div class="skeleton skeleton-text short"></div>
+                                    </div>
+                                </div>
+                            </div>
+                            <div class="skeleton-spreadsheet-card">
+                                <div class="skeleton-spreadsheet-header">
+                                    <div class="skeleton skeleton-spreadsheet-icon"></div>
+                                    <div style="flex: 1;">
+                                        <div class="skeleton skeleton-text medium"></div>
+                                        <div class="skeleton skeleton-text short"></div>
+                                    </div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+                
                 <!-- Workspace Header (shown when Workspace view active) -->
                 <div class="spreadsheet-header" id="spreadsheetsViewHeader">
                     <div class="spreadsheet-header-left">
@@ -1123,6 +1271,43 @@
                     </div>
                 </div>
 
+                <!-- Customers Section -->
+                <div class="customers-section" id="customersSection">
+                    <div class="customers-header">
+                        <div class="customers-title">
+                            <span class="customers-icon"><i class="fas fa-user-tie"></i></span>
+                            <h2>Customers</h2>
+                            <span class="customers-count" id="customersCount">0</span>
+                        </div>
+                        <button class="btn-add-customer" id="addCustomerBtn" title="Add Customer">
+                            <i class="fas fa-plus"></i>
+                        </button>
+                    </div>
+
+                    <!-- Customer Search -->
+                    <div class="customers-search-row" id="customersSearchRow" style="display: none;">
+                        <div class="customers-search-wrapper">
+                            <i class="fas fa-search"></i>
+                            <input type="text" class="customers-search-input" id="customerSearchInput" placeholder="Search customers...">
+                        </div>
+                    </div>
+
+                    <!-- Customers List -->
+                    <div class="customers-list" id="customersList">
+                        <!-- Rendered by JS -->
+                    </div>
+
+                    <!-- Empty State -->
+                    <div class="customers-empty-state" id="customersEmptyState" style="display: none;">
+                        <i class="fas fa-user-tie"></i>
+                        <p>No customers yet</p>
+                        <span class="customers-empty-hint">Add customers manually or they'll be created automatically when leads are won.</span>
+                        <button class="add-row-btn" id="addFirstCustomerBtn">
+                            <i class="fas fa-plus"></i> Customer
+                        </button>
+                    </div>
+                </div>
+
                 <!-- Subscriptions Section -->
                 <div class="subscriptions-section" id="subscriptionsSection">
                     <div class="subscriptions-header">
@@ -1201,6 +1386,7 @@
                         <!-- Settings Tab Navigation -->
                         <div class="settings-tabs-nav">
                             <button class="settings-tab active" data-settings-tab="profile">Profile</button>
+                            <button class="settings-tab" data-settings-tab="achievements" id="achievementsSettingsTab">Achievements</button>
                             <button class="settings-tab" data-settings-tab="appearance">Appearance</button>
                             <button class="settings-tab" data-settings-tab="notifications">Notifications</button>
                             <button class="settings-tab" data-settings-tab="security">Security</button>
@@ -1240,31 +1426,23 @@
                                     <!-- Avatar Color -->
                                     <div class="settings-field-minimal">
                                         <label>Avatar Color</label>
-                                        <div class="avatar-color-picker-minimal">
-                                                <!-- Ordered, deduplicated avatar color palette -->
-                                                <div class="color-dot" data-color="#8E8E93" style="background: #8E8E93;"></div>
-                                                <div class="color-dot" data-color="#007AFF" style="background: #007AFF;"></div>
-                                                <div class="color-dot" data-color="#7FD3FF" style="background: #7FD3FF;"></div>
-                                                <div class="color-dot" data-color="#34C759" style="background: #34C759;"></div>
-                                                <div class="color-dot" data-color="#00C7BE" style="background: #00C7BE;"></div>
-                                                <div class="color-dot" data-color="#30B0C7" style="background: #30B0C7;"></div>
-                                                <div class="color-dot" data-color="#FFCC00" style="background: #FFCC00;"></div>
-                                                <div class="color-dot" data-color="#FF9500" style="background: #FF9500;"></div>
-                                                <div class="color-dot" data-color="#FF3B30" style="background: #FF3B30;"></div>
-                                                <div class="color-dot" data-color="#FF2D55" style="background: #FF2D55;"></div>
-                                                <div class="color-dot" data-color="#5856D6" style="background: #5856D6;"></div>
-                                                <div class="color-dot" data-color="#AF52DE" style="background: #AF52DE;"></div>
+                                        <div class="color-picker-inline preset-only" id="avatarColorPicker" data-picker="avatar" data-input="settingsAvatarColor" data-swatch="avatarColorSwatch">
+                                            <div class="color-picker-inner-pill">
+                                                <div class="color-picker-current-swatch" id="avatarColorSwatch" style="background: #0A84FF;"></div>
+                                            </div>
+                                            <div class="color-picker-recent">
+                                                <button type="button" class="color-picker-recent-btn" data-color="#EF4444" style="background: #EF4444;"></button>
+                                                <button type="button" class="color-picker-recent-btn" data-color="#EC4899" style="background: #EC4899;"></button>
+                                                <button type="button" class="color-picker-recent-btn" data-color="#8B5CF6" style="background: #8B5CF6;"></button>
+                                                <button type="button" class="color-picker-recent-btn" data-color="rgb(127, 211, 255)" style="background: rgb(127, 211, 255);"></button>
+                                                <button type="button" class="color-picker-recent-btn" data-color="#0A84FF" style="background: #0A84FF;"></button>
+                                                <button type="button" class="color-picker-recent-btn" data-color="#14B8A6" style="background: #14B8A6;"></button>
+                                                <button type="button" class="color-picker-recent-btn" data-color="#22C55E" style="background: #22C55E;"></button>
+                                                <button type="button" class="color-picker-recent-btn" data-color="#F59E0B" style="background: #F59E0B;"></button>
+                                            </div>
                                         </div>
-                                            <input type="hidden" id="settingsAvatarColor" value="#007AFF">
+                                            <input type="hidden" id="settingsAvatarColor" value="#0A84FF">
                                         <input type="hidden" id="avatarFileInput" accept="image/*">
-                                    </div>
-
-                                    <!-- Task Completion Badges -->
-                                    <div class="settings-field-minimal">
-                                        <label>Badges</label>
-                                        <div id="profileBadgesContainer" class="profile-badges-container">
-                                            <!-- Badges will be rendered here by JS -->
-                                        </div>
                                     </div>
 
                                     <!-- Save Button -->
@@ -1297,13 +1475,18 @@
                                     <!-- Accent Color -->
                                     <div class="settings-field-minimal">
                                         <label>Accent Color</label>
-                                        <div class="accent-color-picker-minimal" id="accentColorPicker">
-                                            <div class="accent-dot" data-accent="orange" data-color="#FF9500" data-hover="#E68600" data-soft="rgba(255, 149, 0, 0.12)" data-dark="#FF9F0A" data-dark-hover="#FF9500" data-dark-soft="rgba(255, 159, 10, 0.15)"></div>
-                                            <div class="accent-dot" data-accent="green" data-color="#34C759" data-hover="#2DB04E" data-soft="rgba(52, 199, 89, 0.12)" data-dark="#32D74B" data-dark-hover="#34C759" data-dark-soft="rgba(50, 215, 75, 0.15)"></div>
-                                            <div class="accent-dot" data-accent="teal" data-color="#00C7BE" data-hover="#00ADA6" data-soft="rgba(0, 199, 190, 0.12)" data-dark="#64D2FF" data-dark-hover="#00C7BE" data-dark-soft="rgba(100, 210, 255, 0.15)"></div>
-                                            <div class="accent-dot selected" data-accent="blue" data-color="#0070F3" data-hover="#0051CC" data-soft="rgba(0, 112, 243, 0.12)" data-dark="#0A84FF" data-dark-hover="#0070F3" data-dark-soft="rgba(10, 132, 255, 0.15)"></div>
-                                            <div class="accent-dot" data-accent="purple" data-color="#AF52DE" data-hover="#9340C7" data-soft="rgba(175, 82, 222, 0.12)" data-dark="#BF5AF2" data-dark-hover="#AF52DE" data-dark-soft="rgba(191, 90, 242, 0.15)"></div>
-                                            <div class="accent-dot" data-accent="pink" data-color="#FF2D55" data-hover="#E6264D" data-soft="rgba(255, 45, 85, 0.12)" data-dark="#FF375F" data-dark-hover="#FF2D55" data-dark-soft="rgba(255, 55, 95, 0.15)"></div>
+                                        <div class="color-picker-inline preset-only" id="accentColorPicker" data-picker="accent" data-swatch="accentColorSwatch">
+                                            <div class="color-picker-inner-pill">
+                                                <div class="color-picker-current-swatch" id="accentColorSwatch" style="background: #0A84FF;"></div>
+                                            </div>
+                                            <div class="color-picker-recent">
+                                                <button type="button" class="color-picker-recent-btn selected" data-color="#0A84FF" data-accent="blue" style="background: #0A84FF;"></button>
+                                                <button type="button" class="color-picker-recent-btn" data-color="#14B8A6" data-accent="teal" style="background: #14B8A6;"></button>
+                                                <button type="button" class="color-picker-recent-btn" data-color="#22C55E" data-accent="green" style="background: #22C55E;"></button>
+                                                <button type="button" class="color-picker-recent-btn" data-color="#8B5CF6" data-accent="purple" style="background: #8B5CF6;"></button>
+                                                <button type="button" class="color-picker-recent-btn" data-color="#EF4444" data-accent="red" style="background: #EF4444;"></button>
+                                                <button type="button" class="color-picker-recent-btn" data-color="#F59E0B" data-accent="orange" style="background: #F59E0B;"></button>
+                                            </div>
                                         </div>
                                     </div>
 
@@ -1470,11 +1653,66 @@
                                 </div>
                             </div>
 
+                            <!-- Achievements Tab -->
+                            <div class="settings-tab-pane" id="settings-pane-achievements">
+                                <div class="settings-minimal-form">
+                                    <!-- XP & Streak Hero Section - 2 Column Layout -->
+                                    <div class="achievements-hero-grid">
+                                        <!-- XP Section -->
+                                        <div class="achievements-xp-section">
+                                            <div class="xp-info">
+                                                <div class="xp-level-text">Level <span id="userLevel" class="level-number-blue">1</span></div>
+                                                <div class="xp-progress-container">
+                                                    <div class="xp-progress-bar" id="xpProgressBar" style="width: 0%"></div>
+                                                </div>
+                                                <div class="xp-text"><span id="currentXP">0</span>/<span id="nextLevelXP">100</span>xp</div>
+                                            </div>
+                                        </div>
+                                        
+                                        <!-- Streak Section -->
+                                        <div class="achievements-streak-section">
+                                            <div class="streak-fire-icon">
+                                                <i class="fas fa-fire"></i>
+                                                <span class="streak-number" id="streakCount">0</span>
+                                            </div>
+                                            <div class="streak-info">
+                                                <div class="streak-label">Day Streak</div>
+                                                <div class="best-streak">best: <span id="bestStreak">0</span> days</div>
+                                            </div>
+                                        </div>
+                                    </div>
+
+                                    <!-- Badges Section -->
+                                    <div class="settings-group-label" style="margin-top: 24px;">Badges</div>
+                                    <div id="achievementsBadgesContainer" class="achievements-badges-container">
+                                        <!-- Badges will be rendered here by JS -->
+                                    </div>
+
+                                    <!-- Stats Section -->
+                                    <div class="settings-group-label" style="margin-top: 24px;">Your Stats</div>
+                                    <div class="achievements-stats-list" id="achievementsStatsList">
+                                        <!-- Stats will be rendered by JS -->
+                                    </div>
+                                </div>
+                            </div>
+
                             <!-- Advanced Tab -->
                             <div class="settings-tab-pane" id="settings-pane-advanced">
                                 <div class="settings-minimal-form">
+                                    <!-- Gamification Settings -->
+                                    <div class="settings-group-label">Gamification</div>
+                                    <form id="gamificationForm">
+                                        <div class="settings-row-minimal">
+                                            <div>
+                                                <span>Enable achievements</span>
+                                                <div class="settings-row-hint">XP, levels, and badges for completing work</div>
+                                            </div>
+                                            <label class="toggle-minimal"><input type="checkbox" id="gamificationEnabled" checked><span class="toggle-track"></span></label>
+                                        </div>
+                                    </form>
+
                                     <!-- Chat Settings -->
-                                    <div class="settings-group-label">Chat</div>
+                                    <div class="settings-group-label" style="margin-top: 24px;">Chat</div>
                                     <form id="chatAppearanceForm">
                                         <div class="settings-row-minimal">
                                             <span>Show avatars</span>
@@ -1909,26 +2147,27 @@
                             </div>
                         </div>
                         
-                        <!-- Color Picker - Full Width -->
+                        <!-- Color Picker - Inline -->
                         <div class="unified-form-field full-width">
                             <label class="unified-form-label">
                                 Color
                             </label>
-                            <input type="hidden" id="eventColor" value="#007AFF">
-                            <div class="unified-color-grid-wrapper">
-                                <div class="unified-color-grid" data-expanded="false">
-                                    <button type="button" class="unified-color-option" data-color="#FF3B30" style="background: #FF3B30;" title="Red"></button>
-                                    <button type="button" class="unified-color-option" data-color="#FF9500" style="background: #FF9500;" title="Orange"></button>
-                                    <button type="button" class="unified-color-option selected" data-color="#007AFF" style="background: #007AFF;" title="Blue"></button>
-                                    <button type="button" class="unified-color-option unified-color-extra" data-color="#FF2D55" style="background: #FF2D55;" title="Pink"></button>
-                                    <button type="button" class="unified-color-option unified-color-extra" data-color="#AF52DE" style="background: #AF52DE;" title="Magenta"></button>
-                                    <button type="button" class="unified-color-option unified-color-extra" data-color="#5856D6" style="background: #5856D6;" title="Purple"></button>
-                                    <button type="button" class="unified-color-option unified-color-extra" data-color="#32ADE6" style="background: #32ADE6;" title="Teal"></button>
-                                    <button type="button" class="unified-color-option unified-color-extra" data-color="#34C759" style="background: #34C759;" title="Green"></button>
+                            <input type="hidden" id="eventColor" value="#ef4444">
+                            <div class="color-picker-inline narrow" id="eventColorPicker" style="max-width: 432px;">
+                                <div class="color-picker-inner-pill">
+                                    <div class="color-picker-current-swatch" id="eventColorSwatch" style="background: #ef4444;"></div>
+                                    <input type="text" id="eventColorHex" value="#ef4444" maxlength="7" spellcheck="false" autocomplete="off" inputmode="text" aria-label="Hex color" style="color:#ff2d9f;background:transparent;border:0;outline:0;box-shadow:none;padding:0;margin:0;font:600 15px/1 -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif;letter-spacing:0.4px;text-transform:uppercase;">
                                 </div>
-                                <button type="button" class="unified-color-expand-btn" onclick="toggleColorGrid(this)">
-                                    <i class="fas fa-chevron-down"></i>
-                                </button>
+                                <div class="color-picker-recent" id="eventColorRecent">
+                                    <button type="button" class="color-picker-recent-btn" data-color="#ef4444" style="background: #ef4444;"></button>
+                                    <button type="button" class="color-picker-recent-btn" data-color="#f59e0b" style="background: #f59e0b;"></button>
+                                    <button type="button" class="color-picker-recent-btn" data-color="#22c55e" style="background: #22c55e;"></button>
+                                    <button type="button" class="color-picker-recent-btn" data-color="#14b8a6" style="background: #14b8a6;"></button>
+                                    <button type="button" class="color-picker-recent-btn" data-color="#0ea5e9" style="background: #0ea5e9;"></button>
+                                    <button type="button" class="color-picker-recent-btn" data-color="#6d5dfc" style="background: #6d5dfc;"></button>
+                                    <button type="button" class="color-picker-recent-btn" data-color="#a855f7" style="background: #a855f7;"></button>
+                                    <button type="button" class="color-picker-recent-btn" data-color="#475569" style="background: #475569;"></button>
+                                </div>
                             </div>
                         </div>
                         
@@ -2696,6 +2935,13 @@
                             </div>
                         </div>
                         
+                        <label class="unified-form-label" style="margin-top: 16px;">Gradient</label>
+                        <label class="toggle-switch" style="margin: 0 8px 0 0; vertical-align: middle;">
+                            <input type="checkbox" id="sliderGradientToggle" checked>
+                            <span class="toggle-slider"></span>
+                        </label>
+                        Use gradient between ranges
+                        
                         <!-- Slider Color Ranges -->
                         <label class="unified-form-label" style="margin-top: 16px;">Color Ranges</label>
                         <div class="slider-color-ranges" id="sliderColorRanges">
@@ -2752,60 +2998,45 @@
                             </div>
                         </div>
                         <button type="button" class="unified-btn unified-btn-secondary" id="addColorRange" style="margin-top: 8px;">
-                            <i class="fas fa-plus"></i> + Range
+                            <i class="fas fa-plus"></i> Range
                         </button>
                     </div>
 
                     <!-- Icon Selector -->
                     <div class="unified-form-field">
                         <label class="unified-form-label">Column Icon</label>
-                        <div class="unified-icon-grid" id="iconPicker">
-                            <button type="button" class="unified-icon-option selected" data-icon="fa-tag" title="Tag">
-                                <i class="fas fa-tag"></i>
-                            </button>
-                            <button type="button" class="unified-icon-option" data-icon="fa-flag" title="Flag">
-                                <i class="fas fa-flag"></i>
-                            </button>
-                            <button type="button" class="unified-icon-option" data-icon="fa-star" title="Star">
-                                <i class="fas fa-star"></i>
-                            </button>
-                            <button type="button" class="unified-icon-option" data-icon="fa-check-circle" title="Check">
-                                <i class="fas fa-check-circle"></i>
-                            </button>
-                            <button type="button" class="unified-icon-option" data-icon="fa-clock" title="Clock">
-                                <i class="fas fa-clock"></i>
-                            </button>
-                            <button type="button" class="unified-icon-option" data-icon="fa-bolt" title="Bolt">
-                                <i class="fas fa-bolt"></i>
-                            </button>
-                            <button type="button" class="unified-icon-option" data-icon="fa-fire" title="Fire">
-                                <i class="fas fa-fire"></i>
-                            </button>
-                            <button type="button" class="unified-icon-option" data-icon="fa-heart" title="Heart">
-                                <i class="fas fa-heart"></i>
-                            </button>
-                            <button type="button" class="unified-icon-option" data-icon="fa-thumbs-up" title="Thumbs Up">
-                                <i class="fas fa-thumbs-up"></i>
-                            </button>
-                            <button type="button" class="unified-icon-option" data-icon="fa-gem" title="Gem">
-                                <i class="fas fa-gem"></i>
-                            </button>
-                            <button type="button" class="unified-icon-option" data-icon="fa-users" title="Users">
-                                <i class="fas fa-users"></i>
-                            </button>
-                            <button type="button" class="unified-icon-option" data-icon="fa-briefcase" title="Briefcase">
-                                <i class="fas fa-briefcase"></i>
-                            </button>
-                            <button type="button" class="unified-icon-option" data-icon="fa-chart-bar" title="Chart">
-                                <i class="fas fa-chart-bar"></i>
-                            </button>
-                            <button type="button" class="unified-icon-option" data-icon="fa-link" title="Link">
-                                <i class="fas fa-link"></i>
-                            </button>
-                            <button type="button" class="unified-icon-option" data-icon="fa-bookmark" title="Bookmark">
-                                <i class="fas fa-bookmark"></i>
-                            </button>
+                        <div class="icon-picker-inline narrow" id="iconPicker">
+                            <div class="icon-picker-inner-pill">
+                                <span class="icon-picker-selected" id="columnIconSelected"><i class="fas fa-tag"></i></span>
+                            </div>
+                            <div class="icon-picker-options">
+                                <button type="button" class="icon-picker-option selected" data-icon="fa-tag" title="Tag">
+                                    <i class="fas fa-tag"></i>
+                                </button>
+                                <button type="button" class="icon-picker-option" data-icon="fa-flag" title="Flag">
+                                    <i class="fas fa-flag"></i>
+                                </button>
+                                <button type="button" class="icon-picker-option" data-icon="fa-star" title="Star">
+                                    <i class="fas fa-star"></i>
+                                </button>
+                                <button type="button" class="icon-picker-option" data-icon="fa-check-circle" title="Check">
+                                    <i class="fas fa-check-circle"></i>
+                                </button>
+                                <button type="button" class="icon-picker-option" data-icon="fa-clock" title="Clock">
+                                    <i class="fas fa-clock"></i>
+                                </button>
+                                <button type="button" class="icon-picker-option" data-icon="fa-bolt" title="Bolt">
+                                    <i class="fas fa-bolt"></i>
+                                </button>
+                                <button type="button" class="icon-picker-option" data-icon="fa-fire" title="Fire">
+                                    <i class="fas fa-fire"></i>
+                                </button>
+                                <button type="button" class="icon-picker-option" data-icon="fa-heart" title="Heart">
+                                    <i class="fas fa-heart"></i>
+                                </button>
+                            </div>
                         </div>
+                        <input type="hidden" id="columnIcon" value="fa-tag">
                     </div>
                 </div>
             </div>
@@ -3106,9 +3337,8 @@
                                 Amount <span class="required">*</span>
                             </label>
                             <div class="amount-input-wrapper">
-                                <span class="currency-symbol">$</span>
                                 <input type="number" class="unified-input amount-input" id="transactionAmount" 
-                                       required min="0.01" step="0.01" placeholder="0.00">
+                                       required min="0.01" step="0.01" placeholder="$0.00">
                             </div>
                         </div>
 
@@ -3134,25 +3364,45 @@
                             <label class="unified-form-label">
                                 <i class="fas fa-tag"></i> Category
                             </label>
-                            <select class="unified-input" id="transactionCategory">
-                                <option value="">Select category...</option>
-                                <optgroup label="Income" id="incomeCategoryGroup">
-                                    <option value="sales">Sales</option>
-                                    <option value="services">Services</option>
-                                    <option value="subscriptions">Subscriptions</option>
-                                    <option value="consulting">Consulting</option>
-                                    <option value="other-income">Other Income</option>
-                                </optgroup>
-                                <optgroup label="Expense" id="expenseCategoryGroup">
-                                    <option value="payroll">Payroll</option>
-                                    <option value="software">Software & Tools</option>
-                                    <option value="marketing">Marketing</option>
-                                    <option value="office">Office & Equipment</option>
-                                    <option value="travel">Travel</option>
-                                    <option value="utilities">Utilities</option>
-                                    <option value="other-expense">Other Expense</option>
-                                </optgroup>
-                            </select>
+                            <!-- Income Categories Dropdown -->
+                            <div class="transaction-category-dropdown" id="transactionCategoryIncomeContainer" style="display: block;">
+                                <div class="custom-dropdown-trigger" id="transactionCategoryIncomeTrigger">
+                                    <div class="dropdown-trigger-content">
+                                        <span id="transactionCategoryIncomeDisplay" class="dropdown-placeholder">Select category...</span>
+                                    </div>
+                                    <i class="fas fa-chevron-down dropdown-arrow"></i>
+                                </div>
+                                <div class="custom-dropdown-menu" id="transactionCategoryIncomeMenu">
+                                    <div class="dropdown-menu-option" data-value="">Select category...</div>
+                                    <div class="dropdown-menu-option" data-value="sales">Sales</div>
+                                    <div class="dropdown-menu-option" data-value="services">Services</div>
+                                    <div class="dropdown-menu-option" data-value="subscriptions">Subscriptions</div>
+                                    <div class="dropdown-menu-option" data-value="consulting">Consulting</div>
+                                    <div class="dropdown-menu-option" data-value="other-income">Other Income</div>
+                                </div>
+                                <input type="hidden" id="transactionCategoryIncome" value="">
+                            </div>
+                            
+                            <!-- Expense Categories Dropdown -->
+                            <div class="transaction-category-dropdown" id="transactionCategoryExpenseContainer" style="display: none;">
+                                <div class="custom-dropdown-trigger" id="transactionCategoryExpenseTrigger">
+                                    <div class="dropdown-trigger-content">
+                                        <span id="transactionCategoryExpenseDisplay" class="dropdown-placeholder">Select category...</span>
+                                    </div>
+                                    <i class="fas fa-chevron-down dropdown-arrow"></i>
+                                </div>
+                                <div class="custom-dropdown-menu" id="transactionCategoryExpenseMenu">
+                                    <div class="dropdown-menu-option" data-value="">Select category...</div>
+                                    <div class="dropdown-menu-option" data-value="payroll">Payroll</div>
+                                    <div class="dropdown-menu-option" data-value="software">Software & Tools</div>
+                                    <div class="dropdown-menu-option" data-value="marketing">Marketing</div>
+                                    <div class="dropdown-menu-option" data-value="office">Office & Equipment</div>
+                                    <div class="dropdown-menu-option" data-value="travel">Travel</div>
+                                    <div class="dropdown-menu-option" data-value="utilities">Utilities</div>
+                                    <div class="dropdown-menu-option" data-value="other-expense">Other Expense</div>
+                                </div>
+                                <input type="hidden" id="transactionCategoryExpense" value="">
+                            </div>
                         </div>
 
                         <!-- Customer/Vendor (Optional) -->
@@ -3161,7 +3411,8 @@
                                 <i class="fas fa-user"></i> Customer
                             </label>
                             <input type="text" class="unified-input" id="transactionParty" 
-                                   placeholder="Customer or vendor name">
+                                   placeholder="Customer or vendor name" list="customerSuggestions" autocomplete="off">
+                            <datalist id="customerSuggestions"></datalist>
                         </div>
 
                         <!-- Recurring Toggle -->
@@ -3241,6 +3492,117 @@
         </div>
     </div>
 
+    <!-- Customer Modal -->
+    <div class="unified-modal" id="customerModal">
+        <div class="unified-modal-container modal-form">
+            <div class="unified-modal-header">
+                <div class="unified-modal-title">
+                    <h2 id="customerModalTitle"><i class="fas fa-user-plus"></i> New Customer</h2>
+                    <p class="subtitle" id="customerModalSubtitle">Add a new customer to your registry</p>
+                </div>
+                <button class="unified-modal-close" id="closeCustomerModal">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            
+            <form id="customerForm">
+                <div class="unified-modal-body">
+                    <div class="unified-form-grid">
+                        <!-- Customer Name -->
+                        <div class="unified-form-field full-width">
+                            <label class="unified-form-label">
+                                Name <span class="required">*</span>
+                            </label>
+                            <input type="text" class="unified-input" id="customerName" 
+                                   required placeholder="e.g., Acme Corp, John Doe" maxlength="200">
+                        </div>
+
+                        <!-- Company -->
+                        <div class="unified-form-field">
+                            <label class="unified-form-label">
+                                <i class="fas fa-building"></i> Company
+                            </label>
+                            <input type="text" class="unified-input" id="customerCompany" 
+                                   placeholder="Company name" maxlength="200">
+                        </div>
+
+                        <!-- Email -->
+                        <div class="unified-form-field">
+                            <label class="unified-form-label">
+                                <i class="fas fa-envelope"></i> Email
+                            </label>
+                            <input type="email" class="unified-input" id="customerEmail" 
+                                   placeholder="customer@example.com" maxlength="300">
+                        </div>
+
+                        <!-- Phone -->
+                        <div class="unified-form-field">
+                            <label class="unified-form-label">
+                                <i class="fas fa-phone"></i> Phone
+                            </label>
+                            <input type="tel" class="unified-input" id="customerPhone" 
+                                   placeholder="+1 (555) 000-0000" maxlength="50">
+                        </div>
+
+                        <!-- Source (read-only, shown only for auto-created) -->
+                        <div class="unified-form-field" id="customerSourceField" style="display: none;">
+                            <label class="unified-form-label">
+                                <i class="fas fa-info-circle"></i> Source
+                            </label>
+                            <input type="text" class="unified-input" id="customerSourceDisplay" readonly>
+                        </div>
+
+                        <!-- Notes -->
+                        <div class="unified-form-field full-width">
+                            <label class="unified-form-label">
+                                Notes <span class="optional">(optional)</span>
+                            </label>
+                            <textarea class="unified-textarea" id="customerNotes" rows="2" 
+                                      placeholder="Additional notes about this customer..." maxlength="1000"></textarea>
+                        </div>
+                    </div>
+                </div>
+                
+                <div class="unified-modal-footer">
+                    <button type="button" class="btn-secondary" id="cancelCustomerBtn">Cancel</button>
+                    <button type="submit" class="btn-primary" id="saveCustomerBtn">
+                        <i class="fas fa-save"></i> Save Customer
+                    </button>
+                </div>
+                <input type="hidden" id="customerId" value="">
+            </form>
+        </div>
+    </div>
+
+    <!-- Delete Customer Confirmation Modal -->
+    <div class="unified-modal" id="deleteCustomerModal">
+        <div class="unified-modal-container modal-sm">
+            <div class="unified-modal-header">
+                <div class="unified-modal-title">
+                    <h2><i class="fas fa-trash-alt"></i> Delete Customer</h2>
+                </div>
+                <button class="unified-modal-close" id="closeDeleteCustomerModal">
+                    <i class="fas fa-times"></i>
+                </button>
+            </div>
+            <div class="unified-modal-body">
+                <div class="unified-confirm-box warning">
+                    <div class="unified-confirm-icon">
+                        <i class="fas fa-exclamation-triangle"></i>
+                    </div>
+                    <p>Are you sure you want to delete this customer? This will not delete any associated transactions.</p>
+                </div>
+            </div>
+            <div class="unified-modal-footer">
+                <button type="button" class="btn-secondary" id="cancelDeleteCustomer">Cancel</button>
+                <button type="button" class="btn-danger" id="confirmDeleteCustomer">
+                    <i class="fas fa-trash"></i> Delete
+                </button>
+            </div>
+            <input type="hidden" id="deleteCustomerId" value="">
+        </div>
+    </div>
+
     <!-- Subscription Modal -->
     <div class="unified-modal" id="subscriptionModal">
         <div class="unified-modal-container modal-form">
@@ -3289,9 +3651,8 @@
                                 Amount <span class="required">*</span>
                             </label>
                             <div class="amount-input-wrapper">
-                                <span class="currency-symbol">$</span>
                                 <input type="number" class="unified-input amount-input" id="subscriptionAmount" 
-                                       required min="0.01" step="0.01" placeholder="0.00">
+                                       required min="0.01" step="10" placeholder="$0.00">
                             </div>
                         </div>
 

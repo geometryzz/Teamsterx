@@ -589,7 +589,7 @@ window.generateJoinLink = function() {
 // TABLE PRESETS
 // ===================================
 const TASKS_TABLE_PRESET = {
-    columns: ['title', 'status', 'assignee', 'priority', 'dueDate', 'progress'],
+    columns: ['title', 'status', 'assignee', 'customer', 'priority', 'dueDate', 'progress'],
     columnSettings: {
         status: {
             options: [
@@ -782,7 +782,7 @@ function normalizeProfile(uid, raw = {}) {
     // Ensure avatarColor is always a valid hex string
     let avatarColor = raw.avatarColor;
     if (!avatarColor || typeof avatarColor !== 'string' || !avatarColor.startsWith('#')) {
-        avatarColor = '#0078D4'; // Default blue
+        avatarColor = '#0A84FF'; // Default blue
     }
     
     return {
@@ -894,7 +894,7 @@ function calculateNextDueDate(currentDueDate, frequency, interval = 1) {
 function getIdentity(uid, fallbackName = null) {
     // Default values
     let displayName = 'Unknown';
-    let avatarColor = '#0078D4';
+    let avatarColor = '#0A84FF';
     let photoURL = null;
     
     if (!uid) {
@@ -923,7 +923,7 @@ function getIdentity(uid, fallbackName = null) {
             pub?.avatarColor ||
             teammate?.avatarColor ||
             member?.avatarColor ||
-            '#0078D4';
+            '#0A84FF';
         
         // Resolve photoURL
         photoURL = 
@@ -1427,6 +1427,11 @@ async function initializeFirebaseAuth() {
                 // Initialize team after authentication
                 await initializeUserTeam();
                 
+                // Update login streak for achievements
+                if (typeof updateLoginStreak === 'function') {
+                    updateLoginStreak();
+                }
+                
                 // After auth and team initialization, ensure we're on the right route
                 // If user is authenticated, they should see the app, not the homepage
                 if (currentRoute === 'home') {
@@ -1520,7 +1525,7 @@ async function updateUserProfile(user) {
         const userDoc = await getDoc(userRef);
         
         let displayName = user.displayName || user.email.split('@')[0];
-        let avatarColor = '#0078D4'; // Default color
+        let avatarColor = '#0A84FF'; // Default color
         
         if (userDoc.exists()) {
             const userData = userDoc.data();
@@ -2062,8 +2067,9 @@ window.switchTab = function(sectionName) {
     
     // Render finances when navigating to finances tab
     if (sectionName === 'finances') {
-        // Load subscriptions first, then transactions (which calls renderFinances)
+        // Load subscriptions first, then transactions (which calls renderFinances), also load customers
         loadSubscriptions().then(() => loadTransactions());
+        loadCustomers();
     }
 };
 
@@ -2139,6 +2145,7 @@ function initNavigation() {
                 }
                 // Load subscriptions first, then transactions
                 loadSubscriptions().then(() => loadTransactions());
+                loadCustomers();
             }
         });
     });
@@ -2437,7 +2444,7 @@ function initChat() {
 
         // Get current user's avatar color from teammates
         const currentTeammate = appState.teammates?.find(t => t.id === currentAuthUser?.uid);
-        const avatarColor = currentTeammate?.avatarColor || '#0078D4';
+        const avatarColor = currentTeammate?.avatarColor || '#0A84FF';
 
         const message = {
             author: appState.currentUser,
@@ -2480,6 +2487,10 @@ function initChat() {
                 // RATE LIMITING: Update rate limit state after successful send
                 rateLimitState.lastMessageSent = Date.now();
                 rateLimitState.messageCount++;
+                
+                // Award XP for sending message
+                updateAchievementStat('messagesSent', 1);
+                awardXP(XP_CONFIG.messageSend, 'sending a message');
                 
             } catch (error) {
                 console.error('Message encryption failed:', error.code || error.message);
@@ -4625,20 +4636,15 @@ function renderWeekView(titleEl, daysEl) {
         console.log(`📋 Total events in appState: ${appState.events.length}`);
     }
     
-    // Mobile: shortened format "Jan. 12-18", Desktop: full format
-    if (isMobile) {
-        const startMonth = startOfWeek.toLocaleDateString('en-US', { month: 'short' });
-        const endMonth = endOfWeek.toLocaleDateString('en-US', { month: 'short' });
-        const startDay = startOfWeek.getDate();
-        const endDay = endOfWeek.getDate();
-        // If same month: "Jan. 12-18", if different: "Jan. 28 - Feb. 3"
-        if (startMonth === endMonth) {
-            titleEl.textContent = `${startMonth} ${startDay}-${endDay}`;
-        } else {
-            titleEl.textContent = `${startMonth} ${startDay} - ${endMonth} ${endDay}`;
-        }
+    // Week view title: "JAN 26 - FEB 1"
+    const startMonth = startOfWeek.toLocaleDateString('en-US', { month: 'short' }).toUpperCase();
+    const endMonth = endOfWeek.toLocaleDateString('en-US', { month: 'short' }).toUpperCase();
+    const startDay = startOfWeek.getDate();
+    const endDay = endOfWeek.getDate();
+    if (startMonth === endMonth) {
+        titleEl.textContent = `${startMonth} ${startDay} - ${endDay}`;
     } else {
-        titleEl.textContent = `${startOfWeek.toLocaleDateString('en-US', { month: 'long', day: 'numeric' })} - ${endOfWeek.toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}`;
+        titleEl.textContent = `${startMonth} ${startDay} - ${endMonth} ${endDay}`;
     }
     
     // Generate occurrences for the week range
@@ -6604,6 +6610,7 @@ function initTasks() {
         const taskColumns = [
             { id: 'status', label: 'Status' },
             { id: 'assignee', label: 'Assignee' },
+            { id: 'customer', label: 'Customer' },
             { id: 'priority', label: 'Priority' },
             { id: 'dueDate', label: 'Due Date' },
             { id: 'progress', label: 'Progress' },
@@ -6956,6 +6963,15 @@ function initTasks() {
         const iconPicker = document.getElementById('iconPicker');
         const optionsList = document.getElementById('dropdownOptionsList');
         const colorRangesList = document.getElementById('sliderColorRanges');
+        const sliderGradientToggle = document.getElementById('sliderGradientToggle');
+        
+        // Ensure only one active button in input type toggle
+        if (typeSelector) {
+            const activeButtons = Array.from(typeSelector.querySelectorAll('.view-toggle-btn.active'));
+            activeButtons.forEach((btn, index) => {
+                if (index > 0) btn.classList.remove('active');
+            });
+        }
         
         console.log('🔧 addColumnBtn:', addColumnBtn);
         console.log('🔧 modal:', modal);
@@ -7206,6 +7222,7 @@ function initTasks() {
 
                 // Get slider config with color ranges if applicable
                 let sliderMin = 0, sliderMax = 100, colorRanges = [];
+                let useGradient = true;
                 if (selectedType === 'slider') {
                     sliderMin = parseInt(document.getElementById('sliderMin').value) || 0;
                     sliderMax = parseInt(document.getElementById('sliderMax').value) || 100;
@@ -7213,6 +7230,7 @@ function initTasks() {
                         showToast('Max must be greater than Min', 'warning');
                         return;
                     }
+                    useGradient = sliderGradientToggle ? sliderGradientToggle.checked : true;
                     
                     // Get color ranges
                     const rangeItems = colorRangesList.querySelectorAll('.color-range-item');
@@ -7251,6 +7269,7 @@ function initTasks() {
                                 settings.min = sliderMin;
                                 settings.max = sliderMax;
                                 settings.colorRanges = colorRanges;
+                                settings.useGradient = useGradient;
                             }
                         }
                         
@@ -7268,6 +7287,7 @@ function initTasks() {
                             customCol.min = selectedType === 'slider' ? sliderMin : null;
                             customCol.max = selectedType === 'slider' ? sliderMax : null;
                             customCol.colorRanges = selectedType === 'slider' ? colorRanges : null;
+                            customCol.useGradient = selectedType === 'slider' ? useGradient : null;
                         }
                     }
                     
@@ -7286,6 +7306,7 @@ function initTasks() {
                         min: selectedType === 'slider' ? sliderMin : null,
                         max: selectedType === 'slider' ? sliderMax : null,
                         colorRanges: selectedType === 'slider' ? colorRanges : null,
+                        useGradient: selectedType === 'slider' ? useGradient : null,
                         createdAt: Date.now()
                     };
 
@@ -7372,8 +7393,10 @@ function initTasks() {
             // Reset slider config
             const sliderMinInput = document.getElementById('sliderMin');
             const sliderMaxInput = document.getElementById('sliderMax');
+            const sliderGradientToggle = document.getElementById('sliderGradientToggle');
             if (sliderMinInput) sliderMinInput.value = '0';
             if (sliderMaxInput) sliderMaxInput.value = '100';
+            if (sliderGradientToggle) sliderGradientToggle.checked = true;
 
             // Reset icon picker - supports both old and new class names
             selectedIcon = 'fa-tag';
@@ -7463,6 +7486,11 @@ function initTasks() {
             editingColumnId = columnId;
             editingColumnIsBuiltIn = isBuiltIn;
             
+            // Ensure only one active toggle at a time
+            if (typeSelector) {
+                typeSelector.querySelectorAll('.view-toggle-btn').forEach(btn => btn.classList.remove('active'));
+            }
+            
             // Built-in column definitions with default options
             // Includes both Task columns and Lead columns
             const builtInColumns = {
@@ -7486,6 +7514,7 @@ function initTasks() {
                         ]
                 },
                 'assignee': { label: 'Assignee', icon: 'fa-user', type: 'dropdown' },
+                'customer': { label: 'Customer', icon: 'fa-user-tag', type: 'dropdown' },
                 'priority': { 
                     label: 'Priority', icon: 'fa-flag', type: 'dropdown',
                     defaultOptions: [
@@ -7543,7 +7572,8 @@ function initTasks() {
                 }
                 
                 // For assignee column - disable type selector (it must stay as dropdown with teammate options)
-                if (columnId === 'assignee') {
+                // For customer column - disable type selector (it must stay as dropdown with customer options)
+                if (columnId === 'assignee' || columnId === 'customer') {
                     if (typeSelector) {
                         typeSelector.style.opacity = '0.5';
                         typeSelector.style.pointerEvents = 'none';
@@ -7586,8 +7616,10 @@ function initTasks() {
                     if (selectedType === 'slider') {
                         const sliderMinInput = document.getElementById('sliderMin');
                         const sliderMaxInput = document.getElementById('sliderMax');
+                        const sliderGradientToggle = document.getElementById('sliderGradientToggle');
                         if (sliderMinInput) sliderMinInput.value = customSettings.min || 0;
                         if (sliderMaxInput) sliderMaxInput.value = customSettings.max || 100;
+                        if (sliderGradientToggle) sliderGradientToggle.checked = customSettings.useGradient ?? true;
                         
                         if (colorRangesList) {
                             colorRangesList.innerHTML = '';
@@ -7649,8 +7681,10 @@ function initTasks() {
                 if (selectedType === 'slider') {
                     const sliderMinInput = document.getElementById('sliderMin');
                     const sliderMaxInput = document.getElementById('sliderMax');
+                    const sliderGradientToggle = document.getElementById('sliderGradientToggle');
                     if (sliderMinInput) sliderMinInput.value = customCol.min || 0;
                     if (sliderMaxInput) sliderMaxInput.value = customCol.max || 100;
+                    if (sliderGradientToggle) sliderGradientToggle.checked = customCol.useGradient ?? true;
                     
                     if (colorRangesList) {
                         colorRangesList.innerHTML = '';
@@ -7711,13 +7745,15 @@ function initTasks() {
 
         if (tasks.length === 0) {
             tableContainer.innerHTML = `
-                <div class="spreadsheet-empty">
-                    <i class="fas fa-search"></i>
-                    <h4>No matching ${itemNamePlural}</h4>
-                    <p>Try adjusting your search or filters</p>
-                    <button class="btn-secondary empty-state-btn" onclick="clearFilters()">
-                        <i class="fas fa-times"></i> Clear Filters
+                <div class="spreadsheet-empty-wrapper">
+                    <button class="add-row-btn empty-state-add-btn" onclick="openAddItemModal()">
+                        <i class="fas fa-plus"></i> Add new ${isLeadsTable ? 'lead' : 'task'}
                     </button>
+                    <div class="spreadsheet-empty">
+                        <i class="fas fa-${isLeadsTable ? 'user-plus' : 'clipboard-list'}"></i>
+                        <h4>No ${itemNamePlural} yet</h4>
+                        <p>Create your first ${itemName} to get started</p>
+                    </div>
                 </div>
             `;
             return;
@@ -7838,6 +7874,11 @@ function initTasks() {
         // INLINE EDITING: Custom Columns
         // ===================================
         initCustomColumnEditing(tableContainer, spreadsheet);
+        
+        // ===================================
+        // INLINE EDITING: Customer Dropdown
+        // ===================================
+        initInlineCustomerEditing(tableContainer);
         
         // ===================================
         // INLINE EDITING: Built-in Dropdowns (Status/Priority with custom settings)
@@ -7987,6 +8028,14 @@ function initTasks() {
                     updatedAt: serverTimestamp()
                 });
                 debugLog(`✅ Task ${columnId} updated:`, task.id, newValue);
+
+                // Auto-create customer when a lead is marked as Won
+                if (columnId === 'status' && newValue === 'Won') {
+                    const spreadsheet = appState.spreadsheets.find(s => s.id === task.spreadsheetId);
+                    if (spreadsheet && spreadsheet.type === 'leads') {
+                        autoCreateCustomerFromLead(task);
+                    }
+                }
             } catch (error) {
                 console.error(`Error updating task ${columnId}:`, error);
                 task[columnId] = oldValue;
@@ -8308,16 +8357,39 @@ function initTasks() {
     function initInlineProgressEditing(container) {
         container.querySelectorAll('.progress-cell-inline').forEach(cell => {
             const taskId = cell.dataset.taskId;
+            const columnId = cell.dataset.columnId;
             const slider = cell.querySelector('.progress-range-slider');
-            const text = cell.querySelector('.progress-text');
+            const text = cell.querySelector('.progress-text') || cell.querySelector('.custom-slider-badge');
             
             if (!slider || !taskId) return;
+            
+            // Skip custom column sliders (handled by initCustomColumnEditing)
+            if (columnId && columnId !== 'progress') return;
+            
+            const colorRanges = cell.dataset.colorRanges ? JSON.parse(cell.dataset.colorRanges) : [];
+            const hasColorRanges = Array.isArray(colorRanges) && colorRanges.length > 0;
+            const getColorForValue = (val) => {
+                for (const range of colorRanges) {
+                    if (val >= range.min && val <= range.max) return range.color;
+                }
+                return '#9CA3AF';
+            };
             
             // Update visual on input (while dragging)
             slider.addEventListener('input', (e) => {
                 const value = parseInt(e.target.value);
-                text.textContent = value + '%';
+                if (text) {
+                    text.textContent = columnId === 'progress' || text.classList.contains('progress-text') ? value + '%' : value;
+                }
                 slider.style.setProperty('--progress', value + '%');
+                
+                if (hasColorRanges) {
+                    const color = getColorForValue(value);
+                    slider.style.setProperty('--slider-color', color);
+                    if (text && text.classList.contains('custom-slider-badge')) {
+                        text.style.background = color;
+                    }
+                }
                 
                 if (value === 100) {
                     slider.classList.add('complete');
@@ -8332,6 +8404,7 @@ function initTasks() {
                 const task = appState.tasks.find(t => t.id === taskId);
                 if (!task) return;
                 
+                const oldStatus = task.status;
                 const oldProgress = task.progress || 0;
                 if (oldProgress === newProgress) return;
                 
@@ -8365,8 +8438,27 @@ function initTasks() {
                             status: newStatus,
                             updatedAt: serverTimestamp() 
                         };
+                        const shouldAwardXP = newStatus === 'done' && oldStatus !== 'done' && oldStatus !== 'won' && !task.xpA;
+                        if (shouldAwardXP) {
+                            payload.xpA = true;
+                        }
                         await updateDoc(taskRef, payload);
                         debugLog('✅ Task progress and status updated:', taskId, newProgress, newStatus);
+
+                        // Award XP if this change completes the task (non-private sheets only)
+                        if (shouldAwardXP) {
+                            const spreadsheet = appState.spreadsheets.find(s => s.id === task.spreadsheetId);
+                            const isPrivateSpreadsheet = spreadsheet && spreadsheet.visibility === 'private';
+                            if (!isPrivateSpreadsheet) {
+                                updateAchievementStat('tasksCompleted', 1);
+                                const priority = (task.priority || '').toLowerCase();
+                                const taskXP = priority === 'high' ? XP_CONFIG.taskCompleteHigh
+                                    : priority === 'medium' ? XP_CONFIG.taskCompleteMedium
+                                    : XP_CONFIG.taskCompleteLow;
+                                awardXP(taskXP, `completing a ${priority || 'low'} priority task`);
+                                task.xpA = true;
+                            }
+                        }
                         
                         // Refresh the spreadsheet to show updated status badge
                         const currentSpreadsheet = appState.spreadsheets.find(s => s.id === appState.currentSpreadsheetId);
@@ -8710,9 +8802,267 @@ function initTasks() {
     }
     
     function closeDropdownOnOutsideClick(e) {
-        if (!e.target.closest('.inline-edit-dropdown') && !e.target.closest('.priority-badge-inline') && !e.target.closest('.assignee-cell-inline') && !e.target.closest('.custom-dropdown-cell')) {
+        if (!e.target.closest('.inline-edit-dropdown') && !e.target.closest('.priority-badge-inline') && !e.target.closest('.assignee-cell-inline') && !e.target.closest('.customer-cell-inline') && !e.target.closest('.custom-dropdown-cell')) {
             closeAllInlineDropdowns();
         }
+    }
+    
+    // ===================================
+    // INLINE EDITING: Customer Dropdown (with search + add new)
+    // ===================================
+    function initInlineCustomerEditing(container) {
+        container.querySelectorAll('.customer-cell-inline').forEach(cell => {
+            cell.addEventListener('click', (e) => {
+                e.stopPropagation();
+                const taskId = cell.dataset.taskId;
+                const task = appState.tasks.find(t => t.id === taskId);
+                if (!task) return;
+                
+                closeAllInlineDropdowns();
+                showCustomerDropdown(cell, task);
+            });
+        });
+    }
+    
+    function showCustomerDropdown(cell, task) {
+        const dropdown = document.createElement('div');
+        dropdown.className = 'inline-edit-dropdown customer-dropdown';
+        
+        const customers = appState.customers || [];
+        
+        let html = `
+            <div class="customer-dropdown-search">
+                <input type="text" class="customer-search-input" placeholder="Search or add customer..." autocomplete="off" spellcheck="false">
+            </div>
+            <div class="customer-dropdown-options">
+        `;
+        
+        // "None" option
+        html += `
+            <div class="inline-dropdown-option ${!task.customer ? 'active' : ''}" data-value="">
+                <div class="assignee-option-avatar" style="background: #8E8E93"><i class="fas fa-user-tag" style="font-size: 10px"></i></div>
+                <span>None</span>
+                ${!task.customer ? '<i class="fas fa-check"></i>' : ''}
+            </div>
+        `;
+        
+        // Customer options from appState.customers
+        customers.forEach(cust => {
+            const isActive = task.customer === cust.name;
+            const custInitials = (cust.name || '').split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
+            const custColorHash = (cust.name || '').split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
+            const custColors = ['#ef4444', '#f59e0b', '#22c55e', '#14b8a6', '#0ea5e9', '#6d5dfc', '#a855f7', '#475569'];
+            const custColor = custColors[custColorHash % custColors.length];
+            html += `
+                <div class="inline-dropdown-option ${isActive ? 'active' : ''}" data-value="${escapeHtml(cust.name)}" data-customer-id="${cust.id}">
+                    <div class="assignee-option-avatar" style="background: ${custColor}">${custInitials}</div>
+                    <span>${escapeHtml(cust.name)}</span>
+                    ${cust.company ? `<span class="customer-company-tag">${escapeHtml(cust.company)}</span>` : ''}
+                    ${isActive ? '<i class="fas fa-check"></i>' : ''}
+                </div>
+            `;
+        });
+        
+        html += '</div>';
+        
+        dropdown.innerHTML = html;
+        
+        // Position dropdown
+        positionInlineDropdown(dropdown, cell);
+        
+        requestAnimationFrame(() => dropdown.classList.add('visible'));
+        
+        // Wire up search input
+        const searchInput = dropdown.querySelector('.customer-search-input');
+        const optionsContainer = dropdown.querySelector('.customer-dropdown-options');
+        
+        if (searchInput) {
+            searchInput.focus();
+            
+            searchInput.addEventListener('input', () => {
+                const query = searchInput.value.trim().toLowerCase();
+                const options = optionsContainer.querySelectorAll('.inline-dropdown-option');
+                let hasMatch = false;
+                
+                options.forEach(opt => {
+                    const val = (opt.dataset.value || '').toLowerCase();
+                    const isNone = val === '';
+                    if (!query || val.includes(query) || isNone) {
+                        opt.style.display = '';
+                        if (val.includes(query) && val !== '') hasMatch = true;
+                    } else {
+                        opt.style.display = 'none';
+                    }
+                });
+                
+                // Show/hide "add new" option
+                let addNewOpt = optionsContainer.querySelector('.customer-add-new-option');
+                if (query && !hasMatch) {
+                    if (!addNewOpt) {
+                        addNewOpt = document.createElement('div');
+                        addNewOpt.className = 'inline-dropdown-option customer-add-new-option';
+                        optionsContainer.appendChild(addNewOpt);
+                    }
+                    addNewOpt.innerHTML = `
+                        <div class="customer-add-new-icon"><i class="fas fa-plus"></i></div>
+                        <span class="customer-add-new-label">Create <strong>${escapeHtml(searchInput.value.trim())}</strong></span>
+                    `;
+                    addNewOpt.style.display = '';
+                    addNewOpt.onclick = async () => {
+                        const newName = searchInput.value.trim();
+                        await addNewCustomerFromDropdown(newName);
+                        await updateTaskCustomer(task, newName, cell);
+                        closeAllInlineDropdowns();
+                    };
+                } else if (query && hasMatch) {
+                    // Also show add option when searching, even if partial matches exist
+                    // Check if exact match exists
+                    const exactMatch = customers.find(c => c.name.toLowerCase() === query);
+                    if (!exactMatch) {
+                        if (!addNewOpt) {
+                            addNewOpt = document.createElement('div');
+                            addNewOpt.className = 'inline-dropdown-option customer-add-new-option';
+                            optionsContainer.appendChild(addNewOpt);
+                        }
+                        addNewOpt.innerHTML = `
+                            <div class="customer-add-new-icon"><i class="fas fa-plus"></i></div>
+                            <span class="customer-add-new-label">Create <strong>${escapeHtml(searchInput.value.trim())}</strong></span>
+                        `;
+                        addNewOpt.style.display = '';
+                        addNewOpt.onclick = async () => {
+                            const newName = searchInput.value.trim();
+                            await addNewCustomerFromDropdown(newName);
+                            await updateTaskCustomer(task, newName, cell);
+                            closeAllInlineDropdowns();
+                        };
+                    } else if (addNewOpt) {
+                        addNewOpt.style.display = 'none';
+                    }
+                } else if (addNewOpt) {
+                    addNewOpt.style.display = 'none';
+                }
+            });
+            
+            // Enter key to select first visible option or add new
+            searchInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    const query = searchInput.value.trim();
+                    if (!query) return;
+                    
+                    // Check if there's an exact match
+                    const exactMatch = customers.find(c => c.name.toLowerCase() === query.toLowerCase());
+                    if (exactMatch) {
+                        updateTaskCustomer(task, exactMatch.name, cell);
+                        closeAllInlineDropdowns();
+                    } else {
+                        // Add as new customer
+                        const addNewOpt = optionsContainer.querySelector('.customer-add-new-option');
+                        if (addNewOpt) addNewOpt.click();
+                    }
+                } else if (e.key === 'Escape') {
+                    closeAllInlineDropdowns();
+                }
+            });
+        }
+        
+        // Handle option selection
+        optionsContainer.querySelectorAll('.inline-dropdown-option:not(.customer-add-new-option)').forEach(option => {
+            option.addEventListener('click', async () => {
+                const newCustomerName = option.dataset.value || '';
+                await updateTaskCustomer(task, newCustomerName, cell);
+                closeAllInlineDropdowns();
+            });
+        });
+        
+        // Close on outside click
+        setTimeout(() => {
+            document.addEventListener('click', closeDropdownOnOutsideClick);
+        }, 10);
+    }
+    
+    async function addNewCustomerFromDropdown(name) {
+        if (!db || !appState.currentTeamId || !currentAuthUser) return;
+        
+        // Check for duplicate
+        const existing = (appState.customers || []).find(c => c.name.toLowerCase() === name.toLowerCase());
+        if (existing) return; // Already exists
+        
+        try {
+            const { collection, addDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+            const customersRef = collection(db, 'teams', appState.currentTeamId, 'customers');
+            const identity = getIdentity(currentAuthUser.uid, currentAuthUser.displayName || currentAuthUser.email);
+            const docRef = await addDoc(customersRef, {
+                name: name,
+                email: '',
+                phone: '',
+                company: '',
+                notes: '',
+                source: 'spreadsheet',
+                createdBy: currentAuthUser.uid,
+                createdByName: identity.displayName || currentAuthUser.displayName || currentAuthUser.email || '',
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp()
+            });
+            
+            // Add to local state immediately
+            appState.customers = appState.customers || [];
+            appState.customers.push({ id: docRef.id, name: name, source: 'spreadsheet', createdBy: currentAuthUser.uid });
+            appState.customers.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
+            
+            showToast(`Customer "${name}" added`, 'success');
+        } catch (error) {
+            console.error('Error adding customer from dropdown:', error);
+            showToast('Failed to add customer', 'error');
+        }
+    }
+    
+    async function updateTaskCustomer(task, customerName, cell) {
+        const oldCustomer = task.customer;
+        if (oldCustomer === customerName) return;
+        
+        // Update local state
+        task.customer = customerName || '';
+        
+        // Update cell visual
+        if (customerName) {
+            const custInitials = customerName.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
+            const custColorHash = customerName.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
+            const custColors = ['#ef4444', '#f59e0b', '#22c55e', '#14b8a6', '#0ea5e9', '#6d5dfc', '#a855f7', '#475569'];
+            const custColor = custColors[custColorHash % custColors.length];
+            cell.innerHTML = `
+                <div class="assignee-avatar" style="background: ${custColor}">${custInitials}</div>
+                <span class="assignee-name">${escapeHtml(customerName)}</span>
+            `;
+            cell.title = customerName;
+        } else {
+            cell.innerHTML = `
+                <div class="assignee-avatar" style="background: #8E8E93"><i class="fas fa-user-tag" style="font-size: 11px"></i></div>
+                <span class="assignee-name" style="opacity:0.5">None</span>
+            `;
+            cell.title = 'No customer';
+        }
+        
+        // Show save feedback
+        showInlineSaveFeedback(cell.closest('td'));
+        
+        // Save to Firestore
+        if (db && currentAuthUser && appState.currentTeamId) {
+            try {
+                const { doc, updateDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+                const taskRef = doc(db, 'teams', appState.currentTeamId, 'tasks', String(task.id));
+                await updateDoc(taskRef, {
+                    customer: customerName || '',
+                    updatedAt: serverTimestamp()
+                });
+                debugLog('✅ Task customer updated:', task.id, customerName);
+            } catch (error) {
+                console.error('Error updating task customer:', error);
+                task.customer = oldCustomer;
+            }
+        }
+        
+        saveToLocalStorage('tasks', appState.tasks);
     }
     
     // ===================================
@@ -9241,6 +9591,25 @@ function initTasks() {
     // Render individual table cell
     // Updated for FULL inline editing support (all fields)
     function renderTableCell(task, column, spreadsheet) {
+        function buildSliderGradient(ranges, minVal, maxVal) {
+            if (!Array.isArray(ranges) || ranges.length === 0 || maxVal <= minVal) {
+                return '';
+            }
+            const sorted = [...ranges].sort((a, b) => (a.min || 0) - (b.min || 0));
+            const span = maxVal - minVal;
+            const stops = [];
+            for (let i = 0; i < sorted.length; i++) {
+                const range = sorted[i];
+                const next = sorted[i + 1];
+                const start = Math.max(0, Math.min(100, ((range.min - minVal) / span) * 100));
+                const end = Math.max(0, Math.min(100, ((range.max - minVal) / span) * 100));
+                const color = range.color || '#9CA3AF';
+                const nextColor = next?.color || color;
+                // Blend from current color to next color across this range
+                stops.push(`${color} ${start}%`, `${nextColor} ${end}%`);
+            }
+            return `linear-gradient(90deg, ${stops.join(', ')})`;
+        }
         // Check if this is a custom column
         if (column.startsWith('custom_')) {
             const customCol = (spreadsheet?.customColumns || []).find(cc => cc.id === column);
@@ -9281,6 +9650,7 @@ function initTasks() {
                     const min = customCol.min || 0;
                     const max = customCol.max || 100;
                     const pct = ((sliderValue - min) / (max - min)) * 100;
+                    const useGradient = customCol.useGradient ?? true;
                     
                     // Find color based on ranges
                     let sliderColor = '#9CA3AF'; // default grey
@@ -9292,10 +9662,13 @@ function initTasks() {
                             }
                         }
                     }
+                    const sliderGradient = useGradient
+                        ? buildSliderGradient(customCol.colorRanges || [], min, max)
+                        : `linear-gradient(90deg, ${sliderColor} 0%, ${sliderColor} 100%)`;
                     
                     return `<td class="cell-editable">
-                        <div class="custom-slider-cell" data-task-id="${task.id}" data-column-id="${column}" data-color-ranges='${JSON.stringify(customCol.colorRanges || [])}'>
-                            <input type="range" class="progress-range-slider custom-slider-input" min="${min}" max="${max}" value="${sliderValue}" style="--progress: ${pct}%; --slider-color: ${sliderColor}">
+                        <div class="progress-cell-inline custom-slider-cell" data-task-id="${task.id}" data-column-id="${column}" data-color-ranges='${JSON.stringify(customCol.colorRanges || [])}' data-use-gradient="${useGradient}">
+                            <input type="range" class="progress-range-slider custom-slider-input custom-slider-range" min="${min}" max="${max}" value="${sliderValue}" style="--progress: ${pct}%; --slider-color: ${sliderColor}; --slider-gradient: ${sliderGradient}">
                             <span class="custom-slider-badge" style="background: ${sliderColor}">${sliderValue}</span>
                         </div>
                     </td>`;
@@ -9393,6 +9766,19 @@ function initTasks() {
                 const avatarBg = isTeamAssignee ? '#000' : color;
                 return `<td class="cell-editable"><div class="assignee-cell assignee-cell-inline" data-task-id="${task.id}" title="${escapeHtml(fullName)}"><div class="${avatarClasses}" style="background: ${avatarBg}">${avatarContent}</div><span class="assignee-name">${escapeHtml(firstName)}</span></div></td>`;
             
+            case 'customer':
+                // INLINE EDITABLE: Customer cell with click-to-edit dropdown + search
+                const customerName = task.customer || '';
+                if (customerName) {
+                    // Generate initials and color for customer
+                    const custInitials = customerName.split(' ').map(w => w[0]).join('').substring(0, 2).toUpperCase();
+                    const custColorHash = customerName.split('').reduce((acc, c) => acc + c.charCodeAt(0), 0);
+                    const custColors = ['#ef4444', '#f59e0b', '#22c55e', '#14b8a6', '#0ea5e9', '#6d5dfc', '#a855f7', '#475569'];
+                    const custColor = custColors[custColorHash % custColors.length];
+                    return `<td class="cell-editable"><div class="assignee-cell assignee-cell-inline customer-cell-inline" data-task-id="${task.id}" title="${escapeHtml(customerName)}"><div class="assignee-avatar" style="background: ${custColor}">${custInitials}</div><span class="assignee-name">${escapeHtml(customerName)}</span></div></td>`;
+                }
+                return `<td class="cell-editable"><div class="assignee-cell assignee-cell-inline customer-cell-inline" data-task-id="${task.id}" title="No customer"><div class="assignee-avatar" style="background: #8E8E93"><i class="fas fa-user-tag" style="font-size: 11px"></i></div><span class="assignee-name" style="opacity:0.5">None</span></div></td>`;
+            
             case 'priority':
                 // Check for custom settings with colors
                 const prioritySettings = spreadsheet?.columnSettings?.priority;
@@ -9462,6 +9848,7 @@ function initTasks() {
                     const pMin = progressSettings.min || 0;
                     const pMax = progressSettings.max || 100;
                     const pPct = ((progress - pMin) / (pMax - pMin)) * 100;
+                    const useGradient = progressSettings.useGradient ?? true;
                     
                     // Find color based on ranges
                     let progressColor = '#9CA3AF';
@@ -9471,10 +9858,13 @@ function initTasks() {
                             break;
                         }
                     }
+                    const progressGradient = useGradient
+                        ? buildSliderGradient(progressSettings.colorRanges || [], pMin, pMax)
+                        : `linear-gradient(90deg, ${progressColor} 0%, ${progressColor} 100%)`;
                     
                     return `<td class="cell-editable">
-                        <div class="custom-slider-cell" data-task-id="${task.id}" data-column-id="progress" data-color-ranges='${JSON.stringify(progressSettings.colorRanges)}'>
-                            <input type="range" class="progress-range-slider custom-slider-input" min="${pMin}" max="${pMax}" value="${progress}" style="--progress: ${pPct}%; --slider-color: ${progressColor}">
+                        <div class="progress-cell-inline custom-slider-cell" data-task-id="${task.id}" data-column-id="progress" data-color-ranges='${JSON.stringify(progressSettings.colorRanges)}' data-use-gradient="${useGradient}">
+                            <input type="range" class="progress-range-slider custom-slider-input custom-slider-range" min="${pMin}" max="${pMax}" value="${progress}" style="--progress: ${pPct}%; --slider-color: ${progressColor}; --slider-gradient: ${progressGradient}">
                             <span class="custom-slider-badge" style="background: ${progressColor}">${progress}%</span>
                         </div>
                     </td>`;
@@ -9570,6 +9960,7 @@ function initTasks() {
             assignee: 'Assignee',
             priority: 'Priority',
             dueDate: 'Due Date',
+            customer: 'Customer',
             progress: 'Progress',
             budget: 'Budget',
             estimatedTime: 'Est. Time',
@@ -9604,6 +9995,7 @@ function initTasks() {
             assignee: 'fa-user',
             priority: 'fa-flag',
             dueDate: 'fa-calendar',
+            customer: 'fa-user-tag',
             progress: 'fa-chart-line',
             budget: 'fa-dollar-sign',
             estimatedTime: 'fa-clock',
@@ -10007,15 +10399,22 @@ function initTasks() {
                                     <label class="unified-form-label">
                                         <i class="fas fa-icons"></i> Icon
                                     </label>
-                                    <div class="unified-icon-grid" id="iconSelectGrid">
-                                        <button type="button" class="unified-icon-option selected" data-icon="fa-table"><i class="fas fa-table"></i></button>
-                                        <button type="button" class="unified-icon-option" data-icon="fa-list-check"><i class="fas fa-list-check"></i></button>
-                                        <button type="button" class="unified-icon-option" data-icon="fa-clipboard-list"><i class="fas fa-clipboard-list"></i></button>
-                                        <button type="button" class="unified-icon-option" data-icon="fa-folder"><i class="fas fa-folder"></i></button>
-                                        <button type="button" class="unified-icon-option" data-icon="fa-calendar"><i class="fas fa-calendar"></i></button>
-                                        <button type="button" class="unified-icon-option" data-icon="fa-star"><i class="fas fa-star"></i></button>
-                                        <button type="button" class="unified-icon-option" data-icon="fa-briefcase"><i class="fas fa-briefcase"></i></button>
-                                        <button type="button" class="unified-icon-option" data-icon="fa-bolt"><i class="fas fa-bolt"></i></button>
+                                    <div class="icon-picker-inline narrow" id="iconSelectGrid">
+                                        <div class="icon-picker-inner-pill">
+                                            <span class="icon-picker-selected" id="spreadsheetIconSelected"><i class="fas fa-table"></i></span>
+                                        </div>
+                                        <div class="icon-picker-options">
+                                            <button type="button" class="icon-picker-option selected" data-icon="fa-table"><i class="fas fa-table"></i></button>
+                                            <button type="button" class="icon-picker-option" data-icon="fa-list-check"><i class="fas fa-list-check"></i></button>
+                                            <button type="button" class="icon-picker-option" data-icon="fa-clipboard-list"><i class="fas fa-clipboard-list"></i></button>
+                                            <button type="button" class="icon-picker-option" data-icon="fa-folder"><i class="fas fa-folder"></i></button>
+                                            <button type="button" class="icon-picker-option" data-icon="fa-calendar"><i class="fas fa-calendar"></i></button>
+                                            <button type="button" class="icon-picker-option" data-icon="fa-star"><i class="fas fa-star"></i></button>
+                                            <button type="button" class="icon-picker-option" data-icon="fa-briefcase"><i class="fas fa-briefcase"></i></button>
+                                            <button type="button" class="icon-picker-option" data-icon="fa-bolt"><i class="fas fa-bolt"></i></button>
+                                            <button type="button" class="icon-picker-option" data-icon="fa-rocket"><i class="fas fa-rocket"></i></button>
+                                            <button type="button" class="icon-picker-option" data-icon="fa-heart"><i class="fas fa-heart"></i></button>
+                                        </div>
                                     </div>
                                     <input type="hidden" id="spreadsheetIcon" value="fa-table">
                                 </div>
@@ -10025,15 +10424,21 @@ function initTasks() {
                                     <label class="unified-form-label">
                                         <i class="fas fa-palette"></i> Color
                                     </label>
-                                    <div class="unified-color-grid" id="colorSelectGrid">
-                                        <button type="button" class="unified-color-option" data-color="#ff3b30" style="background: #ff3b30;"></button>
-                                        <button type="button" class="unified-color-option" data-color="#ff9500" style="background: #ff9500;"></button>
-                                        <button type="button" class="unified-color-option" data-color="#ff2d55" style="background: #ff2d55;"></button>
-                                        <button type="button" class="unified-color-option" data-color="#af52de" style="background: #af52de;"></button>
-                                        <button type="button" class="unified-color-option" data-color="#5856d6" style="background: #5856d6;"></button>
-                                        <button type="button" class="unified-color-option selected" data-color="#0070f3" style="background: #0070f3;"></button>
-                                        <button type="button" class="unified-color-option" data-color="#00c7be" style="background: #00c7be;"></button>
-                                        <button type="button" class="unified-color-option" data-color="#34c759" style="background: #34c759;"></button>
+                                    <div class="color-picker-inline narrow" id="colorSelectGrid">
+                                        <div class="color-picker-inner-pill">
+                                            <div class="color-picker-current-swatch" id="spreadsheetColorSwatch" style="background: #0070f3;"></div>
+                                            <input type="text" id="spreadsheetColorHex" value="#0070f3" maxlength="7" spellcheck="false" autocomplete="off" inputmode="text" aria-label="Hex color" style="color:#ff2d9f;background:transparent;border:0;outline:0;box-shadow:none;padding:0;margin:0;font:600 15px/1 -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif;letter-spacing:0.4px;text-transform:uppercase;">
+                                        </div>
+                                        <div class="color-picker-recent" id="spreadsheetColorOptions">
+                                            <button type="button" class="color-picker-recent-btn" data-color="#FF3B30" style="background: #FF3B30;"></button>
+                                            <button type="button" class="color-picker-recent-btn" data-color="#FF9500" style="background: #FF9500;"></button>
+                                            <button type="button" class="color-picker-recent-btn" data-color="#FFCC00" style="background: #FFCC00;"></button>
+                                            <button type="button" class="color-picker-recent-btn" data-color="#34C759" style="background: #34C759;"></button>
+                                            <button type="button" class="color-picker-recent-btn" data-color="#00C7BE" style="background: #00C7BE;"></button>
+                                            <button type="button" class="color-picker-recent-btn" data-color="#0070F3" style="background: #0070F3;"></button>
+                                            <button type="button" class="color-picker-recent-btn" data-color="#5856D6" style="background: #5856D6;"></button>
+                                            <button type="button" class="color-picker-recent-btn" data-color="#AF52DE" style="background: #AF52DE;"></button>
+                                        </div>
                                     </div>
                                     <input type="hidden" id="spreadsheetColor" value="#0070f3">
                                 </div>
@@ -10087,18 +10492,37 @@ function initTasks() {
             });
         }
 
-        // Handle color selection
+        // Handle color selection (inline color picker)
         const colorGrid = document.getElementById('colorSelectGrid');
         const colorInput = document.getElementById('spreadsheetColor');
-        if (colorGrid && colorInput) {
+        const colorSwatch = document.getElementById('spreadsheetColorSwatch');
+        const colorHexInput = document.getElementById('spreadsheetColorHex');
+        if (colorGrid && colorInput && colorSwatch) {
             colorGrid.addEventListener('click', (e) => {
-                const btn = e.target.closest('.unified-color-option');
+                const btn = e.target.closest('.color-picker-recent-btn');
                 if (btn) {
-                    colorGrid.querySelectorAll('.unified-color-option').forEach(b => b.classList.remove('selected'));
+                    colorGrid.querySelectorAll('.color-picker-recent-btn').forEach(b => b.classList.remove('selected'));
                     btn.classList.add('selected');
                     colorInput.value = btn.dataset.color;
+                    colorSwatch.style.background = btn.dataset.color;
+                    if (colorHexInput) colorHexInput.value = btn.dataset.color.toUpperCase();
                 }
             });
+            
+            // Handle hex input
+            if (colorHexInput) {
+                colorHexInput.addEventListener('input', () => {
+                    const normalized = normalizeHexInput(colorHexInput.value);
+                    colorHexInput.value = normalized;
+                    if (normalized.length === 7) {
+                        colorInput.value = normalized;
+                        colorSwatch.style.background = normalized;
+                        colorGrid.querySelectorAll('.color-picker-recent-btn').forEach(b => {
+                            b.classList.toggle('selected', b.dataset.color.toUpperCase() === normalized.toUpperCase());
+                        });
+                    }
+                });
+            }
         }
 
         // Handle type selection
@@ -10211,6 +10635,11 @@ function initTasks() {
                 // leads_ prefix allows type detection even if type field is lost
                 const idPrefix = type === 'leads' ? 'leads_' : 'tasks_';
                 const uniqueId = idPrefix + Date.now().toString();
+                
+                // Get pending project ID if set from the + button in project view
+                const modal = document.getElementById('spreadsheetModal');
+                const pendingProjectId = modal?.dataset.pendingProjectId || null;
+                console.log('📎 Creating spreadsheet with pendingProjectId:', pendingProjectId);
 
                 const newSpreadsheet = {
                     id: uniqueId,
@@ -10222,7 +10651,8 @@ function initTasks() {
                     visibility: visibility,
                     createdBy: currentAuthUser?.uid || null,
                     columns: [...preset.columns],
-                    columnSettings: JSON.parse(JSON.stringify(preset.columnSettings))
+                    columnSettings: JSON.parse(JSON.stringify(preset.columnSettings)),
+                    projectId: pendingProjectId || null
                     // Don't set createdAt here - let saveSpreadsheetToFirestore handle it with serverTimestamp()
                 };
 
@@ -10235,17 +10665,27 @@ function initTasks() {
                 
                 // Reset form and selections
                 form.reset();
-                iconGrid.querySelectorAll('.unified-icon-option').forEach((b, i) => b.classList.toggle('selected', i === 0));
-                colorGrid.querySelectorAll('.unified-color-option').forEach((b, i) => b.classList.toggle('selected', i === 0));
+                iconGrid.querySelectorAll('.icon-picker-option').forEach((b, i) => b.classList.toggle('selected', i === 0));
+                colorGrid.querySelectorAll('.color-picker-recent-btn').forEach((b, i) => b.classList.toggle('selected', i === 0));
                 typeSelectRow.querySelectorAll('.unified-segmented-option').forEach((b, i) => b.classList.toggle('active', i === 0));
-                visibilityOptions.forEach((o, i) => o.classList.toggle('selected', i === 0));
+                document.querySelectorAll('#spreadsheetModal .visibility-toggle').forEach((o, i) => o.classList.toggle('selected', i === 0));
                 document.getElementById('spreadsheetIcon').value = 'fa-table';
                 document.getElementById('spreadsheetColor').value = '#0070f3';
                 document.getElementById('spreadsheetType').value = 'tasks';
                 
+                // Clear pending project ID
+                const spreadsheetModal = document.getElementById('spreadsheetModal');
+                if (spreadsheetModal) delete spreadsheetModal.dataset.pendingProjectId;
+                
                 closeModal('spreadsheetModal');
                 
                 showToast(`Spreadsheet "${name}" created!`, 'success');
+                
+                // Award XP and update stats (only for non-private sheets)
+                if (visibility !== 'private') {
+                    updateAchievementStat('sheetsCreated', 1);
+                    awardXP(XP_CONFIG.sheetCreate, 'creating a spreadsheet');
+                }
                 
                 // Log activity for sheet creation
                 addActivity({
@@ -10833,7 +11273,7 @@ function initTasks() {
                 projectTitle.innerHTML = `
                     <span class="project-title-icon" style="--project-color: ${activeProject.color || '#6366f1'}">${iconSVG}</span>
                     <span class="project-title-text">${escapeHtml(activeProject.name)}</span>
-                    <button class="project-edit-btn" onclick="openEditProjectModal('${activeProject.id}')" title="Edit project">
+                    <button class="project-edit-btn" onclick="openEditProjectModal('${activeProject.id}')" title="Edit project" aria-label="Edit project">
                         <i class="fas fa-pen"></i>
                         <span>Edit</span>
                     </button>
@@ -10855,11 +11295,11 @@ function initTasks() {
                 backBtn.dataset.bound = 'true';
             }
             
-            // Bind add button - show choice modal
+            // Bind add button - show choice modal with current project
             const addBtn = document.getElementById('projectAddBtn');
             if (addBtn && !addBtn.dataset.bound) {
                 addBtn.addEventListener('click', () => {
-                    openCreateWorkspaceItemModal();
+                    openCreateWorkspaceItemModal(appState.activeProjectId);
                 });
                 addBtn.dataset.bound = 'true';
             }
@@ -11057,9 +11497,12 @@ function initTasks() {
     }
 
     // Unified create modal for sheets/docs
-    function openCreateWorkspaceItemModal() {
+    function openCreateWorkspaceItemModal(projectId = null) {
         const existing = document.getElementById('createWorkspaceItemModal');
         if (existing) existing.remove();
+        
+        // Store the project ID for the modal options to use
+        window._pendingProjectId = projectId;
 
         const modalHTML = `
             <div class="unified-modal active" id="createWorkspaceItemModal">
@@ -11074,14 +11517,14 @@ function initTasks() {
                         </button>
                     </div>
                     <div class="unified-modal-body create-item-body">
-                        <button class="create-item-option" onclick="closeCreateWorkspaceItemModal(); openModal('spreadsheetModal');">
+                        <button class="create-item-option" onclick="closeCreateWorkspaceItemModal(false); openSpreadsheetModalWithProject();">
                             <span class="create-item-icon" aria-hidden="true"><i class="fas fa-table-cells"></i></span>
                             <div class="create-item-text">
                                 <span class="create-item-title">Sheet</span>
                                 <span class="create-item-subtitle">Track tasks, leads, or data</span>
                             </div>
                         </button>
-                        <button class="create-item-option" onclick="closeCreateWorkspaceItemModal(); openCreateDocModal();">
+                        <button class="create-item-option" onclick="closeCreateWorkspaceItemModal(false); openDocModalWithProject();">
                             <span class="create-item-icon" aria-hidden="true"><i class="fas fa-file-lines"></i></span>
                             <div class="create-item-text">
                                 <span class="create-item-title">Doc</span>
@@ -11095,10 +11538,42 @@ function initTasks() {
 
         document.body.insertAdjacentHTML('beforeend', modalHTML);
     }
+    
+    // Open spreadsheet modal with pending project ID
+    window.openSpreadsheetModalWithProject = function() {
+        const projectId = window._pendingProjectId;
+        window._pendingProjectId = null;
+        
+        // Make sure the modal exists (initSpreadsheetModal creates it)
+        if (!document.getElementById('spreadsheetModal')) {
+            initSpreadsheetModal();
+        }
+        
+        // Store project ID for the form submission
+        const spreadsheetModal = document.getElementById('spreadsheetModal');
+        if (spreadsheetModal && projectId) {
+            spreadsheetModal.dataset.pendingProjectId = projectId;
+            console.log('📎 Stored pendingProjectId on spreadsheet modal:', projectId);
+        }
+        
+        openModal('spreadsheetModal');
+    };
+    
+    // Open doc modal with pending project ID
+    window.openDocModalWithProject = function() {
+        const projectId = window._pendingProjectId;
+        window._pendingProjectId = null;
+        
+        // Store project ID for the form submission
+        openCreateDocModal(projectId);
+    };
 
-    window.closeCreateWorkspaceItemModal = function() {
+    window.closeCreateWorkspaceItemModal = function(clearPendingProject = true) {
         const modal = document.getElementById('createWorkspaceItemModal');
         if (modal) modal.remove();
+        if (clearPendingProject) {
+            window._pendingProjectId = null;
+        }
     };
     
     /**
@@ -11656,7 +12131,7 @@ function initTasks() {
             const projectTileHTML = window.buildProjectTile ? window.buildProjectTile() : '';
             if (projectTileHTML) {
                 const projectTileWrapper = document.createElement('div');
-                projectTileWrapper.className = 'doc-card';
+                projectTileWrapper.className = 'doc-card project-tile-card';
                 projectTileWrapper.innerHTML = projectTileHTML;
                 container.insertBefore(projectTileWrapper, createCard);
                 
@@ -11860,8 +12335,12 @@ function initTasks() {
     
     /**
      * Open Create Doc modal
+     * @param {string|null} projectId - Optional project ID to link the doc to
      */
-    function openCreateDocModal() {
+    function openCreateDocModal(projectId = null) {
+        // Store project ID for doc creation
+        window._pendingDocProjectId = projectId;
+        
         // Modern minimal create doc modal
         const modalHTML = `
             <div class="unified-modal active" id="createDocModal" style="display: flex;">
@@ -11910,6 +12389,7 @@ function initTasks() {
     window.closeCreateDocModal = function() {
         const modal = document.getElementById('createDocModal');
         if (modal) modal.remove();
+        window._pendingDocProjectId = null;
     };
     
     window.createNewDoc = async function() {
@@ -11934,6 +12414,10 @@ function initTasks() {
             
             const docsRef = collection(db, 'teams', appState.currentTeamId, 'docs');
             
+            // Get pending project ID if set
+            const pendingProjectId = window._pendingDocProjectId || null;
+            window._pendingDocProjectId = null;
+            
             const docData = {
                 title: title,
                 contentHtml: '<p></p>',
@@ -11943,7 +12427,8 @@ function initTasks() {
                 createdBy: currentAuthUser.uid,
                 createdAt: serverTimestamp(),
                 updatedAt: serverTimestamp(),
-                updatedBy: currentAuthUser.uid
+                updatedBy: currentAuthUser.uid,
+                projectId: pendingProjectId
             };
             
             const docRef = await addDoc(docsRef, docData);
@@ -11954,6 +12439,10 @@ function initTasks() {
             
             closeCreateDocModal();
             showToast('Document created', 'success');
+            
+            // Award XP and update stats
+            updateAchievementStat('docsCreated', 1);
+            awardXP(XP_CONFIG.docCreate, 'creating a document');
             
             // Log activity for doc creation
             addActivity({
@@ -12194,6 +12683,13 @@ function initTasks() {
             }
             
             debugLog('📄 Doc saved:', appState.activeDocId);
+
+            // Effort-based XP: award XP for new content (only for non-private docs)
+            const currentDoc = appState.docs.find(d => d.id === appState.activeDocId);
+            const isPrivateDoc = currentDoc && currentDoc.visibility === 'private';
+            if (!isPrivateDoc) {
+                awardDocEffortXP(appState.activeDocId, contentText);
+            }
             
         } catch (error) {
             console.error('Error saving doc:', error);
@@ -14229,7 +14725,6 @@ function initTasks() {
                              style="--project-color: ${accent};">
                             <span class="project-badge-icon">${iconSVG}</span>
                             <span class="project-badge-name">${escapeHtml(project.name)}</span>
-                            ${project.id === appState.activeProjectId ? '<svg class="project-badge-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>' : ''}
                         </button>
                     `;
                 });
@@ -14241,13 +14736,13 @@ function initTasks() {
         // Navigation arrows (only shown if more than 1 page)
         const navHTML = totalPages > 1 ? `
             <div class="project-tile-nav">
-                <button class="project-tile-nav-btn project-tile-prev" onclick="navigateProjectPage(-1)" disabled>
+                <button class="project-tile-nav-btn project-tile-prev" onclick="navigateProjectPage(-1, this)" disabled>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="15 18 9 12 15 6"/></svg>
                 </button>
                 <span class="project-tile-nav-dots">
                     ${Array.from({length: totalPages}, (_, i) => `<span class="project-tile-dot ${i === 0 ? 'active' : ''}" data-page="${i}"></span>`).join('')}
                 </span>
-                <button class="project-tile-nav-btn project-tile-next" onclick="navigateProjectPage(1)" ${totalPages <= 1 ? 'disabled' : ''}>
+                <button class="project-tile-nav-btn project-tile-next" onclick="navigateProjectPage(1, this)" ${totalPages <= 1 ? 'disabled' : ''}>
                     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><polyline points="9 18 15 12 9 6"/></svg>
                 </button>
             </div>
@@ -14272,8 +14767,9 @@ function initTasks() {
     /**
      * Navigate between project pages
      */
-    window.navigateProjectPage = function(direction) {
-        const list = document.querySelector('.project-tile-list');
+    window.navigateProjectPage = function(direction, source) {
+        const scope = source?.closest('.project-tile-card, .doc-card') || document;
+        const list = scope.querySelector('.project-tile-list');
         if (!list) return;
         
         const currentPage = parseInt(list.dataset.currentPage || '0');
@@ -14291,13 +14787,13 @@ function initTasks() {
         });
         
         // Update navigation buttons
-        const prevBtn = document.querySelector('.project-tile-prev');
-        const nextBtn = document.querySelector('.project-tile-next');
+        const prevBtn = scope.querySelector('.project-tile-prev');
+        const nextBtn = scope.querySelector('.project-tile-next');
         if (prevBtn) prevBtn.disabled = newPage === 0;
         if (nextBtn) nextBtn.disabled = newPage === totalPages - 1;
         
         // Update dots
-        document.querySelectorAll('.project-tile-dot').forEach((dot, i) => {
+        scope.querySelectorAll('.project-tile-dot').forEach((dot, i) => {
             dot.classList.toggle('active', i === newPage);
         });
     };
@@ -14345,17 +14841,55 @@ function initTasks() {
      */
     const PROJECT_COLOR_PALETTE = ['#ef4444', '#f59e0b', '#22c55e', '#14b8a6', '#0ea5e9', '#6d5dfc', '#a855f7', '#475569'];
 
-    // SVG icon definitions for projects (monochromatic, clean design)
+    function normalizeHexInput(value) {
+        const cleaned = value.replace(/[^0-9a-fA-F]/g, '').slice(0, 6);
+        if (!cleaned.length) return '';
+        return '#' + cleaned.toUpperCase();
+    }
+
+    /**
+     * Intelligently limit color buttons based on picker width
+     * Returns only colors that fit in the available space
+     */
+    function limitColorsByWidth(pickerElement, allColors) {
+        if (!pickerElement) return allColors;
+        
+        const pickerRect = pickerElement.getBoundingClientRect();
+        const innerPill = pickerElement.querySelector('.color-picker-inner-pill');
+        const recentContainer = pickerElement.querySelector('.color-picker-recent');
+        
+        if (!innerPill || !recentContainer) return allColors;
+        if (pickerRect.width <= 0) return allColors;
+        
+        // Calculate available width for color buttons
+        const innerPillWidth = innerPill.getBoundingClientRect().width;
+        const pickerStyles = window.getComputedStyle(pickerElement);
+        const pickerGap = parseFloat(pickerStyles.columnGap || pickerStyles.gap || 0) || 0;
+        const paddingLeft = parseFloat(pickerStyles.paddingLeft || 0) || 0;
+        const paddingRight = parseFloat(pickerStyles.paddingRight || 0) || 0;
+        const availableWidth = pickerRect.width - innerPillWidth - pickerGap - paddingLeft - paddingRight;
+
+        const firstBtn = recentContainer.querySelector('.color-picker-recent-btn');
+        const buttonSize = firstBtn ? firstBtn.getBoundingClientRect().width : 28;
+        const recentStyles = window.getComputedStyle(recentContainer);
+        const gap = parseFloat(recentStyles.columnGap || recentStyles.gap || 0) || 0;
+        
+        // Calculate how many buttons can fit
+        const maxButtons = Math.max(1, Math.floor((availableWidth + gap) / (buttonSize + gap)));
+        
+        // Return limited colors
+        return allColors.slice(0, Math.min(maxButtons, allColors.length));
+    }
+
+    // SVG icon definitions for projects (monochromatic, clean design) - 10 icons max
     const PROJECT_ICONS = {
         folder: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M3 7.5V18a2 2 0 002 2h14a2 2 0 002-2V9a2 2 0 00-2-2h-6.586a1 1 0 01-.707-.293l-1.414-1.414A1 1 0 009.586 5H5a2 2 0 00-2 2.5z"/></svg>',
         briefcase: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="7" width="18" height="13" rx="2"/><path d="M8 7V5a2 2 0 012-2h4a2 2 0 012 2v2"/><line x1="12" y1="12" x2="12" y2="12.01"/></svg>',
-        target: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="6"/><circle cx="12" cy="12" r="2"/></svg>',
         rocket: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M4.5 16.5c-1.5 1.26-2 5-2 5s3.74-.5 5-2c.71-.84.7-2.13-.09-2.91a2.18 2.18 0 00-2.91-.09z"/><path d="M12 15l-3-3a22 22 0 012-3.95A12.88 12.88 0 0122 2c0 2.72-.78 7.5-6 11a22.35 22.35 0 01-4 2z"/><path d="M9 12H4s.55-3.03 2-4c1.62-1.08 5 0 5 0"/><path d="M12 15v5s3.03-.55 4-2c1.08-1.62 0-5 0-5"/></svg>',
         globe: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="12" cy="12" r="10"/><line x1="2" y1="12" x2="22" y2="12"/><path d="M12 2a15.3 15.3 0 014 10 15.3 15.3 0 01-4 10 15.3 15.3 0 01-4-10 15.3 15.3 0 014-10z"/></svg>',
         chart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/></svg>',
         lightbulb: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M9 18h6"/><path d="M10 22h4"/><path d="M15.09 14c.18-.98.65-1.74 1.41-2.5A4.65 4.65 0 0018 8 6 6 0 006 8c0 1 .23 2.23 1.5 3.5A4.61 4.61 0 018.91 14"/></svg>',
         star: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polygon points="12 2 15.09 8.26 22 9.27 17 14.14 18.18 21.02 12 17.77 5.82 21.02 7 14.14 2 9.27 8.91 8.26 12 2"/></svg>',
-        cube: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M21 16V8a2 2 0 00-1-1.73l-7-4a2 2 0 00-2 0l-7 4A2 2 0 003 8v8a2 2 0 001 1.73l7 4a2 2 0 002 0l7-4A2 2 0 0021 16z"/><polyline points="3.27 6.96 12 12.01 20.73 6.96"/><line x1="12" y1="22.08" x2="12" y2="12"/></svg>',
         users: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M17 21v-2a4 4 0 00-4-4H5a4 4 0 00-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 00-3-3.87"/><path d="M16 3.13a4 4 0 010 7.75"/></svg>',
         code: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><polyline points="16 18 22 12 16 6"/><polyline points="8 6 2 12 8 18"/></svg>',
         heart: '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M20.84 4.61a5.5 5.5 0 00-7.78 0L12 5.67l-1.06-1.06a5.5 5.5 0 00-7.78 7.78l1.06 1.06L12 21.23l7.78-7.78 1.06-1.06a5.5 5.5 0 000-7.78z"/></svg>'
@@ -14365,21 +14899,25 @@ function initTasks() {
         const existingModal = document.getElementById('createProjectModal');
         if (existingModal) return;
         
-        // Build icon grid HTML
-        let iconGridHTML = '';
+        // Build icon picker options HTML (new unified inline style)
+        let iconOptionsHTML = '';
         Object.entries(PROJECT_ICONS).forEach(([key, svg], index) => {
             const isSelected = index === 0 ? 'selected' : '';
-            iconGridHTML += `
-                <button type="button" class="project-icon-option ${isSelected}" data-icon="${key}" onclick="setProjectIcon('${key}')">
+            iconOptionsHTML += `
+                <button type="button" class="icon-picker-option ${isSelected}" data-icon="${key}" onclick="setProjectIcon('${key}')" title="${key}">
                     ${svg}
                 </button>
             `;
         });
+        
+        // Get first icon for selected display
+        const firstIconKey = Object.keys(PROJECT_ICONS)[0];
+        const firstIconSVG = PROJECT_ICONS[firstIconKey];
 
-        // Build color grid HTML
-        const colorGridHTML = PROJECT_COLOR_PALETTE.map((color, index) => {
+        // Build color picker options HTML (inline pill)
+        const colorOptionsHTML = PROJECT_COLOR_PALETTE.map((color, index) => {
             const isSelected = index === 0 ? 'selected' : '';
-            return `<button type="button" class="project-color-swatch ${isSelected}" data-color="${color}" style="--swatch-color: ${color};" onclick="setProjectColor('${color}')"></button>`;
+            return `<button type="button" class="color-picker-recent-btn ${isSelected}" data-color="${color}" style="background: ${color};" onclick="setProjectColor('${color}')"></button>`;
         }).join('');
 
         const modalHTML = `
@@ -14406,16 +14944,27 @@ function initTasks() {
                         <div class="project-form-group">
                             <label class="project-form-label">Icon</label>
                             <input type="hidden" id="projectIconInput" value="folder">
-                            <div class="project-icon-grid">
-                                ${iconGridHTML}
+                            <div class="icon-picker-inline" id="projectIconPicker">
+                                <div class="icon-picker-inner-pill">
+                                    <span class="icon-picker-selected" id="projectIconSelected">${firstIconSVG}</span>
+                                </div>
+                                <div class="icon-picker-options">
+                                    ${iconOptionsHTML}
+                                </div>
                             </div>
                         </div>
 
                         <div class="project-form-group">
                             <label class="project-form-label">Color</label>
                             <input type="hidden" id="projectColorInput" value="${PROJECT_COLOR_PALETTE[0]}">
-                            <div class="project-color-grid">
-                                ${colorGridHTML}
+                            <div class="color-picker-inline narrow" id="projectColorPicker">
+                                <div class="color-picker-inner-pill">
+                                    <div class="color-picker-current-swatch" id="projectColorSwatch" style="background: ${PROJECT_COLOR_PALETTE[0]};"></div>
+                                    <input type="text" id="projectColorHex" value="${PROJECT_COLOR_PALETTE[0]}" maxlength="7" spellcheck="false" autocomplete="off" inputmode="text" aria-label="Hex color" style="color:#ff2d9f;background:transparent;border:0;outline:0;box-shadow:none;padding:0;margin:0;font:600 15px/1 -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif;letter-spacing:0.4px;text-transform:uppercase;">
+                                </div>
+                                <div class="color-picker-recent">
+                                    ${colorOptionsHTML}
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -14428,6 +14977,33 @@ function initTasks() {
         `;
         
         document.body.insertAdjacentHTML('beforeend', modalHTML);
+
+        // Wire up hex input for project color
+        const projectHexInput = document.getElementById('projectColorHex');
+        if (projectHexInput) {
+            projectHexInput.addEventListener('input', () => {
+                const normalized = normalizeHexInput(projectHexInput.value);
+                if (normalized.length === 7) {
+                    setProjectColor(normalized);
+                }
+                projectHexInput.value = normalized;
+            });
+        }
+
+        // Apply color limiting based on available width
+        setTimeout(() => {
+            const picker = document.getElementById('projectColorPicker');
+            if (picker) {
+                const limitedColors = limitColorsByWidth(picker, PROJECT_COLOR_PALETTE);
+                const recentContainer = picker.querySelector('.color-picker-recent');
+                if (recentContainer) {
+                    const buttons = recentContainer.querySelectorAll('.color-picker-recent-btn');
+                    buttons.forEach((btn, idx) => {
+                        btn.style.display = idx < limitedColors.length ? '' : 'none';
+                    });
+                }
+            }
+        }, 0);
     }
 
     /**
@@ -14443,22 +15019,32 @@ function initTasks() {
      */
     function setProjectIcon(iconKey) {
         const input = document.getElementById('projectIconInput');
-        const options = document.querySelectorAll('.project-icon-option');
+        const options = document.querySelectorAll('#projectIconPicker .icon-picker-option');
+        const selectedDisplay = document.getElementById('projectIconSelected');
         
         if (input) input.value = iconKey;
         
-        // Update selected state
+        // Update selected state on options
         options.forEach(opt => {
             opt.classList.toggle('selected', opt.dataset.icon === iconKey);
         });
+        
+        // Update the selected icon display in inner pill
+        if (selectedDisplay && PROJECT_ICONS[iconKey]) {
+            selectedDisplay.innerHTML = PROJECT_ICONS[iconKey];
+        }
     }
 
     function setProjectColor(color) {
         const input = document.getElementById('projectColorInput');
+        const swatch = document.getElementById('projectColorSwatch');
+        const hexInput = document.getElementById('projectColorHex');
         if (input) input.value = color;
+        if (swatch) swatch.style.background = color;
+        if (hexInput) hexInput.value = color.toUpperCase();
 
-        document.querySelectorAll('.project-color-swatch').forEach(swatch => {
-            swatch.classList.toggle('selected', swatch.dataset.color === color);
+        document.querySelectorAll('#projectColorPicker .color-picker-recent-btn').forEach(btn => {
+            btn.classList.toggle('selected', btn.dataset.color === color);
         });
     }
 
@@ -14476,21 +15062,24 @@ function initTasks() {
         const existingModal = document.getElementById('editProjectModal');
         if (existingModal) existingModal.remove();
 
-        // Build icon grid HTML
-        let iconGridHTML = '';
+        // Build icon picker options HTML (new unified inline style)
+        let iconOptionsHTML = '';
         Object.entries(PROJECT_ICONS).forEach(([key, svg]) => {
             const isSelected = key === project.icon ? 'selected' : '';
-            iconGridHTML += `
-                <button type="button" class="project-icon-option ${isSelected}" data-icon="${key}" onclick="setEditProjectIcon('${key}')">
+            iconOptionsHTML += `
+                <button type="button" class="icon-picker-option ${isSelected}" data-icon="${key}" onclick="setEditProjectIcon('${key}')" title="${key}">
                     ${svg}
                 </button>
             `;
         });
+        
+        // Get current icon for selected display
+        const currentIconSVG = PROJECT_ICONS[project.icon] || PROJECT_ICONS['folder'];
 
-        // Build color grid HTML
-        const colorGridHTML = PROJECT_COLOR_PALETTE.map((color) => {
+        // Build color picker options HTML (inline pill)
+        const colorOptionsHTML = PROJECT_COLOR_PALETTE.map((color) => {
             const isSelected = color === project.color ? 'selected' : '';
-            return `<button type="button" class="project-color-swatch ${isSelected}" data-color="${color}" style="--swatch-color: ${color};" onclick="setEditProjectColor('${color}')"></button>`;
+            return `<button type="button" class="color-picker-recent-btn ${isSelected}" data-color="${color}" style="background: ${color};" onclick="setEditProjectColor('${color}')"></button>`;
         }).join('');
 
         const modalHTML = `
@@ -14518,16 +15107,27 @@ function initTasks() {
                         <div class="project-form-group">
                             <label class="project-form-label">Icon</label>
                             <input type="hidden" id="editProjectIconInput" value="${project.icon || 'folder'}">
-                            <div class="project-icon-grid">
-                                ${iconGridHTML}
+                            <div class="icon-picker-inline" id="editProjectIconPicker">
+                                <div class="icon-picker-inner-pill">
+                                    <span class="icon-picker-selected" id="editProjectIconSelected">${currentIconSVG}</span>
+                                </div>
+                                <div class="icon-picker-options">
+                                    ${iconOptionsHTML}
+                                </div>
                             </div>
                         </div>
 
                         <div class="project-form-group">
                             <label class="project-form-label">Color</label>
                             <input type="hidden" id="editProjectColorInput" value="${project.color || PROJECT_COLOR_PALETTE[0]}">
-                            <div class="project-color-grid">
-                                ${colorGridHTML}
+                            <div class="color-picker-inline narrow" id="editProjectColorPicker">
+                                <div class="color-picker-inner-pill">
+                                    <div class="color-picker-current-swatch" id="editProjectColorSwatch" style="background: ${project.color || PROJECT_COLOR_PALETTE[0]};"></div>
+                                    <input type="text" id="editProjectColorHex" value="${project.color || PROJECT_COLOR_PALETTE[0]}" maxlength="7" spellcheck="false" autocomplete="off" inputmode="text" aria-label="Hex color" style="color:#ff2d9f;background:transparent;border:0;outline:0;box-shadow:none;padding:0;margin:0;font:600 15px/1 -apple-system, BlinkMacSystemFont, 'SF Pro Text', 'Segoe UI', sans-serif;letter-spacing:0.4px;text-transform:uppercase;">
+                                </div>
+                                <div class="color-picker-recent">
+                                    ${colorOptionsHTML}
+                                </div>
                             </div>
                         </div>
                     </div>
@@ -14549,6 +15149,33 @@ function initTasks() {
         setTimeout(() => {
             document.getElementById('editProjectNameInput')?.focus();
         }, 100);
+
+        // Wire up hex input for edit project color
+        const editHexInput = document.getElementById('editProjectColorHex');
+        if (editHexInput) {
+            editHexInput.addEventListener('input', () => {
+                const normalized = normalizeHexInput(editHexInput.value);
+                if (normalized.length === 7) {
+                    setEditProjectColor(normalized);
+                }
+                editHexInput.value = normalized;
+            });
+        }
+
+        // Apply color limiting based on available width
+        setTimeout(() => {
+            const picker = document.getElementById('editProjectColorPicker');
+            if (picker) {
+                const limitedColors = limitColorsByWidth(picker, PROJECT_COLOR_PALETTE);
+                const recentContainer = picker.querySelector('.color-picker-recent');
+                if (recentContainer) {
+                    const buttons = recentContainer.querySelectorAll('.color-picker-recent-btn');
+                    buttons.forEach((btn, idx) => {
+                        btn.style.display = idx < limitedColors.length ? '' : 'none';
+                    });
+                }
+            }
+        }, 0);
     }
 
     function closeEditProjectModal() {
@@ -14558,19 +15185,31 @@ function initTasks() {
 
     function setEditProjectIcon(iconKey) {
         const input = document.getElementById('editProjectIconInput');
+        const selectedDisplay = document.getElementById('editProjectIconSelected');
+        
         if (input) input.value = iconKey;
         
-        document.querySelectorAll('#editProjectModal .project-icon-option').forEach(opt => {
+        // Update selected state on options
+        document.querySelectorAll('#editProjectIconPicker .icon-picker-option').forEach(opt => {
             opt.classList.toggle('selected', opt.dataset.icon === iconKey);
         });
+        
+        // Update the selected icon display in inner pill
+        if (selectedDisplay && PROJECT_ICONS[iconKey]) {
+            selectedDisplay.innerHTML = PROJECT_ICONS[iconKey];
+        }
     }
 
     function setEditProjectColor(color) {
         const input = document.getElementById('editProjectColorInput');
+        const swatch = document.getElementById('editProjectColorSwatch');
+        const hexInput = document.getElementById('editProjectColorHex');
         if (input) input.value = color;
+        if (swatch) swatch.style.background = color;
+        if (hexInput) hexInput.value = color.toUpperCase();
 
-        document.querySelectorAll('#editProjectModal .project-color-swatch').forEach(swatch => {
-            swatch.classList.toggle('selected', swatch.dataset.color === color);
+        document.querySelectorAll('#editProjectColorPicker .color-picker-recent-btn').forEach(btn => {
+            btn.classList.toggle('selected', btn.dataset.color === color);
         });
     }
 
@@ -14813,10 +15452,9 @@ function initTasks() {
             const activeClass = project.id === appState.activeProjectId ? 'active' : '';
             const iconSVG = getProjectIconSVG(project.icon);
             menuHTML += `
-                <button class="project-overflow-item ${activeClass}" onclick="toggleProjectFilter('${project.id}')">
-                    <span class="project-badge-icon" style="--project-color: ${project.color || '#6366f1'};">${iconSVG}</span>
+                <button class="project-overflow-item ${activeClass}" onclick="toggleProjectFilter('${project.id}')" style="--project-color: ${project.color || '#6366f1'};">
+                    <span class="project-badge-icon">${iconSVG}</span>
                     <span class="project-badge-name">${escapeHtml(project.name)}</span>
-                    ${project.id === appState.activeProjectId ? '<svg class="project-badge-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"/></svg>' : ''}
                 </button>
             `;
         });
@@ -14962,6 +15600,179 @@ function initTasks() {
     };
     
     /**
+     * Unified Inline Color Picker System
+     * Manages color pickers with swatch, hex input, and recent colors
+     */
+    window.initInlineColorPicker = function(containerId) {
+        const container = document.getElementById(containerId);
+        if (!container) return null;
+        
+        const hiddenInput = container.previousElementSibling; // The hidden input before the picker
+        const swatch = container.querySelector('.color-picker-current-swatch');
+        const nativeInput = container.querySelector('.color-picker-native');
+        const hexInput = container.querySelector('#eventColorHex');
+        const recentContainer = container.querySelector('.color-picker-recent');
+        const recentButtons = container.querySelectorAll('.color-picker-recent-btn');
+        
+        // Storage key for recent colors
+        const storageKey = 'teamster_recent_colors';
+        const defaultColors = ['#8E8E93', '#FFCC00', '#FF3B30', '#FF9500', '#AF52DE'];
+        
+        // Load recent colors from localStorage
+        function loadRecentColors() {
+            try {
+                const stored = localStorage.getItem(storageKey);
+                return stored ? JSON.parse(stored) : [...defaultColors];
+            } catch (e) {
+                return [...defaultColors];
+            }
+        }
+        
+        // Save recent colors to localStorage
+        function saveRecentColors(colors) {
+            try {
+                localStorage.setItem(storageKey, JSON.stringify(colors));
+            } catch (e) {
+                console.warn('Could not save recent colors');
+            }
+        }
+        
+        // Add color to recent list
+        function addToRecent(color) {
+            const recent = loadRecentColors();
+            const normalized = color.toUpperCase();
+            
+            // Remove if already exists
+            const index = recent.findIndex(c => c.toUpperCase() === normalized);
+            if (index !== -1) {
+                recent.splice(index, 1);
+            }
+            
+            // Add to front
+            recent.unshift(normalized);
+            
+            // Keep only 5
+            if (recent.length > 5) {
+                recent.pop();
+            }
+            
+            saveRecentColors(recent);
+            updateRecentButtons();
+        }
+        
+        // Update recent color buttons
+        function updateRecentButtons() {
+            const recent = loadRecentColors();
+            recentButtons.forEach((btn, i) => {
+                const color = recent[i] || defaultColors[i];
+                btn.setAttribute('data-color', color);
+                btn.style.background = color;
+            });
+        }
+        
+        // Update all displays with a color
+        function setColor(color, addToHistory = false) {
+            const normalized = color.toUpperCase();
+            
+            if (hiddenInput) hiddenInput.value = normalized;
+            if (swatch) swatch.style.background = normalized;
+            if (nativeInput) nativeInput.value = normalized;
+            if (hexInput) hexInput.value = normalized;
+            
+            if (addToHistory) {
+                addToRecent(normalized);
+            }
+        }
+        
+        // Get current color
+        function getColor() {
+            return hiddenInput ? hiddenInput.value : '#007AFF';
+        }
+        
+        function normalizeHexInput(raw, allowPartial = false) {
+            if (!raw) return allowPartial ? '#' : null;
+            let value = raw.trim();
+            if (value.startsWith('#')) value = value.slice(1);
+            value = value.replace(/[^0-9a-fA-F]/g, '').toUpperCase();
+            value = value.slice(0, 6);
+            if (allowPartial) return `#${value}`;
+            return value.length === 6 ? `#${value}` : null;
+        }
+
+        // Event: Native color picker change
+        if (nativeInput) {
+            nativeInput.addEventListener('input', (e) => {
+                setColor(e.target.value, false);
+            });
+            nativeInput.addEventListener('change', (e) => {
+                setColor(e.target.value, true);
+            });
+        }
+
+        // Event: Hex input change
+        if (hexInput) {
+            hexInput.addEventListener('input', (e) => {
+                const display = normalizeHexInput(e.target.value, true);
+                e.target.value = display;
+                if (display.length === 7) {
+                    setColor(display, false);
+                }
+            });
+
+            hexInput.addEventListener('blur', (e) => {
+                const normalized = normalizeHexInput(e.target.value, false);
+                if (normalized) {
+                    setColor(normalized, true);
+                } else {
+                    e.target.value = getColor();
+                }
+            });
+
+            hexInput.addEventListener('focus', () => {
+                hexInput.style.boxShadow = 'inset 0 -2px 0 0 #ff2d9f';
+            });
+
+            hexInput.addEventListener('blur', () => {
+                hexInput.style.boxShadow = 'none';
+            });
+
+            hexInput.addEventListener('keydown', (e) => {
+                if (e.key === 'Enter') {
+                    e.preventDefault();
+                    hexInput.blur();
+                }
+            });
+        }
+        
+        // Event: Recent color button clicks
+        recentButtons.forEach(btn => {
+            btn.addEventListener('click', () => {
+                const color = btn.getAttribute('data-color');
+                setColor(color, false);
+            });
+        });
+        
+        // Initialize recent buttons
+        updateRecentButtons();
+
+        // Sync initial hex input with current color
+        if (hexInput) {
+            hexInput.value = getColor().toUpperCase();
+        }
+        
+        return { setColor, getColor, addToRecent, updateRecentButtons };
+    };
+    
+    // Initialize all inline color pickers on page (excluding preset-only pickers which have their own system)
+    window.colorPickers = {};
+    document.querySelectorAll('.color-picker-inline:not(.preset-only)').forEach(picker => {
+        const id = picker.id;
+        if (id) {
+            window.colorPickers[id] = window.initInlineColorPicker(id);
+        }
+    });
+    
+    /**
      * Toggle pie chart legend expansion
      * @param {HTMLElement} btn - The expand button element
      */
@@ -15103,6 +15914,7 @@ async function updateTaskStatus(taskId, newStatus) {
                         progress: 0,
                         dueDate: Timestamp.fromMillis(task.dueDate),
                         recurrence: task.recurrence,
+                        xpA: false,
                         updatedAt: serverTimestamp()
                     });
                     
@@ -15122,6 +15934,16 @@ async function updateTaskStatus(taskId, newStatus) {
                             entityName: task.title,
                             sheetId: task.spreadsheetId || task.sheetId
                         });
+
+                        if (!task.xpA) {
+                            updateAchievementStat('tasksCompleted', 1);
+                            const priority = (task.priority || '').toLowerCase();
+                            const taskXP = priority === 'high' ? XP_CONFIG.taskCompleteHigh
+                                : priority === 'medium' ? XP_CONFIG.taskCompleteMedium
+                                : XP_CONFIG.taskCompleteLow;
+                            awardXP(taskXP, `completing a ${priority || 'low'} priority task`);
+                            task.xpA = true;
+                        }
                     }
                     
                 } catch (error) {
@@ -15148,19 +15970,26 @@ async function updateTaskStatus(taskId, newStatus) {
         try {
             const { doc, updateDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
             const taskRef = doc(db, 'teams', appState.currentTeamId, 'tasks', String(taskId));
-            await updateDoc(taskRef, { 
+
+            const spreadsheet = appState.spreadsheets.find(s => s.id === task.spreadsheetId);
+            const isPrivateSpreadsheet = spreadsheet && spreadsheet.visibility === 'private';
+            const shouldAwardXP = (newStatus === 'done' || newStatus === 'won') && !isPrivateSpreadsheet && !task.xpA;
+
+            const updatePayload = { 
                 status: newStatus,
                 updatedAt: serverTimestamp()
-            });
+            };
+            if (shouldAwardXP) {
+                updatePayload.xpA = true;
+            }
+
+            await updateDoc(taskRef, updatePayload);
             
             debugLog('✅ Task status updated:', taskId, newStatus);
             
             // Add activity only if NOT a private spreadsheet task
-            const spreadsheet = appState.spreadsheets.find(s => s.id === task.spreadsheetId);
-            const isPrivateSpreadsheet = spreadsheet && spreadsheet.visibility === 'private';
-            
             if (!isPrivateSpreadsheet) {
-                const statusText = newStatus === 'todo' ? 'To Do' : newStatus === 'in-progress' ? 'In Progress' : 'Done';
+                const statusText = newStatus === 'todo' ? 'To Do' : newStatus === 'inprogress' ? 'In Progress' : 'Done';
                 addActivity({
                     type: 'task',
                     description: `marked task "${task.title}" as ${statusText}`,
@@ -15171,9 +16000,18 @@ async function updateTaskStatus(taskId, newStatus) {
                 });
             }
             
-            // Check for task completion milestones
-            if (newStatus === 'done') {
+            // Check for task completion milestones and award XP
+            // Only award XP for tasks in non-private spreadsheets
+            if (shouldAwardXP) {
                 checkAndAwardMilestone();
+                updateAchievementStat('tasksCompleted', 1);
+                // Priority-based XP: high=10, medium=6, low/none=4
+                const priority = (task.priority || '').toLowerCase();
+                const taskXP = priority === 'high' ? XP_CONFIG.taskCompleteHigh
+                    : priority === 'medium' ? XP_CONFIG.taskCompleteMedium
+                    : XP_CONFIG.taskCompleteLow;
+                awardXP(taskXP, `completing a ${priority || 'low'} priority task`);
+                task.xpA = true;
             }
             
         } catch (error) {
@@ -15690,64 +16528,6 @@ window.deleteTask = async function(taskId, event) {
     
     // Show custom delete popup near cursor
     showDeleteConfirmPopup(taskId, task?.title || 'this task', event);
-        if (DEBUG) {
-            console.log('📊 Current state:', {
-                db: !!db,
-                currentAuthUser: !!currentAuthUser,
-                currentTeamId: appState.currentTeamId
-            });
-        }
-        
-        const taskTitle = task ? task.title : 'Unknown';
-        if (DEBUG) console.log('📌 Found task:', task);
-        
-        // Delete from Firestore FIRST (before removing from local state)
-        if (db && currentAuthUser && appState.currentTeamId) {
-            try {
-                const { doc, deleteDoc } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
-                const taskPath = `teams/${appState.currentTeamId}/tasks/${taskIdStr}`;
-                if (DEBUG) console.log('🔥 Attempting to delete from Firestore path:', taskPath);
-                
-                const taskRef = doc(db, 'teams', appState.currentTeamId, 'tasks', taskIdStr);
-                await deleteDoc(taskRef);
-                debugLog('✅ Task deleted from Firestore successfully');
-                
-                // Add to activity feed only if NOT a private spreadsheet task
-                const spreadsheet = appState.spreadsheets.find(s => s.id === task?.spreadsheetId);
-                const isPrivateSpreadsheet = spreadsheet && spreadsheet.visibility === 'private';
-                
-                if (!isPrivateSpreadsheet) {
-                    addActivity({
-                        type: 'task',
-                        description: `deleted task "${taskTitle}"`,
-                        entityType: 'task',
-                        entityId: taskIdStr,
-                        entityName: taskTitle,
-                        sheetId: task?.spreadsheetId || task?.sheetId
-                    });
-                }
-            } catch (error) {
-                console.error('❌ Error deleting task from Firestore:', error.code || error.message);
-                
-                // If task doesn't exist in Firestore (old task), allow local deletion
-                if (error.code === 'not-found' || error.message.includes('No document to update')) {
-                    console.log('⚠️ Task not found in Firestore (probably an old task). Deleting locally only.');
-                } else {
-                    showToast('Error deleting task from database. Please try again.', 'error', 5000, 'Delete Failed');
-                    return; // Don't delete from local state if it's a real error
-                }
-            }
-        } else {
-            console.warn('⚠️ Skipping Firestore deletion - missing requirements');
-        }
-        
-        // Remove from local state AFTER successful Firestore deletion
-        appState.tasks = appState.tasks.filter(t => String(t.id) !== taskIdStr);
-        saveToLocalStorage('tasks', appState.tasks);
-        console.log('✅ Task removed from local state');
-        
-        // Update display
-        window.displayTasks();
 };
 
 // Show custom delete confirmation popup near cursor
@@ -15928,31 +16708,781 @@ async function addActivity(activity) {
 }
 
 // ===================================
-// TASK COMPLETION MILESTONES
+// ACHIEVEMENTS & GAMIFICATION SYSTEM
 // ===================================
 
 /**
- * Milestone definitions for task completions
- * Each milestone has a threshold, name, icon, and color
+ * XP Configuration
  */
-const TASK_MILESTONES = [
-    { threshold: 1, name: 'First Task', icon: 'fa-seedling', color: '#34C759', description: 'Completed your first task!' },
-    { threshold: 10, name: 'Getting Started', icon: 'fa-rocket', color: '#007AFF', description: 'Completed 10 tasks' },
-    { threshold: 50, name: 'On a Roll', icon: 'fa-fire', color: '#FF9500', description: 'Completed 50 tasks' },
-    { threshold: 100, name: 'Centurion', icon: 'fa-medal', color: '#AF52DE', description: 'Completed 100 tasks' },
-    { threshold: 200, name: 'Task Master', icon: 'fa-crown', color: '#FFD700', description: 'Completed 200 tasks' },
-    { threshold: 300, name: 'Productivity Pro', icon: 'fa-gem', color: '#00C7BE', description: 'Completed 300 tasks' },
-    { threshold: 500, name: 'Legend', icon: 'fa-trophy', color: '#FF2D55', description: 'Completed 500 tasks' },
-    { threshold: 1000, name: 'Grandmaster', icon: 'fa-star', color: '#5856D6', description: 'Completed 1000 tasks' }
+const XP_CONFIG = {
+    taskCompleteHigh: 10,      // XP for completing a HIGH priority task
+    taskCompleteMedium: 6,     // XP for completing a MEDIUM priority task
+    taskCompleteLow: 4,        // XP for completing a LOW/no priority task
+    docCreate: 15,             // XP for creating a doc
+    sheetCreate: 20,           // XP for creating a sheet
+    messageSend: 2,            // XP for sending a message
+    eventCreate: 10,           // XP for creating an event
+    levelBaseXP: 100,          // Base XP needed for level 2
+    levelMultiplier: 1.5,      // XP requirement multiplier per level
+    // Effort-based writing XP
+    docEffortXPPer200Chars: 3, // XP awarded per 200 chars of NEW content
+    docEffortCharBlock: 200,   // Character block size for effort XP
+    docMinWhitespaceRatio: 0.05 // Minimum whitespace ratio to pass gibberish filter (5%)
+};
+
+const LEVEL_CAP = 40;
+const LEVEL_TOTAL_XP = 100000;
+const LEVEL_SEED_XP = [
+    50, 100, 200, 300, 400, 500,
+    800, 1000, 1200, 1500, 1800, 2100,
+    2500, 3000
 ];
 
+function buildLevelXpTable() {
+    const steps = LEVEL_CAP - 1;
+    if (steps <= 0) return [0, 0];
+
+    const xpByLevel = new Array(LEVEL_CAP + 1).fill(0);
+    const seedTotals = LEVEL_SEED_XP.slice(0, Math.min(LEVEL_SEED_XP.length, steps));
+    const seedIncrements = [];
+    let prevTotal = 0;
+
+    for (let i = 0; i < seedTotals.length; i++) {
+        const total = Math.max(seedTotals[i], prevTotal);
+        const increment = total - prevTotal;
+        seedIncrements.push(increment);
+        xpByLevel[i + 2] = increment;
+        prevTotal = total;
+    }
+
+    const remainingSteps = steps - seedIncrements.length;
+    if (remainingSteps <= 0) return xpByLevel;
+
+    const lastSeedTotal = prevTotal;
+    const remainingTotal = LEVEL_TOTAL_XP - lastSeedTotal;
+    if (remainingTotal <= 0) return xpByLevel;
+
+    const step = 50;
+    const minIncrement = 50;
+    const easingPower = 2.1; // Slightly steeper late curve
+    const remainingTotals = [];
+
+    for (let i = 1; i <= remainingSteps; i++) {
+        const t = remainingSteps === 1 ? 1 : i / remainingSteps;
+        const eased = Math.pow(t, easingPower);
+        const total = lastSeedTotal + remainingTotal * eased;
+        remainingTotals.push(Math.round(total / step) * step);
+    }
+
+    for (let i = 0; i < remainingTotals.length; i++) {
+        const minTotal = lastSeedTotal + minIncrement * (i + 1);
+        if (remainingTotals[i] < minTotal) remainingTotals[i] = minTotal;
+        if (i > 0 && remainingTotals[i] <= remainingTotals[i - 1]) {
+            remainingTotals[i] = remainingTotals[i - 1] + minIncrement;
+        }
+    }
+
+    let diff = LEVEL_TOTAL_XP - remainingTotals[remainingTotals.length - 1];
+    if (diff !== 0) {
+        let remaining = Math.round(diff / step);
+        let idx = remainingTotals.length - 1;
+
+        while (remaining !== 0) {
+            const delta = remaining > 0 ? step : -step;
+            const prev = idx > 0 ? remainingTotals[idx - 1] : lastSeedTotal;
+            const candidate = remainingTotals[idx] + delta;
+
+            if (candidate >= prev + minIncrement) {
+                remainingTotals[idx] = candidate;
+                remaining += remaining > 0 ? -1 : 1;
+            }
+
+            idx--;
+            if (idx < 0) idx = remainingTotals.length - 1;
+        }
+    }
+
+    prevTotal = lastSeedTotal;
+    for (let i = 0; i < remainingTotals.length; i++) {
+        const increment = remainingTotals[i] - prevTotal;
+        xpByLevel[seedIncrements.length + i + 2] = increment;
+        prevTotal = remainingTotals[i];
+    }
+
+    return xpByLevel;
+}
+
+const LEVEL_XP_TABLE = buildLevelXpTable();
+
 /**
- * Check if user has reached a new milestone and award it
- * Also performs retroactive check for backward compatibility
- * @param {boolean} retroactive - If true, awards all missed milestones silently
+ * Calculate XP needed for a specific level
+ */
+function getXPForLevel(level) {
+    if (level <= 1) return 0;
+    if (level > LEVEL_CAP) return 0;
+    return LEVEL_XP_TABLE[level] || 0;
+}
+
+/**
+ * Calculate total XP needed to reach a level (cumulative)
+ */
+function getTotalXPForLevel(level) {
+    let total = 0;
+    for (let i = 2; i <= level; i++) {
+        total += getXPForLevel(i);
+    }
+    return total;
+}
+
+/**
+ * Calculate level from total XP
+ */
+function getLevelFromXP(totalXP) {
+    let level = 1;
+    let xpNeeded = 0;
+    while (true) {
+        const nextLevelXP = getXPForLevel(level + 1);
+        if (totalXP < xpNeeded + nextLevelXP) break;
+        xpNeeded += nextLevelXP;
+        level++;
+        if (level >= LEVEL_CAP) break; // Safety cap
+    }
+    return { level, xpInCurrentLevel: totalXP - xpNeeded, xpNeededForNext: getXPForLevel(level + 1) };
+}
+
+/**
+ * All achievement badge categories
+ */
+const ACHIEVEMENT_BADGES = {
+    tasks: [
+        { id: 'task_1', threshold: 1, name: 'First Task', icon: 'fa-seedling', color: '#34C759', description: 'Completed your first task!', xpReward: 50 },
+        { id: 'task_10', threshold: 10, name: 'Getting Started', icon: 'fa-rocket', color: '#007AFF', description: 'Completed 10 tasks', xpReward: 100 },
+        { id: 'task_50', threshold: 50, name: 'On a Roll', icon: 'fa-fire', color: '#FF9500', description: 'Completed 50 tasks', xpReward: 250 },
+        { id: 'task_100', threshold: 100, name: 'Centurion', icon: 'fa-medal', color: '#AF52DE', description: 'Completed 100 tasks', xpReward: 500 },
+        { id: 'task_250', threshold: 250, name: 'Task Master', icon: 'fa-crown', color: '#FFD700', description: 'Completed 250 tasks', xpReward: 1000 },
+        { id: 'task_500', threshold: 500, name: 'Legend', icon: 'fa-trophy', color: '#FF2D55', description: 'Completed 500 tasks', xpReward: 2000 },
+        { id: 'task_1000', threshold: 1000, name: 'Grandmaster', icon: 'fa-star', color: '#5856D6', description: 'Completed 1000 tasks', xpReward: 5000 }
+    ],
+    docs: [
+        { id: 'doc_1', threshold: 1, name: 'First Doc', icon: 'fa-file-alt', color: '#00C7BE', description: 'Created your first document!', xpReward: 30 },
+        { id: 'doc_10', threshold: 10, name: 'Writer', icon: 'fa-pen-fancy', color: '#5856D6', description: 'Created 10 documents', xpReward: 100 },
+        { id: 'doc_50', threshold: 50, name: 'Author', icon: 'fa-book', color: '#AF52DE', description: 'Created 50 documents', xpReward: 300 },
+        { id: 'doc_100', threshold: 100, name: 'Novelist', icon: 'fa-book-open', color: '#FF9500', description: 'Created 100 documents', xpReward: 750 }
+    ],
+    messages: [
+        { id: 'msg_10', threshold: 10, name: 'Chatterbox', icon: 'fa-comment', color: '#34C759', description: 'Sent 10 messages', xpReward: 20 },
+        { id: 'msg_100', threshold: 100, name: 'Conversationalist', icon: 'fa-comments', color: '#007AFF', description: 'Sent 100 messages', xpReward: 100 },
+        { id: 'msg_500', threshold: 500, name: 'Social Butterfly', icon: 'fa-comment-dots', color: '#FF9500', description: 'Sent 500 messages', xpReward: 300 },
+        { id: 'msg_1000', threshold: 1000, name: 'Communication Pro', icon: 'fa-bullhorn', color: '#AF52DE', description: 'Sent 1000 messages', xpReward: 750 }
+    ],
+    sheets: [
+        { id: 'sheet_1', threshold: 1, name: 'First Sheet', icon: 'fa-table', color: '#00C7BE', description: 'Created your first sheet!', xpReward: 30 },
+        { id: 'sheet_5', threshold: 5, name: 'Organizer', icon: 'fa-th', color: '#5856D6', description: 'Created 5 sheets', xpReward: 75 },
+        { id: 'sheet_20', threshold: 20, name: 'Data Wizard', icon: 'fa-table-cells', color: '#FF9500', description: 'Created 20 sheets', xpReward: 200 }
+    ],
+    special: [
+        { id: 'top_performer', threshold: 1, name: 'Top Performer', icon: 'fa-chart-line', color: '#FFD700', description: 'Best stats on the team', xpReward: 500 }
+    ],
+    streaks: [
+        { id: 'streak_3', threshold: 3, name: 'Getting Warm', icon: 'fa-fire', color: '#FF9500', description: '3-day login streak', xpReward: 50 },
+        { id: 'streak_7', threshold: 7, name: 'Week Warrior', icon: 'fa-fire', color: '#FF6B35', description: '7-day login streak', xpReward: 150 },
+        { id: 'streak_14', threshold: 14, name: 'Fortnight Fire', icon: 'fa-fire', color: '#FF4500', description: '14-day login streak', xpReward: 300 },
+        { id: 'streak_30', threshold: 30, name: 'On Fire!', icon: 'fa-fire-flame-curved', color: '#FF2D55', description: '30-day login streak', xpReward: 500 },
+        { id: 'streak_60', threshold: 60, name: 'Blazing', icon: 'fa-fire-flame-curved', color: '#E91E63', description: '60-day login streak', xpReward: 1000 },
+        { id: 'streak_100', threshold: 100, name: 'Inferno', icon: 'fa-fire-flame-curved', color: '#9C27B0', description: '100-day login streak', xpReward: 2500 }
+    ]
+};
+
+// Keep backward compatibility
+const TASK_MILESTONES = ACHIEVEMENT_BADGES.tasks;
+
+/**
+ * Get user's achievement data from localStorage
+ */
+function getUserAchievementData() {
+    if (!currentAuthUser) return { xp: 0, earnedBadges: [], stats: {}, streak: 0, lastLoginDate: null, bestStreak: 0 };
+    const userId = currentAuthUser.uid;
+    const data = localStorage.getItem(`achievements_${userId}`);
+    if (data) {
+        const parsed = JSON.parse(data);
+        // Ensure streak fields exist
+        if (!parsed.streak) parsed.streak = 0;
+        if (!parsed.bestStreak) parsed.bestStreak = 0;
+        return parsed;
+    }
+    // Migrate old milestone data if exists
+    const oldMilestones = JSON.parse(localStorage.getItem(`milestones_${userId}`) || '[]');
+    const earnedBadges = oldMilestones.map(t => `task_${t}`);
+    return { xp: 0, earnedBadges, stats: { tasksCompleted: 0, docsCreated: 0, messagesSent: 0, sheetsCreated: 0 }, streak: 0, lastLoginDate: null, bestStreak: 0 };
+}
+
+/**
+ * Save user's achievement data to localStorage
+ */
+function saveUserAchievementData(data) {
+    if (!currentAuthUser) return;
+    const userId = currentAuthUser.uid;
+    localStorage.setItem(`achievements_${userId}`, JSON.stringify(data));
+}
+
+// TEMP: Local-only XP recalculation (easy to remove)
+function recalculateAchievementXPFromBadges() {
+    if (!currentAuthUser || !isGamificationEnabled()) return;
+
+    const data = getUserAchievementData();
+    let totalXP = 0;
+
+    const allBadges = [
+        ...ACHIEVEMENT_BADGES.tasks,
+        ...ACHIEVEMENT_BADGES.docs,
+        ...ACHIEVEMENT_BADGES.messages,
+        ...ACHIEVEMENT_BADGES.sheets,
+        ...ACHIEVEMENT_BADGES.streaks,
+        ...ACHIEVEMENT_BADGES.special
+    ];
+
+    for (const badge of allBadges) {
+        if (data.earnedBadges?.includes(badge.id) && badge.xpReward) {
+            totalXP += badge.xpReward;
+        }
+    }
+
+    data.xp = totalXP;
+    saveUserAchievementData(data);
+    const levelInfo = getLevelFromXP(data.xp);
+    const totalForCurrentLevel = getTotalXPForLevel(levelInfo.level);
+    const totalForNextLevel = getTotalXPForLevel(levelInfo.level + 1);
+    const levelText = document.getElementById('userLevel');
+    const xpBar = document.getElementById('xpProgressBar');
+    const currentXP = document.getElementById('currentXP');
+    const nextLevelXP = document.getElementById('nextLevelXP');
+
+    if (levelText) levelText.textContent = levelInfo.level;
+    if (xpBar) xpBar.style.width = `${Math.min(100, (levelInfo.xpInCurrentLevel / levelInfo.xpNeededForNext) * 100)}%`;
+    if (currentXP) currentXP.textContent = levelInfo.xpInCurrentLevel;
+    if (nextLevelXP) nextLevelXP.textContent = levelInfo.xpNeededForNext;
+
+    renderAchievementsTab();
+    showToast('XP recalculated', 'success');
+}
+
+/**
+ * Check if gamification is enabled
+ */
+function isGamificationEnabled() {
+    return localStorage.getItem('gamificationEnabled') !== 'false';
+}
+
+/**
+ * Update login streak - call this on app load/auth
+ */
+function updateLoginStreak() {
+    if (!currentAuthUser || !isGamificationEnabled()) return;
+    
+    const data = getUserAchievementData();
+    const today = new Date().toISOString().split('T')[0]; // YYYY-MM-DD
+    
+    if (data.lastLoginDate === today) {
+        // Already logged in today, no change
+        return data.streak;
+    }
+    
+    const yesterday = new Date(Date.now() - 86400000).toISOString().split('T')[0];
+    
+    if (data.lastLoginDate === yesterday) {
+        // Consecutive day - increase streak
+        data.streak = (data.streak || 0) + 1;
+    } else if (data.lastLoginDate) {
+        // Streak broken - reset to 1
+        data.streak = 1;
+    } else {
+        // First login ever
+        data.streak = 1;
+    }
+    
+    // Update best streak
+    if (data.streak > (data.bestStreak || 0)) {
+        data.bestStreak = data.streak;
+    }
+    
+    data.lastLoginDate = today;
+    saveUserAchievementData(data);
+    
+    // Check for streak badges
+    checkAndAwardBadges('streaks', data.streak);
+    
+    return data.streak;
+}
+
+/**
+ * Calculate retroactive stats from Firestore and sync achievements
+ */
+async function syncRetroactiveAchievements() {
+    const teamId = appState.currentTeamId;
+    if (!currentAuthUser || !teamId) return;
+    
+    const userId = currentAuthUser.uid;
+    const data = getUserAchievementData();
+    const syncVersion = 4; // Increment this to force resync when calculation changes
+    const syncKey = `achievements_synced_v${syncVersion}_${userId}_${teamId}`;
+    const alreadySynced = localStorage.getItem(syncKey);
+    
+    if (alreadySynced) {
+        debugLog('✅ Achievements already synced for this team');
+        return;
+    }
+    
+    debugLog('🔄 Syncing retroactive achievements...');
+    
+    try {
+        // Count completed tasks by this user
+        // Check status === 'done' or 'won' (leads), and match by assignee, completedBy, or createdBy
+        const tasksRef = collection(db, 'teams', teamId, 'tasks');
+        const tasksSnap = await getDocs(tasksRef);
+        let tasksCompleted = 0;
+        tasksSnap.forEach(doc => {
+            const task = doc.data();
+            const isDone = task.status === 'done' || task.status === 'won' || task.completed === true;
+            const isUserTask = task.completedBy === userId || task.assigneeId === userId || task.createdBy === userId;
+            if (isDone && isUserTask) {
+                tasksCompleted++;
+            }
+        });
+        
+        // Count docs created by this user
+        const docsRef = collection(db, 'teams', teamId, 'docs');
+        const docsSnap = await getDocs(docsRef);
+        let docsCreated = 0;
+        docsSnap.forEach(doc => {
+            const docData = doc.data();
+            if (docData.createdBy === userId || docData.userId === userId) {
+                docsCreated++;
+            }
+        });
+        
+        // Count sheets created by this user
+        const sheetsRef = collection(db, 'teams', teamId, 'spreadsheets');
+        const sheetsSnap = await getDocs(sheetsRef);
+        let sheetsCreated = 0;
+        sheetsSnap.forEach(doc => {
+            const sheetData = doc.data();
+            if (sheetData.createdBy === userId) {
+                sheetsCreated++;
+            }
+        });
+        
+        // Count messages sent by this user
+        const channelsRef = collection(db, 'teams', teamId, 'channels');
+        const channelsSnap = await getDocs(channelsRef);
+        let messagesSent = 0;
+        
+        for (const channelDoc of channelsSnap.docs) {
+            const messagesRef = collection(db, 'teams', teamId, 'channels', channelDoc.id, 'messages');
+            const messagesSnap = await getDocs(messagesRef);
+            messagesSnap.forEach(msgDoc => {
+                const msg = msgDoc.data();
+                const senderUid = msg.createdBy || msg.userId || msg.authorId;
+                if (senderUid === userId) {
+                    messagesSent++;
+                }
+            });
+        }
+        
+        // Update stats with max of current and retroactive counts
+        data.stats = data.stats || {};
+        data.stats.tasksCompleted = Math.max(data.stats.tasksCompleted || 0, tasksCompleted);
+        data.stats.docsCreated = Math.max(data.stats.docsCreated || 0, docsCreated);
+        data.stats.sheetsCreated = Math.max(data.stats.sheetsCreated || 0, sheetsCreated);
+        data.stats.messagesSent = Math.max(data.stats.messagesSent || 0, messagesSent);
+        
+        // First, award all qualifying badges that haven't been earned yet
+        // This ensures earnedBadges is complete before we calculate total XP
+        const categoriesToCheck = [
+            { key: 'tasks', stat: data.stats.tasksCompleted },
+            { key: 'docs', stat: data.stats.docsCreated },
+            { key: 'sheets', stat: data.stats.sheetsCreated },
+            { key: 'messages', stat: data.stats.messagesSent }
+        ];
+        
+        for (const { key, stat } of categoriesToCheck) {
+            const badges = ACHIEVEMENT_BADGES[key] || [];
+            for (const badge of badges) {
+                if (stat >= badge.threshold && !data.earnedBadges.includes(badge.id)) {
+                    data.earnedBadges.push(badge.id);
+                    debugLog(`🏆 Retroactively awarded badge: ${badge.name}`);
+                }
+            }
+        }
+        
+        // Now calculate total XP from scratch: activity XP + ALL earned badge XP
+        let totalXP = 0;
+        totalXP += data.stats.tasksCompleted * XP_CONFIG.taskCompleteMedium;
+        totalXP += data.stats.docsCreated * XP_CONFIG.docCreate;
+        totalXP += data.stats.sheetsCreated * XP_CONFIG.sheetCreate;
+        totalXP += Math.floor(data.stats.messagesSent * XP_CONFIG.messageSend);
+        
+        // Add XP from ALL earned badges (including ones just awarded above)
+        const allBadges = [
+            ...ACHIEVEMENT_BADGES.tasks,
+            ...ACHIEVEMENT_BADGES.docs,
+            ...ACHIEVEMENT_BADGES.messages,
+            ...ACHIEVEMENT_BADGES.sheets,
+            ...ACHIEVEMENT_BADGES.streaks,
+            ...ACHIEVEMENT_BADGES.special
+        ];
+        
+        for (const badge of allBadges) {
+            if (data.earnedBadges.includes(badge.id) && badge.xpReward) {
+                totalXP += badge.xpReward;
+            }
+        }
+        
+        // Set XP to the fully calculated amount
+        data.xp = totalXP;
+        
+        saveUserAchievementData(data);
+        
+        // Mark as synced for this team with version
+        localStorage.setItem(syncKey, 'true');
+        
+        debugLog(`✅ Retroactive sync complete: ${tasksCompleted} tasks, ${docsCreated} docs, ${sheetsCreated} sheets, ${messagesSent} messages, ${totalXP} XP, ${data.earnedBadges.length} badges`);
+        
+        renderAchievementsTab();
+        
+    } catch (error) {
+        console.error('Error syncing retroactive achievements:', error);
+    }
+}
+
+/**
+ * Award XP to the current user & show custom XP toast
+ */
+function awardXP(amount, reason = '') {
+    if (!currentAuthUser || !isGamificationEnabled() || amount <= 0) return;
+    
+    const data = getUserAchievementData();
+    const oldLevel = getLevelFromXP(data.xp).level;
+    const oldLevelInfo = getLevelFromXP(data.xp);
+    data.xp += amount;
+    const newLevelInfo = getLevelFromXP(data.xp);
+    
+    saveUserAchievementData(data);
+    
+    const didLevelUp = newLevelInfo.level > oldLevel;
+    
+    // Show the custom XP toast
+    showXPToast({
+        amount,
+        reason,
+        level: newLevelInfo.level,
+        xpInLevel: newLevelInfo.xpInCurrentLevel,
+        xpNeeded: newLevelInfo.xpNeededForNext,
+        oldPercent: oldLevelInfo.xpNeededForNext > 0
+            ? Math.min(100, (oldLevelInfo.xpInCurrentLevel / oldLevelInfo.xpNeededForNext) * 100)
+            : 0,
+        newPercent: newLevelInfo.xpNeededForNext > 0
+            ? Math.min(100, (newLevelInfo.xpInCurrentLevel / newLevelInfo.xpNeededForNext) * 100)
+            : 100,
+        levelUp: didLevelUp
+    });
+    
+    // Update UI
+    renderAchievementsTab();
+    debugLog(`⭐ Awarded ${amount} XP${reason ? ` for ${reason}` : ''}`);
+}
+
+/**
+ * Show a custom XP toast with level badge, mini XP bar, and animated amount
+ */
+function showXPToast({ amount, reason, level, xpInLevel, xpNeeded, oldPercent, newPercent, levelUp }) {
+    const container = document.getElementById('toastContainer');
+    if (!container) return;
+    
+    const reasonText = reason || 'Activity';
+    const displayReason = reasonText.charAt(0).toUpperCase() + reasonText.slice(1);
+    
+    const toast = document.createElement('div');
+    toast.className = `toast xp${levelUp ? ' level-up' : ''}`;
+    toast.innerHTML = `
+        <div class="toast-content">
+            <div class="toast-title">${levelUp ? 'Level Up!' : 'XP Earned'}</div>
+            <div class="toast-message">${displayReason}</div>
+            <div class="toast-xp-row">
+                <span class="toast-xp-level">Lv ${level}</span>
+                <div class="toast-xp-bar">
+                    <div class="toast-xp-bar-fill" style="width: ${levelUp ? 0 : oldPercent}%"></div>
+                </div>
+                <span class="toast-xp-amount">+${amount} XP</span>
+            </div>
+        </div>
+        <button class="toast-close" onclick="this.parentElement.remove()">×</button>
+    `;
+    
+    container.appendChild(toast);
+    
+    // Animate bar fill after paint
+    requestAnimationFrame(() => {
+        requestAnimationFrame(() => {
+            const bar = toast.querySelector('.toast-xp-bar-fill');
+            if (bar) {
+                bar.style.width = `${newPercent}%`;
+            }
+        });
+    });
+    
+    // Auto remove after longer duration for XP toasts
+    setTimeout(() => {
+        toast.classList.add('closing');
+        setTimeout(() => toast.remove(), 300);
+    }, 6000);
+}
+
+/**
+ * Check and award badges for a specific category
+ */
+function checkAndAwardBadges(category, currentCount) {
+    if (!currentAuthUser || !isGamificationEnabled()) return;
+    
+    const data = getUserAchievementData();
+    const badges = ACHIEVEMENT_BADGES[category] || [];
+    let newBadges = [];
+    
+    for (const badge of badges) {
+        if (currentCount >= badge.threshold && !data.earnedBadges.includes(badge.id)) {
+            data.earnedBadges.push(badge.id);
+            newBadges.push(badge);
+            
+            // Award XP for the badge
+            if (badge.xpReward) {
+                data.xp += badge.xpReward;
+            }
+        }
+    }
+    
+    if (newBadges.length > 0) {
+        saveUserAchievementData(data);
+        
+        // Show notification for first new badge
+        const badge = newBadges[0];
+        showToast(`🏆 Badge Unlocked: ${badge.name}!`, 'success', 4000);
+        
+        // Add activity
+        addActivity({
+            type: 'milestone',
+            description: `🏆 earned the "${badge.name}" badge!`,
+            entityType: 'milestone',
+            entityId: badge.id,
+            entityName: badge.name
+        });
+        
+        renderAchievementsTab();
+    }
+}
+
+/**
+ * Update user stats and check for badge unlocks
+ */
+function updateAchievementStat(statName, increment = 1) {
+    if (!currentAuthUser || !isGamificationEnabled()) return;
+    
+    const data = getUserAchievementData();
+    if (!data.stats) data.stats = {};
+    data.stats[statName] = (data.stats[statName] || 0) + increment;
+    saveUserAchievementData(data);
+    
+    // Check for badge unlocks based on stat
+    const statToBadgeCategory = {
+        tasksCompleted: 'tasks',
+        docsCreated: 'docs',
+        messagesSent: 'messages',
+        sheetsCreated: 'sheets'
+    };
+    
+    if (statToBadgeCategory[statName]) {
+        checkAndAwardBadges(statToBadgeCategory[statName], data.stats[statName]);
+    }
+}
+
+/**
+ * Get user stats for achievements display
+ */
+function getUserStats() {
+    if (!currentAuthUser) return { tasksCompleted: 0, docsCreated: 0, messagesSent: 0, sheetsCreated: 0 };
+    
+    const data = getUserAchievementData();
+    return data.stats || { tasksCompleted: 0, docsCreated: 0, messagesSent: 0, sheetsCreated: 0 };
+}
+
+/**
+ * Render the Achievements tab content
+ */
+function renderAchievementsTab() {
+    if (!isGamificationEnabled()) {
+        const container = document.getElementById('achievementsBadgesContainer');
+        if (container) {
+            container.innerHTML = `
+                <div class="achievements-disabled-message">
+                    <i class="fas fa-trophy"></i>
+                    <p>Achievements are disabled</p>
+                    <span>Enable in Advanced settings to track your progress</span>
+                </div>
+            `;
+        }
+        return;
+    }
+    
+    const data = getUserAchievementData();
+    const levelInfo = getLevelFromXP(data.xp);
+    const totalForCurrentLevel = getTotalXPForLevel(levelInfo.level);
+    const totalForNextLevel = getTotalXPForLevel(levelInfo.level + 1);
+    
+    // Update XP display
+    const levelText = document.getElementById('userLevel');
+    const xpBar = document.getElementById('xpProgressBar');
+    const currentXP = document.getElementById('currentXP');
+    const nextLevelXP = document.getElementById('nextLevelXP');
+    
+    if (levelText) levelText.textContent = levelInfo.level;
+    if (xpBar) xpBar.style.width = `${Math.min(100, (levelInfo.xpInCurrentLevel / levelInfo.xpNeededForNext) * 100)}%`;
+    if (currentXP) currentXP.textContent = levelInfo.xpInCurrentLevel;
+    if (nextLevelXP) nextLevelXP.textContent = levelInfo.xpNeededForNext;
+    
+    // Update streak display
+    const streakCount = document.getElementById('streakCount');
+    const bestStreakEl = document.getElementById('bestStreak');
+    if (streakCount) streakCount.textContent = data.streak || 0;
+    if (bestStreakEl) bestStreakEl.textContent = data.bestStreak || 0;
+    
+    // Render stats list (rows format with lots of interesting stats)
+    const statsList = document.getElementById('achievementsStatsList');
+    if (statsList) {
+        const stats = data.stats || {};
+        const allStats = [
+            { label: 'Tasks Completed', value: stats.tasksCompleted || 0 },
+            { label: 'Documents Created', value: stats.docsCreated || 0 },
+            { label: 'Sheets Created', value: stats.sheetsCreated || 0 },
+            { label: 'Messages Sent', value: stats.messagesSent || 0 },
+            { label: 'Current Streak', value: `${data.streak || 0} days` },
+            { label: 'Best Streak', value: `${data.bestStreak || 0} days` },
+            { label: 'Total XP Earned', value: data.xp?.toLocaleString() || 0 },
+            { label: 'Current Level', value: levelInfo.level },
+            { label: 'Badges Earned', value: data.earnedBadges?.length || 0 },
+            { label: 'XP to Next Level', value: (levelInfo.xpNeededForNext - levelInfo.xpInCurrentLevel).toLocaleString() }
+        ];
+        
+        statsList.innerHTML = allStats.map(stat => `
+            <div class="achievement-stat-row">
+                <span class="stat-label">${stat.label}</span>
+                <span class="stat-value">${typeof stat.value === 'number' ? stat.value.toLocaleString() : stat.value}</span>
+            </div>
+        `).join('');
+
+    }
+    
+    // Render badges
+    const container = document.getElementById('achievementsBadgesContainer');
+    if (!container) return;
+    
+    let html = '';
+    
+    // All badge categories
+    const categories = [
+        { key: 'streaks', label: 'Login Streak', icon: 'fa-fire' },
+        { key: 'tasks', label: 'Tasks', icon: 'fa-check-circle' },
+        { key: 'docs', label: 'Documents', icon: 'fa-file-alt' },
+        { key: 'messages', label: 'Messages', icon: 'fa-comments' },
+        { key: 'sheets', label: 'Sheets', icon: 'fa-table' },
+        { key: 'special', label: 'Special', icon: 'fa-star' }
+    ];
+    
+    categories.forEach(cat => {
+        const badges = ACHIEVEMENT_BADGES[cat.key] || [];
+        const earnedInCategory = badges.filter(b => data.earnedBadges.includes(b.id));
+        
+        html += `
+            <div class="badge-category">
+                <div class="badge-category-header">
+                    <span class="badge-category-title"><i class="fas ${cat.icon}"></i> ${cat.label}</span>
+                    <span class="badge-category-count">${earnedInCategory.length}/${badges.length}</span>
+                </div>
+                <div class="badges-grid">
+        `;
+        
+        badges.forEach(badge => {
+            const isEarned = data.earnedBadges.includes(badge.id);
+            html += `
+                <div class="badge-item ${isEarned ? 'earned' : 'locked'}" title="${badge.description}${!isEarned ? ' (Locked)' : ''}">
+                    <div class="badge-icon" style="background: ${isEarned ? badge.color : 'var(--bg-tertiary)'}">
+                        <i class="fas ${isEarned ? badge.icon : 'fa-lock'}"></i>
+                    </div>
+                    <span class="badge-name">${badge.name}</span>
+                    ${badge.xpReward ? `<span class="badge-xp">+${badge.xpReward} XP</span>` : ''}
+                </div>
+            `;
+        });
+        
+        html += '</div></div>';
+    });
+    
+    container.innerHTML = html;
+}
+
+/**
+ * Effort-Based Document XP System
+ * Uses a "high water mark" to prevent the backspace exploit.
+ * Tracks max_rewarded_length per doc in localStorage.
+ * Awards XP only when the plain-text length exceeds the previous record.
+ * Includes a gibberish filter requiring minimum whitespace ratio.
+ */
+function awardDocEffortXP(docId, plainText) {
+    if (!currentAuthUser || !isGamificationEnabled() || !docId || !plainText) return;
+
+    const currentLength = plainText.length;
+    if (currentLength < XP_CONFIG.docEffortCharBlock) return; // Too short to reward
+
+    // Gibberish filter: require at least 5% whitespace
+    const whitespaceCount = (plainText.match(/\s/g) || []).length;
+    const whitespaceRatio = whitespaceCount / currentLength;
+    if (whitespaceRatio < XP_CONFIG.docMinWhitespaceRatio) {
+        debugLog('📝 Doc effort XP skipped: gibberish detected (whitespace ratio:', (whitespaceRatio * 100).toFixed(1) + '%)');
+        return;
+    }
+
+    // High water mark: keyed per user + doc
+    const storageKey = `docHighWaterMark_${currentAuthUser.uid}_${docId}`;
+    const previousMax = parseInt(localStorage.getItem(storageKey) || '0', 10);
+
+    if (currentLength <= previousMax) return; // No new content beyond previous record
+
+    // Calculate how many NEW character blocks were written
+    const newChars = currentLength - previousMax;
+    const blocks = Math.floor(newChars / XP_CONFIG.docEffortCharBlock);
+    if (blocks <= 0) return;
+
+    const xpToAward = blocks * XP_CONFIG.docEffortXPPer200Chars;
+
+    // Update the high water mark to the highest full-block boundary
+    const newMax = previousMax + blocks * XP_CONFIG.docEffortCharBlock;
+    localStorage.setItem(storageKey, String(newMax));
+
+    awardXP(xpToAward, `writing ${blocks * XP_CONFIG.docEffortCharBlock} characters`);
+    debugLog(`📝 Doc effort XP: +${xpToAward} XP for ${blocks} blocks of ${XP_CONFIG.docEffortCharBlock} chars (doc ${docId}, high water mark: ${previousMax} → ${newMax})`);
+}
+
+// Expose functions globally
+window.awardXP = awardXP;
+window.awardDocEffortXP = awardDocEffortXP;
+window.updateAchievementStat = updateAchievementStat;
+window.renderAchievementsTab = renderAchievementsTab;
+window.isGamificationEnabled = isGamificationEnabled;
+window.updateLoginStreak = updateLoginStreak;
+window.syncRetroactiveAchievements = syncRetroactiveAchievements;
+
+/**
+ * Legacy function for backward compatibility
  */
 async function checkAndAwardMilestone(retroactive = false) {
-    if (!currentAuthUser) return;
+    if (!currentAuthUser || !isGamificationEnabled()) return;
     
     // Count completed tasks for current user
     const userId = currentAuthUser.uid;
@@ -15961,59 +17491,12 @@ async function checkAndAwardMilestone(retroactive = false) {
         (t.assigneeId === userId || t.createdBy === userId || (!t.assigneeId && t.createdBy === userId))
     ).length;
     
-    // Get user's earned milestones from local storage
-    const earnedMilestones = JSON.parse(localStorage.getItem(`milestones_${userId}`) || '[]');
-    
-    // Track newly awarded milestones
-    let newMilestones = [];
-    
-    // Check each milestone threshold
-    for (const milestone of TASK_MILESTONES) {
-        if (completedTasks >= milestone.threshold && !earnedMilestones.includes(milestone.threshold)) {
-            // Award new milestone
-            earnedMilestones.push(milestone.threshold);
-            newMilestones.push(milestone);
-        }
-    }
-    
-    // Save updated milestones if any were awarded
-    if (newMilestones.length > 0) {
-        localStorage.setItem(`milestones_${userId}`, JSON.stringify(earnedMilestones));
-        
-        if (retroactive) {
-            // Retroactive mode: only show one combined notification
-            debugLog('🏆 Retroactively awarded milestones:', newMilestones.map(m => m.name).join(', '));
-            if (newMilestones.length === 1) {
-                showToast(`🎉 Badge Unlocked: ${newMilestones[0].name}!`, 'success', 3000);
-            } else {
-                showToast(`🎉 ${newMilestones.length} Badges Unlocked!`, 'success', 3000);
-            }
-        } else {
-            // Normal mode: notify for the first new milestone
-            const milestone = newMilestones[0];
-            
-            // Add special milestone activity
-            addActivity({
-                type: 'milestone',
-                description: `🏆 earned the "${milestone.name}" badge for completing ${milestone.threshold} task${milestone.threshold > 1 ? 's' : ''}!`,
-                entityType: 'milestone',
-                entityId: `milestone_${milestone.threshold}`,
-                entityName: milestone.name
-            });
-            
-            // Show celebratory toast
-            showToast(`🎉 Badge Unlocked: ${milestone.name}!`, 'success', 4000);
-            debugLog('🏆 Milestone awarded:', milestone.name);
-        }
-        
-        // Update badges display if visible
-        renderProfileBadges();
-    }
+    // Use new badge system
+    checkAndAwardBadges('tasks', completedTasks);
 }
 
 /**
  * Perform backward compatibility check for badges
- * Awards any milestones the user should have based on completed task count
  */
 function checkRetroactiveMilestones() {
     if (!currentAuthUser) return;
@@ -16021,13 +17504,12 @@ function checkRetroactiveMilestones() {
 }
 
 /**
- * Get all earned milestones for current user
+ * Get all earned milestones for current user (legacy compatibility)
  */
 function getEarnedMilestones() {
     if (!currentAuthUser) return [];
-    const userId = currentAuthUser.uid;
-    const earnedThresholds = JSON.parse(localStorage.getItem(`milestones_${userId}`) || '[]');
-    return TASK_MILESTONES.filter(m => earnedThresholds.includes(m.threshold));
+    const data = getUserAchievementData();
+    return TASK_MILESTONES.filter(m => data.earnedBadges.includes(m.id));
 }
 
 /**
@@ -16043,77 +17525,10 @@ function getCompletedTaskCount() {
 }
 
 /**
- * Render badges section in profile settings
+ * Render badges section in profile settings (legacy - redirects to achievements)
  */
 function renderProfileBadges() {
-    const badgesContainer = document.getElementById('profileBadgesContainer');
-    if (!badgesContainer) return;
-    
-    const earnedMilestones = getEarnedMilestones();
-    const completedCount = getCompletedTaskCount();
-    
-    // Find next milestone
-    const nextMilestone = TASK_MILESTONES.find(m => !earnedMilestones.some(e => e.threshold === m.threshold));
-    const progress = nextMilestone ? Math.min((completedCount / nextMilestone.threshold) * 100, 100) : 100;
-    
-    let html = '';
-    
-    // Progress to next badge
-    if (nextMilestone) {
-        html += `
-            <div class="badges-progress">
-                <div class="badges-progress-info">
-                    <span class="badges-progress-label">Next badge: ${nextMilestone.name}</span>
-                    <span class="badges-progress-count">${completedCount}/${nextMilestone.threshold}</span>
-                </div>
-                <div class="badges-progress-bar">
-                    <div class="badges-progress-fill" style="width: ${progress}%; background: ${nextMilestone.color}"></div>
-                </div>
-            </div>
-        `;
-    }
-    
-    // Earned badges
-    if (earnedMilestones.length > 0) {
-        html += '<div class="badges-grid">';
-        earnedMilestones.forEach(m => {
-            html += `
-                <div class="badge-item" data-tooltip="${m.description}">
-                    <div class="badge-icon" style="background: ${m.color}">
-                        <i class="fas ${m.icon}"></i>
-                    </div>
-                    <span class="badge-name">${m.name}</span>
-                </div>
-            `;
-        });
-        html += '</div>';
-    } else {
-        html += `
-            <div class="badges-empty">
-                <i class="fas fa-medal"></i>
-                <span>Complete tasks to earn badges!</span>
-            </div>
-        `;
-    }
-    
-    // Locked badges preview
-    const lockedMilestones = TASK_MILESTONES.filter(m => !earnedMilestones.some(e => e.threshold === m.threshold));
-    if (lockedMilestones.length > 0) {
-        html += '<div class="badges-locked">';
-        lockedMilestones.slice(0, 4).forEach(m => {
-            html += `
-                <div class="badge-item badge-locked" data-tooltip="${m.threshold} tasks to unlock">
-                    <div class="badge-icon">
-                        <i class="fas fa-lock"></i>
-                    </div>
-                    <span class="badge-name">${m.name}</span>
-                </div>
-            `;
-        });
-        html += '</div>';
-    }
-    
-    badgesContainer.innerHTML = html;
+    renderAchievementsTab();
 }
 
 // Expose milestone functions
@@ -16902,15 +18317,28 @@ function getUniqueCustomerCount() {
 /**
  * Generate trend data from actual finance transactions
  * Respects the metrics time filter (7 days, 30 days, all time)
+ * @param {string} type - 'income' or 'expense' - MUST be specified
  */
 function generateFinanceTrendData(type = 'income') {
+    // CRITICAL: Ensure type is valid
+    if (type !== 'income' && type !== 'expense') {
+        console.error('[generateFinanceTrendData] Invalid type:', type, '- must be "income" or "expense"');
+        return [];
+    }
+    
     const timeBounds = getMetricsTimeBoundaries();
-    const filteredTransactions = getFilteredTransactions(type);
+    
+    // Get transactions and MANUALLY filter by type as a failsafe
+    // This ensures we only get the right type even if getFilteredTransactions has issues
+    const allTransactions = getFilteredTransactions(type);
+    const filteredTransactions = allTransactions.filter(t => t.type === type);
+    
+    console.log(`[generateFinanceTrendData] Type: "${type}", Before type filter: ${allTransactions.length}, After: ${filteredTransactions.length}`);
     
     if (!filteredTransactions || filteredTransactions.length === 0) {
-        // Return placeholder data matching the current timeframe
-        const days = metricsTimeFilter === '7days' ? 7 : metricsTimeFilter === '30days' ? 30 : 30;
-        return generatePlaceholderTrendData(days, 0, 0);
+        // Return empty array to show "no data" state
+        console.log(`[generateFinanceTrendData] No ${type} transactions found, returning empty`);
+        return [];
     }
     
     const now = new Date();
@@ -16944,6 +18372,11 @@ function generateFinanceTrendData(type = 'income') {
         
         let dayTotal = 0;
         filteredTransactions.forEach(t => {
+            // SAFETY CHECK: Only count if type matches (belt AND suspenders)
+            if (t.type !== type) {
+                console.warn(`[generateFinanceTrendData] Skipping wrong type: expected "${type}", got "${t.type}"`);
+                return;
+            }
             const transDate = t.date?.toDate?.() || new Date(t.date);
             if (transDate >= dayStart && transDate <= dayEnd) {
                 dayTotal += t.amount || 0;
@@ -16988,77 +18421,141 @@ function generatePlaceholderTrendData(days, min, max) {
 }
 
 /**
- * Generate MRR trend data (monthly view)
+ * Generate MRR trend data
+ * Respects the metrics time filter (7 days, 30 days, all time)
  * Shows cumulative MRR growth from active subscriptions and recurring income
- * Only counts subscriptions that were active during each month
+ * For 7days/30days: shows daily cumulative MRR
+ * For all time: shows monthly MRR with year separators
  */
 function generateMRRTrendData() {
     const now = new Date();
     const data = [];
+    const timeBounds = getMetricsTimeBoundaries();
     
-    // Get last 12 months of MRR data for better trend visibility
-    const numMonths = 12;
-    
-    for (let i = numMonths - 1; i >= 0; i--) {
-        const monthDate = new Date(now.getFullYear(), now.getMonth() - i, 1);
-        const monthEnd = new Date(now.getFullYear(), now.getMonth() - i + 1, 0);
-        const monthLabel = monthDate.toLocaleDateString('en-US', { month: 'short' });
+    /**
+     * Calculate cumulative MRR as of a specific date
+     * MRR = Monthly Recurring Revenue from INCOME transactions only
+     * Note: Subscriptions in this system are EXPENSES (payments to vendors), not income
+     * @param {Date} asOfDate - The date to calculate MRR as of
+     * @returns {number} The cumulative MRR
+     */
+    function calculateMRRAsOfDate(asOfDate) {
+        let totalMrr = 0;
         
-        let monthlyMrr = 0;
-        
-        // Calculate MRR from subscriptions that were active during this month
-        const subs = appState.subscriptions || [];
-        subs.forEach(sub => {
-            // Get start date
-            const startDate = sub.startDate?.toDate?.() || sub.createdAt?.toDate?.() || new Date(sub.startDate || sub.createdAt || 0);
-            // Get cancel/end date if exists
-            const cancelDate = sub.cancelledAt?.toDate?.() || sub.endDate?.toDate?.() || null;
-            
-            // Only count if subscription started before or during this month
-            // and hasn't been cancelled before this month
-            const wasActiveInMonth = startDate <= monthEnd && 
-                (!cancelDate || cancelDate >= monthDate);
-            
-            if (wasActiveInMonth && sub.type !== 'private') {
-                const amount = sub.amount || 0;
-                switch (sub.frequency) {
-                    case 'monthly': monthlyMrr += amount; break;
-                    case 'quarterly': monthlyMrr += amount / 3; break;
-                    case 'yearly': monthlyMrr += amount / 12; break;
-                    case 'weekly': monthlyMrr += amount * 4; break;
-                    default: monthlyMrr += amount;
-                }
-            }
-        });
-        
-        // Also include recurring income transactions
+        // MRR comes ONLY from recurring INCOME transactions (client payments)
+        // Subscriptions are expenses (payments TO vendors), NOT revenue
         const transactions = appState.transactions || [];
         transactions.forEach(t => {
-            if (t.type === 'income' && t.isRecurring) {
+            // Must be an income transaction marked as recurring with a valid frequency
+            if (t.type === 'income' && t.isRecurring === true) {
                 const transDate = t.date?.toDate?.() || new Date(t.date || 0);
-                // Only count if the recurring transaction was created before or during this month
-                if (transDate <= monthEnd) {
+                // Only count if the recurring income started on or before this date
+                if (transDate <= asOfDate) {
                     const amount = t.amount || 0;
-                    switch (t.frequency) {
-                        case 'monthly': monthlyMrr += amount; break;
-                        case 'quarterly': monthlyMrr += amount / 3; break;
-                        case 'yearly': monthlyMrr += amount / 12; break;
-                        case 'weekly': monthlyMrr += amount * 4; break;
-                        default: monthlyMrr += amount;
+                    const freq = t.frequency;
+                    // Only count with valid recurring frequencies
+                    if (freq === 'monthly') {
+                        totalMrr += amount;
+                    } else if (freq === 'quarterly') {
+                        totalMrr += amount / 3;
+                    } else if (freq === 'yearly') {
+                        totalMrr += amount / 12;
+                    } else if (freq === 'weekly') {
+                        totalMrr += amount * 4;
                     }
+                    // Note: transactions without valid frequency are NOT included in MRR
                 }
             }
         });
         
-        data.push({
-            date: monthDate,
-            label: monthLabel,
-            count: monthlyMrr,
-            value: monthlyMrr
-        });
+        return totalMrr;
     }
     
-    // Return empty if no MRR data at all
+    // First check if there are ANY recurring income transactions
+    const hasAnyRecurringIncome = (appState.transactions || []).some(t => 
+        t.type === 'income' && t.isRecurring === true && 
+        ['monthly', 'quarterly', 'yearly', 'weekly'].includes(t.frequency)
+    );
+    
+    // Return empty immediately if no recurring income exists
+    if (!hasAnyRecurringIncome) {
+        return [];
+    }
+    
+    // Month abbreviations for labels
+    const monthNames = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+    
+    if (metricsTimeFilter === '7days' || metricsTimeFilter === '30days') {
+        // Daily view: Show cumulative MRR for each day
+        const numDays = metricsTimeFilter === '7days' ? 7 : 30;
+        
+        for (let i = numDays - 1; i >= 0; i--) {
+            const date = new Date(now);
+            date.setDate(date.getDate() - i);
+            date.setHours(23, 59, 59, 999); // End of day
+            
+            const dayMrr = calculateMRRAsOfDate(date);
+            
+            // Format label: "Jan 15" for daily view
+            const dayLabel = date.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+            
+            data.push({
+                date: date,
+                label: dayLabel,
+                count: dayMrr,
+                value: dayMrr
+            });
+        }
+    } else {
+        // All time view: Show monthly MRR with year separators
+        // Find the earliest recurring income transaction
+        let earliestDate = now;
+        
+        (appState.transactions || []).forEach(t => {
+            if (t.type === 'income' && t.isRecurring === true && 
+                ['monthly', 'quarterly', 'yearly', 'weekly'].includes(t.frequency)) {
+                const transDate = t.date?.toDate?.() || new Date(t.date || 0);
+                if (transDate < earliestDate) earliestDate = transDate;
+            }
+        });
+        
+        // Start from the beginning of the earliest month
+        const startMonth = new Date(earliestDate.getFullYear(), earliestDate.getMonth(), 1);
+        const endMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+        
+        // Check if data spans multiple years
+        const spansMultipleYears = startMonth.getFullYear() !== endMonth.getFullYear();
+        let lastYear = null;
+        
+        // Generate monthly data points
+        let currentMonth = new Date(startMonth);
+        while (currentMonth <= endMonth) {
+            const monthEnd = new Date(currentMonth.getFullYear(), currentMonth.getMonth() + 1, 0, 23, 59, 59, 999);
+            const monthMrr = calculateMRRAsOfDate(monthEnd);
+            
+            // Create label with year separator indicator
+            let label = monthNames[currentMonth.getMonth()];
+            
+            // Add year indicator if spans multiple years and year changed
+            if (spansMultipleYears && currentMonth.getFullYear() !== lastYear) {
+                label = `${currentMonth.getFullYear()}\n${label}`;
+                lastYear = currentMonth.getFullYear();
+            }
+            
+            data.push({
+                date: new Date(currentMonth),
+                label: label,
+                count: monthMrr,
+                value: monthMrr,
+                year: currentMonth.getFullYear()
+            });
+            
+            // Move to next month
+            currentMonth.setMonth(currentMonth.getMonth() + 1);
+        }
+    }
+    
+    // Return empty if no MRR data at all (will show "no trend data")
     const hasAnyMRR = data.some(d => d.value > 0);
     if (!hasAnyMRR) {
         return [];
@@ -17110,11 +18607,44 @@ function generateCustomerGrowthData() {
 /**
  * Get transactions filtered by current metrics time filter
  * @param {string} type - Optional: 'expense' or 'income' to filter by type
+ * @param {boolean} includeSubscriptions - Whether to include subscription expenses (default: true for expenses)
  * @returns {Array} Filtered transactions
  */
-function getFilteredTransactions(type = null) {
+function getFilteredTransactions(type = null, includeSubscriptions = true) {
     const timeBounds = getMetricsTimeBoundaries();
-    let transactions = appState.transactions || [];
+    let transactions = [...(appState.transactions || [])];
+    
+    // DEBUG: Log transaction types to help troubleshoot
+    if (type) {
+        const typeBreakdown = {};
+        transactions.forEach(t => {
+            const tType = t.type || 'UNDEFINED';
+            typeBreakdown[tType] = (typeBreakdown[tType] || 0) + 1;
+        });
+        console.log(`[getFilteredTransactions] Requested type: "${type}", Transaction type breakdown:`, typeBreakdown);
+    }
+    
+    // For expense type, optionally include company subscriptions as virtual expense transactions
+    if (type === 'expense' && includeSubscriptions) {
+        const subscriptionExpenses = (appState.subscriptions || [])
+            .filter(sub => sub.type === 'company')
+            .map(sub => {
+                const subDate = sub.nextPayDate?.toDate?.() || new Date(sub.nextPayDate || Date.now());
+                return {
+                    id: `sub-${sub.id}`,
+                    type: 'expense',
+                    amount: sub.amount || 0,
+                    party: sub.vendor || sub.name || 'Subscription',
+                    description: sub.name ? `Subscription · ${sub.name}` : 'Subscription',
+                    category: sub.category || 'subscriptions',
+                    date: subDate,
+                    frequency: sub.frequency || 'monthly',
+                    isRecurring: true,
+                    isSubscription: true
+                };
+            });
+        transactions = [...transactions, ...subscriptionExpenses];
+    }
     
     // Filter by time range
     transactions = transactions.filter(t => {
@@ -17122,9 +18652,19 @@ function getFilteredTransactions(type = null) {
         return transDate >= timeBounds.start && transDate <= timeBounds.end;
     });
     
-    // Filter by type if specified
-    if (type) {
+    // Filter by type if specified - strict type matching
+    // IMPORTANT: Only include transactions where type EXACTLY matches
+    if (type === 'expense') {
+        transactions = transactions.filter(t => t.type === 'expense');
+    } else if (type === 'income') {
+        transactions = transactions.filter(t => t.type === 'income');
+    } else if (type) {
         transactions = transactions.filter(t => t.type === type);
+    }
+    
+    // DEBUG: Log result count
+    if (type) {
+        console.log(`[getFilteredTransactions] After filtering for "${type}": ${transactions.length} transactions`);
     }
     
     return transactions;
@@ -17132,12 +18672,20 @@ function getFilteredTransactions(type = null) {
 
 /**
  * Generate expenses by category data
+ * ONLY returns expense transactions, never income
  */
 function generateExpensesByCategoryData() {
     const expenses = getFilteredTransactions('expense');
     const byCategory = {};
     
+    console.log(`[generateExpensesByCategoryData] Processing ${expenses.length} expense transactions`);
+    
     expenses.forEach(exp => {
+        // Double-check this is actually an expense
+        if (exp.type !== 'expense') {
+            console.warn('[generateExpensesByCategoryData] Non-expense found in expenses:', exp.id, exp.type);
+            return;
+        }
         const category = exp.category || 'Other';
         const amount = exp.amount || 0;
         byCategory[category] = (byCategory[category] || 0) + amount;
@@ -17152,16 +18700,27 @@ function generateExpensesByCategoryData() {
             value: value
         }));
     
+    console.log(`[generateExpensesByCategoryData] Result: ${data.length} categories, total: ${data.reduce((s, d) => s + d.value, 0)}`);
+    
     return data.length > 0 ? data : [{ label: 'No expenses', value: 0 }];
 }
 
 /**
  * Get expenses grouped by category
+ * ONLY includes expense transactions, never income
  */
 function getExpensesByCategory() {
     const expenses = getFilteredTransactions('expense');
     const byCategory = {};
+    
+    console.log(`[getExpensesByCategory] Processing ${expenses.length} expense transactions`);
+    
     expenses.forEach(exp => {
+        // Double-check this is actually an expense
+        if (exp.type !== 'expense') {
+            console.warn('[getExpensesByCategory] Non-expense found in expenses:', exp.id, exp.type);
+            return;
+        }
         const category = exp.category || 'other';
         byCategory[category] = (byCategory[category] || 0) + (exp.amount || 0);
     });
@@ -17170,11 +18729,21 @@ function getExpensesByCategory() {
 
 /**
  * Get revenue grouped by category
+ * ONLY includes income transactions, never expenses
  */
 function getRevenueByCategory() {
-    const income = getFilteredTransactions('income');
+    // Don't include subscriptions for revenue (subscriptions are expenses)
+    const income = getFilteredTransactions('income', false);
     const byCategory = {};
+    
+    console.log(`[getRevenueByCategory] Processing ${income.length} income transactions`);
+    
     income.forEach(inc => {
+        // Double-check this is actually income
+        if (inc.type !== 'income') {
+            console.warn('[getRevenueByCategory] Non-income found in income:', inc.id, inc.type);
+            return;
+        }
         const category = inc.category || 'other';
         byCategory[category] = (byCategory[category] || 0) + (inc.amount || 0);
     });
@@ -17183,9 +18752,12 @@ function getRevenueByCategory() {
 
 /**
  * Generate revenue by category data for charts
+ * ONLY returns income transactions, never expenses
  */
 function generateRevenueByCategoryData() {
     const byCategory = getRevenueByCategory();
+    
+    console.log(`[generateRevenueByCategoryData] Processing categories:`, Object.keys(byCategory));
     
     // Use income-specific category labels
     const data = Object.entries(byCategory)
@@ -17195,6 +18767,8 @@ function generateRevenueByCategoryData() {
             label: getIncomeCategoryLabel(label),
             value: value
         }));
+    
+    console.log(`[generateRevenueByCategoryData] Result: ${data.length} categories, total: ${data.reduce((s, d) => s + d.value, 0)}`);
     
     return data.length > 0 ? data : [{ label: 'No revenue', value: 0 }];
 }
@@ -17333,6 +18907,7 @@ function toggleMetricsEditMode() {
         return;
     }
     metricsEditMode = !metricsEditMode;
+    document.body.classList.toggle('metrics-edit-mode', metricsEditMode);
     renderMetrics();
 }
 
@@ -17406,18 +18981,7 @@ const TICK_DENSITY_OPTIONS = [
     { id: 'detailed', label: 'Detailed', ticks: 6 }
 ];
 
-/**
- * Available data sources for metrics
- * These define what data a chart can display
- */
-const DATA_SOURCE_OPTIONS = [
-    { id: 'personal-tasks', label: 'My Task Completions', sourceType: 'tasks', metricKey: 'personal' },
-    { id: 'team-tasks', label: 'Team Task Completions', sourceType: 'tasks', metricKey: 'team' },
-    { id: 'task-status', label: 'Task Status Distribution', sourceType: 'tasks', metricKey: 'status' },
-    { id: 'events-week', label: 'Events This Week', sourceType: 'events', metricKey: 'weekly' },
-    { id: 'messages-week', label: 'Messages This Week', sourceType: 'messages', metricKey: 'weekly' },
-    { id: 'custom', label: 'Custom Data', sourceType: 'custom', metricKey: null }
-];
+
 
 /**
  * Default chart configuration
@@ -17887,6 +19451,7 @@ function updateSettingsPanelContent(chartId, config, currentType) {
 function toggleGraphSettings(chartId) {
     const panel = document.querySelector(`[data-settings-chart="${chartId}"]`);
     if (!panel) return;
+    const card = panel.closest('.metrics-card');
     
     const isOpen = panel.classList.contains('open');
     
@@ -17894,11 +19459,16 @@ function toggleGraphSettings(chartId) {
     document.querySelectorAll('.graph-settings-panel.open').forEach(p => {
         if (p.dataset.settingsChart !== chartId) {
             p.classList.remove('open');
+            const parentCard = p.closest('.metrics-card');
+            if (parentCard) parentCard.classList.remove('settings-open');
         }
     });
     
     // Toggle this panel
     panel.classList.toggle('open', !isOpen);
+    if (card) {
+        card.classList.toggle('settings-open', !isOpen);
+    }
 }
 
 /**
@@ -17909,6 +19479,8 @@ function closeGraphSettings(chartId) {
     const panel = document.querySelector(`[data-settings-chart="${chartId}"]`);
     if (panel) {
         panel.classList.remove('open');
+        const card = panel.closest('.metrics-card');
+        if (card) card.classList.remove('settings-open');
     }
 }
 
@@ -18087,6 +19659,325 @@ async function reorderCustomMetric(metricId, direction) {
 
 window.reorderCustomMetric = reorderCustomMetric;
 
+// ===================================
+// METRICS DRAG & DROP SYSTEM
+// Pointer-based reordering within metrics-stats-row and metrics-charts-row
+// Inspired by CalendarDragHandler pattern from calendar-drag.js
+// ===================================
+
+const MetricsDragHandler = {
+    // State
+    isDragging: false,
+    dragStarted: false,
+    startX: 0,
+    startY: 0,
+    currentX: 0,
+    currentY: 0,
+    offsetX: 0,
+    offsetY: 0,
+    pointerId: null,
+
+    // The dragged item
+    draggedElement: null,
+    draggedMetricId: null,
+    placeholder: null,
+    preview: null,
+    containerEl: null,
+
+    // Config
+    DRAG_THRESHOLD: 5,
+
+    // Bound handlers
+    _boundPointerDown: null,
+    _boundPointerMove: null,
+    _boundPointerUp: null,
+
+    /**
+     * Initialize drag handlers on metrics drag containers
+     */
+    init() {
+        // Target the custom-metrics-row and the business charts-row
+        const containers = document.querySelectorAll('.custom-metrics-row, .metrics-charts-row');
+        if (!containers.length) return;
+
+        if (!this._boundPointerDown) {
+            this._boundPointerDown = this.handlePointerDown.bind(this);
+            this._boundPointerMove = this.handlePointerMove.bind(this);
+            this._boundPointerUp = this.handlePointerUp.bind(this);
+        }
+
+        containers.forEach(container => {
+            container.removeEventListener('pointerdown', this._boundPointerDown);
+            container.addEventListener('pointerdown', this._boundPointerDown);
+        });
+    },
+
+    /**
+     * Get the draggable child element from a pointer target
+     */
+    getDraggableItem(target) {
+        // For stat cards: the .metrics-stat-card with data-metric-id
+        const statCard = target.closest('.metrics-stat-card[data-metric-id]');
+        if (statCard) return statCard;
+        // For chart cards: the wrapper .metrics-drag-item with data-metric-id
+        const dragItem = target.closest('.metrics-drag-item[data-metric-id]');
+        if (dragItem) return dragItem;
+        return null;
+    },
+
+    handlePointerDown(e) {
+        if (e.pointerType === 'mouse' && e.button !== 0) return;
+        if (!metricsEditMode) return;
+
+        // Don't interfere with buttons, inputs, etc.
+        if (e.target.closest('button, input, select, textarea, a, .graph-settings-panel')) return;
+
+        const item = this.getDraggableItem(e.target);
+        if (!item) return;
+
+        e.preventDefault();
+
+        this.pointerId = e.pointerId;
+        this.draggedElement = item;
+        this.draggedMetricId = item.dataset.metricId;
+        this.containerEl = item.parentElement;
+
+        const rect = item.getBoundingClientRect();
+        this.offsetX = e.clientX - rect.left;
+        this.offsetY = e.clientY - rect.top;
+        this.startX = e.clientX;
+        this.startY = e.clientY;
+        this.currentX = e.clientX;
+        this.currentY = e.clientY;
+        this.isDragging = true;
+        this.dragStarted = false;
+
+        document.addEventListener('pointermove', this._boundPointerMove, { passive: false });
+        document.addEventListener('pointerup', this._boundPointerUp);
+        document.addEventListener('pointercancel', this._boundPointerUp);
+
+        item.setPointerCapture(e.pointerId);
+    },
+
+    handlePointerMove(e) {
+        if (!this.isDragging) return;
+        e.preventDefault();
+        this.currentX = e.clientX;
+        this.currentY = e.clientY;
+
+        if (!this.dragStarted) {
+            const dx = Math.abs(this.currentX - this.startX);
+            const dy = Math.abs(this.currentY - this.startY);
+            if (dx > this.DRAG_THRESHOLD || dy > this.DRAG_THRESHOLD) {
+                this.startDrag();
+            }
+            return;
+        }
+
+        this.updateDrag();
+    },
+
+    startDrag() {
+        this.dragStarted = true;
+        const el = this.draggedElement;
+        const rect = el.getBoundingClientRect();
+
+        // Create placeholder with same dimensions
+        this.placeholder = document.createElement('div');
+        this.placeholder.className = 'metrics-drag-placeholder';
+        this.placeholder.style.width = rect.width + 'px';
+        this.placeholder.style.height = rect.height + 'px';
+        el.parentNode.insertBefore(this.placeholder, el);
+
+        // Create floating preview — full-size clone of the actual card
+        this.preview = el.cloneNode(true);
+        this.preview.classList.add('metrics-drag-preview');
+        this.preview.style.position = 'fixed';
+        this.preview.style.width = rect.width + 'px';
+        this.preview.style.height = rect.height + 'px';
+        this.preview.style.left = rect.left + 'px';
+        this.preview.style.top = rect.top + 'px';
+        this.preview.style.zIndex = '10000';
+        this.preview.style.pointerEvents = 'none';
+        this.preview.style.transition = 'box-shadow 0.18s ease, transform 0.18s ease';
+        this.preview.style.boxShadow = '0 16px 48px rgba(0,0,0,0.25), 0 0 0 1px rgba(255,255,255,0.08)';
+        this.preview.style.opacity = '1';
+        this.preview.style.transform = 'scale(1.02) rotate(1deg)';
+        document.body.appendChild(this.preview);
+
+        // Hide original
+        el.style.display = 'none';
+
+        document.body.classList.add('metrics-dragging');
+    },
+
+    updateDrag() {
+        if (!this.preview || !this.containerEl) return;
+
+        // Move preview to follow pointer
+        const left = this.currentX - this.offsetX;
+        const top = this.currentY - this.offsetY;
+        this.preview.style.left = left + 'px';
+        this.preview.style.top = top + 'px';
+
+        // Determine which sibling we're hovering over — only within the SAME container
+        const children = Array.from(this.containerEl.children);
+        const siblings = children.filter(
+            child => child !== this.draggedElement &&
+                     child !== this.placeholder &&
+                     child.dataset.metricId
+        );
+
+        // Edge-based swap: trigger at 30% from the entering edge, not the center
+        const EDGE_RATIO = 0.3;
+
+        for (const sib of siblings) {
+            const rect = sib.getBoundingClientRect();
+
+            // Skip if cursor isn't within this sibling's bounds
+            if (this.currentX < rect.left || this.currentX > rect.right ||
+                this.currentY < rect.top || this.currentY > rect.bottom) continue;
+
+            const placeholderIdx = children.indexOf(this.placeholder);
+            const sibIdx = children.indexOf(sib);
+            if (placeholderIdx === sibIdx) break;
+
+            const isMovingForward = placeholderIdx < sibIdx;
+
+            // Determine if same row (horizontal swap) or different row (vertical swap)
+            const sibCenterY = rect.top + rect.height / 2;
+            const sameRow = Math.abs(this.currentY - sibCenterY) < rect.height / 2;
+
+            let shouldSwap = false;
+            if (sameRow) {
+                // Horizontal: swap when cursor passes 30% from the entering edge
+                if (isMovingForward) {
+                    shouldSwap = this.currentX > rect.left + rect.width * EDGE_RATIO;
+                } else {
+                    shouldSwap = this.currentX < rect.right - rect.width * EDGE_RATIO;
+                }
+            } else {
+                // Vertical: swap when cursor passes 30% from the entering edge
+                if (isMovingForward) {
+                    shouldSwap = this.currentY > rect.top + rect.height * EDGE_RATIO;
+                } else {
+                    shouldSwap = this.currentY < rect.bottom - rect.height * EDGE_RATIO;
+                }
+            }
+
+            if (shouldSwap) {
+                if (isMovingForward) {
+                    sib.after(this.placeholder);
+                } else {
+                    this.containerEl.insertBefore(this.placeholder, sib);
+                }
+            }
+            break;
+        }
+    },
+
+    async handlePointerUp(e) {
+        if (!this.isDragging) return;
+
+        document.removeEventListener('pointermove', this._boundPointerMove);
+        document.removeEventListener('pointerup', this._boundPointerUp);
+        document.removeEventListener('pointercancel', this._boundPointerUp);
+        document.body.classList.remove('metrics-dragging');
+
+        if (this.draggedElement) {
+            try {
+                if (this.pointerId !== null) {
+                    this.draggedElement.releasePointerCapture(this.pointerId);
+                }
+            } catch (_) {}
+        }
+
+        if (this.dragStarted && this.placeholder && this.containerEl) {
+            // Re-insert the real element at the placeholder position
+            this.containerEl.insertBefore(this.draggedElement, this.placeholder);
+            this.draggedElement.style.display = '';
+            this.placeholder.remove();
+
+            if (this.preview) {
+                this.preview.remove();
+            }
+
+            // Read new order from DOM
+            const newOrder = Array.from(this.containerEl.children)
+                .filter(ch => ch.dataset.metricId)
+                .map(ch => ch.dataset.metricId);
+
+            // Merge with existing enabled metrics preserving items not in this container
+            const enabledMetrics = [...getEnabledCustomMetrics()];
+            const idsInContainer = new Set(newOrder);
+            const otherMetrics = enabledMetrics.filter(id => !idsInContainer.has(id));
+
+            // Determine insertion point: find where the first container metric was in the original list
+            let insertIdx = enabledMetrics.length;
+            for (let i = 0; i < enabledMetrics.length; i++) {
+                if (idsInContainer.has(enabledMetrics[i])) {
+                    insertIdx = i;
+                    break;
+                }
+            }
+
+            const merged = [
+                ...otherMetrics.slice(0, insertIdx),
+                ...newOrder,
+                ...otherMetrics.slice(insertIdx)
+            ];
+
+            try {
+                await saveEnabledMetrics(merged);
+                renderMetrics();
+            } catch (error) {
+                console.error('[MetricsDrag] Error saving order:', error);
+                if (typeof showToast === 'function') {
+                    showToast('Failed to save order', 'error');
+                }
+                renderMetrics();
+            }
+        } else {
+            // Didn't actually drag — restore
+            if (this.draggedElement) {
+                this.draggedElement.style.display = '';
+            }
+            if (this.placeholder) this.placeholder.remove();
+            if (this.preview) this.preview.remove();
+        }
+
+        this.reset();
+    },
+
+    reset() {
+        this.isDragging = false;
+        this.dragStarted = false;
+        this.startX = 0;
+        this.startY = 0;
+        this.currentX = 0;
+        this.currentY = 0;
+        this.offsetX = 0;
+        this.offsetY = 0;
+        this.pointerId = null;
+        this.draggedElement = null;
+        this.draggedMetricId = null;
+        this.placeholder = null;
+        this.preview = null;
+        this.containerEl = null;
+    }
+};
+
+/**
+ * Initialize metrics drag and drop
+ * Called after renderMetrics when in edit mode
+ */
+function initMetricsDragDrop() {
+    MetricsDragHandler.init();
+}
+
+window.MetricsDragHandler = MetricsDragHandler;
+window.initMetricsDragDrop = initMetricsDragDrop;
+
 /**
  * Save enabled metrics to Firestore
  * @param {string[]} enabledMetrics - Array of metric IDs
@@ -18171,7 +20062,7 @@ function renderCustomMetricCard(metric, index, total, showHidden = false) {
     const hiddenClass = metricIsHidden ? 'metric-hidden' : '';
     
     return `
-        <div class="metrics-stat-card custom-metric-card ${metric.color} ${metricsEditMode ? 'edit-mode' : ''} ${hiddenClass}" ${tooltipAttr}>
+        <div class="metrics-stat-card custom-metric-card ${metric.color} ${metricsEditMode ? 'edit-mode' : ''} ${hiddenClass}" data-metric-id="${metric.id}" ${tooltipAttr}>
             ${editControls}
             <div class="metrics-stat-icon">
                 <i class="fas ${metric.icon}"></i>
@@ -20416,7 +22307,7 @@ function createSwitchableGraphCard(graphId, title, icon, data, dataType = 'trend
                         <div class="graph-menu-dropdown" data-graph-id="${graphId}">
                             <div class="graph-menu-title">Graph Type</div>
                             <button class="graph-menu-option ${currentType === 'bar' ? 'active' : ''}" data-type="bar" onclick="switchGraphType('${graphId}', 'bar')">
-                                <i class="fas fa-chart-bar"></i>
+                                <i class="fas fa-align-left" style="transform: rotate(-90deg);"></i>
                                 <span>Vertical Bar</span>
                             </button>
                             <button class="graph-menu-option ${currentType === 'hbar' ? 'active' : ''}" data-type="hbar" onclick="switchGraphType('${graphId}', 'hbar')">
@@ -20439,7 +22330,7 @@ function createSwitchableGraphCard(graphId, title, icon, data, dataType = 'trend
                 <div class="graph-content" style="transition: opacity 0.15s ease, transform 0.15s ease;">
                     ${graphContent}
                 </div>
-                ${settingsPanel}
+                ${showSettings ? `<div class="metrics-edit-container">${settingsPanel}</div>` : ''}
             </div>
         </div>
     `;
@@ -20461,8 +22352,7 @@ function createGraphSettingsPanel(graphId, config, currentType) {
     const primaryColor = config.primaryColor || 'var(--accent)';
     const secondaryColor = config.secondaryColor || '#34C759';
     const palette = config.palette || 'default';
-    const sourceType = config.sourceType || 'tasks';
-    const metricKey = config.metricKey || '';
+
     
     // Build color options
     const primaryColorOptions = CHART_COLOR_OPTIONS.map(c => `
@@ -20512,7 +22402,7 @@ function createGraphSettingsPanel(graphId, config, currentType) {
             <button class="graph-type-option ${currentType === 'bar' ? 'active' : ''}"
                     onclick="handleChartConfigChange('${graphId}', 'type', 'bar')"
                     title="Vertical Bar Chart">
-                <i class="fas fa-chart-bar"></i>
+                <i class="fas fa-align-left" style="transform: rotate(-90deg);"></i>
                 <span>Vertical</span>
             </button>
             <button class="graph-type-option ${currentType === 'hbar' ? 'active' : ''}"
@@ -20536,25 +22426,7 @@ function createGraphSettingsPanel(graphId, config, currentType) {
         </div>
     `;
     
-    // Build data source dropdown (custom dropdown instead of native select)
-    const currentSourceId = sourceType + '-' + metricKey;
-    const currentSource = DATA_SOURCE_OPTIONS.find(s => s.id === currentSourceId) || DATA_SOURCE_OPTIONS[0];
-    const dataSourceDropdown = `
-        <div class="settings-custom-dropdown" data-dropdown-for="${graphId}">
-            <button class="settings-dropdown-trigger" onclick="toggleSettingsDropdown('${graphId}')">
-                <span>${currentSource.label}</span>
-                <i class="fas fa-chevron-down"></i>
-            </button>
-            <div class="settings-dropdown-menu">
-                ${DATA_SOURCE_OPTIONS.map(s => `
-                    <button class="settings-dropdown-option ${s.id === currentSourceId ? 'selected' : ''}" 
-                            onclick="selectDataSource('${graphId}', '${s.id}')">
-                        ${s.label}
-                    </button>
-                `).join('')}
-            </div>
-        </div>
-    `;
+
     
     // Only show Y-axis settings for line and bar charts
     const showYAxisSettings = currentType === 'line' || currentType === 'bar';
@@ -20661,14 +22533,7 @@ function createGraphSettingsPanel(graphId, config, currentType) {
                     `}
                 </div>
                 
-                <!-- Data Source Section -->
-                <div class="settings-section">
-                    <div class="settings-section-title">Data Source</div>
-                    <div class="settings-subsection">
-                        ${dataSourceDropdown}
-                        <p class="settings-hint">Connect this chart to a different data source. More options coming soon.</p>
-                    </div>
-                </div>
+
             </div>
             
             <div class="graph-settings-footer">
@@ -20681,85 +22546,6 @@ function createGraphSettingsPanel(graphId, config, currentType) {
     `;
 }
 
-/**
- * Handle data source change from the settings dropdown
- * @param {string} graphId - Chart identifier
- * @param {string} sourceId - Selected source ID
- */
-function handleDataSourceChange(graphId, sourceId) {
-    const source = DATA_SOURCE_OPTIONS.find(s => s.id === sourceId);
-    if (source) {
-        updateChartConfig(graphId, {
-            sourceType: source.sourceType,
-            metricKey: source.metricKey
-        });
-    }
-}
-
-/**
- * Toggle the custom settings dropdown
- * @param {string} graphId - Chart identifier
- */
-function toggleSettingsDropdown(graphId) {
-    const dropdown = document.querySelector(`.settings-custom-dropdown[data-dropdown-for="${graphId}"]`);
-    if (!dropdown) return;
-    
-    const isOpen = dropdown.classList.contains('open');
-    
-    // Close all other dropdowns first
-    document.querySelectorAll('.settings-custom-dropdown.open').forEach(d => {
-        if (d !== dropdown) d.classList.remove('open');
-    });
-    
-    dropdown.classList.toggle('open', !isOpen);
-    
-    // Add click-outside handler to close
-    if (!isOpen) {
-        const closeHandler = (e) => {
-            if (!dropdown.contains(e.target)) {
-                dropdown.classList.remove('open');
-                document.removeEventListener('click', closeHandler);
-            }
-        };
-        // Delay to prevent immediate closure
-        setTimeout(() => {
-            document.addEventListener('click', closeHandler);
-        }, 0);
-    }
-}
-
-/**
- * Select a data source from the custom dropdown
- * @param {string} graphId - Chart identifier
- * @param {string} sourceId - Selected source ID
- */
-function selectDataSource(graphId, sourceId) {
-    // Close the dropdown
-    const dropdown = document.querySelector(`.settings-custom-dropdown[data-dropdown-for="${graphId}"]`);
-    if (dropdown) {
-        dropdown.classList.remove('open');
-        
-        // Update the trigger text
-        const source = DATA_SOURCE_OPTIONS.find(s => s.id === sourceId);
-        if (source) {
-            const trigger = dropdown.querySelector('.settings-dropdown-trigger span');
-            if (trigger) trigger.textContent = source.label;
-            
-            // Update selected state
-            dropdown.querySelectorAll('.settings-dropdown-option').forEach(opt => {
-                opt.classList.toggle('selected', opt.textContent.trim() === source.label);
-            });
-        }
-    }
-    
-    // Apply the change
-    handleDataSourceChange(graphId, sourceId);
-}
-
-// Expose to window
-window.handleDataSourceChange = handleDataSourceChange;
-window.toggleSettingsDropdown = toggleSettingsDropdown;
-window.selectDataSource = selectDataSource;
 
 /**
  * METRICS RENDERING FUNCTIONS
@@ -21344,7 +23130,9 @@ async function renderMetrics() {
                 graphMetrics.forEach(metricId => {
                     const metric = CUSTOM_METRICS_CATALOG[metricId];
                     if (metric && metric.hasChart) {
+                        console.log(`📊 [RENDER] Generating chart data for metric: "${metricId}"`);
                         const chartData = metric.chartData();
+                        console.log(`📊 [RENDER] Chart data for "${metricId}":`, JSON.stringify(chartData).substring(0, 200) + '...');
                         const chartDataType = metric.chartDataType || 'trend';
                         const metricIsHidden = isMetricHidden(metricId);
                         const hiddenClass = metricIsHidden ? 'metric-hidden' : '';
@@ -21358,6 +23146,8 @@ async function renderMetrics() {
                             </button>
                         ` : '';
                         
+                        // Wrap in a draggable container with metric ID
+                        html += `<div class="metrics-drag-item" data-metric-id="${metricId}">`;
                         html += createSwitchableGraphCard(
                             `custom-${metric.id || 'metric'}`,
                             `${metric.name}`,
@@ -21366,6 +23156,7 @@ async function renderMetrics() {
                             chartDataType,
                             { hideToggle: graphHideToggle, hiddenClass }
                         );
+                        html += '</div>';
                     }
                 });
                 
@@ -21411,6 +23202,11 @@ async function renderMetrics() {
     
     // Initialize pie chart hover effects
     initPieChartHoverEffects(container);
+    
+    // Initialize drag-and-drop for metrics (edit mode only)
+    if (metricsEditMode) {
+        initMetricsDragDrop();
+    }
 }
 
 /**
@@ -21606,6 +23402,35 @@ function initPieChartHoverEffects(container) {
 
 // Make renderMetrics available globally for data listener updates
 window.renderMetrics = renderMetrics;
+
+// DEBUG: Helper function to diagnose transaction data issues
+// Run `debugTransactionTypes()` in browser console to see breakdown
+window.debugTransactionTypes = function() {
+    const transactions = appState.transactions || [];
+    const breakdown = { income: [], expense: [], other: [] };
+    
+    transactions.forEach(t => {
+        if (t.type === 'income') {
+            breakdown.income.push({ id: t.id, desc: t.description, amount: t.amount, category: t.category });
+        } else if (t.type === 'expense') {
+            breakdown.expense.push({ id: t.id, desc: t.description, amount: t.amount, category: t.category });
+        } else {
+            breakdown.other.push({ id: t.id, type: t.type, desc: t.description, amount: t.amount });
+        }
+    });
+    
+    console.log('=== TRANSACTION TYPE BREAKDOWN ===');
+    console.log(`Income transactions: ${breakdown.income.length}`);
+    breakdown.income.forEach(t => console.log(`  💰 [${t.id}] ${t.desc} - $${t.amount} (${t.category})`));
+    console.log(`Expense transactions: ${breakdown.expense.length}`);
+    breakdown.expense.forEach(t => console.log(`  💸 [${t.id}] ${t.desc} - $${t.amount} (${t.category})`));
+    if (breakdown.other.length > 0) {
+        console.log(`Unknown type transactions: ${breakdown.other.length}`);
+        breakdown.other.forEach(t => console.log(`  ⚠️ [${t.id}] type="${t.type}" ${t.desc} - $${t.amount}`));
+    }
+    
+    return breakdown;
+};
 
 /**
  * Update metrics if the metrics tab is currently active.
@@ -22196,19 +24021,6 @@ function initModals() {
     // Initialize custom time pickers
     initializeTimePicker('startTimeWrapper', 'eventHour', 'eventMinute', 'startHourOptions', 'startMinuteOptions');
     initializeTimePicker('endTimeWrapper', 'eventEndHour', 'eventEndMinute', 'endHourOptions', 'endMinuteOptions');
-    
-    // Event color option buttons - updated for unified color picker
-    const eventColorOptions = document.querySelectorAll('#eventModal .unified-color-option');
-    eventColorOptions.forEach(option => {
-        option.addEventListener('click', () => {
-            const color = option.getAttribute('data-color');
-            eventColorInput.value = color;
-            
-            // Update selected state
-            eventColorOptions.forEach(o => o.classList.remove('selected'));
-            option.classList.add('selected');
-        });
-    });
     
     // Event visibility toggle (calendar-style)
     const visibilityToggles = document.querySelectorAll('#eventModal .visibility-toggle');
@@ -23020,6 +24832,22 @@ function openEventModalWithDate(selectedDate, startHour = 9) {
     resetEventVisibility();
     resetEventRepeat();
     
+    // Reset color to default red using inline color picker
+    const eventColorPicker = window.colorPickers['eventColorPicker'];
+    if (eventColorPicker) {
+        eventColorPicker.setColor('#ef4444');
+    } else {
+        // Fallback if picker not initialized yet
+        const eventColorInput = document.getElementById('eventColor');
+        const eventColorSwatch = document.getElementById('eventColorSwatch');
+        const eventColorNative = document.getElementById('eventColorNative');
+        const eventColorHex = document.getElementById('eventColorHex');
+        if (eventColorInput) eventColorInput.value = '#ef4444';
+        if (eventColorSwatch) eventColorSwatch.style.background = '#ef4444';
+        if (eventColorNative) eventColorNative.value = '#ef4444';
+        if (eventColorHex) eventColorHex.value = '#ef4444';
+    }
+    
     // Open the modal
     openModal('eventModal');
 }
@@ -23351,17 +25179,34 @@ function openEditEventModal(event) {
     document.getElementById('eventEndHour').value = String(endDate.getHours()).padStart(2, '0');
     document.getElementById('eventEndMinute').value = String(endDate.getMinutes()).padStart(2, '0');
     
-    // Set color
-    const colorInput = document.getElementById('eventColor');
-    colorInput.value = event.color || '#007AFF';
+    // Set color using inline color picker
+    const eventColor = event.color || '#007AFF';
+    const eventColorPicker = window.colorPickers['eventColorPicker'];
+    if (eventColorPicker) {
+        eventColorPicker.setColor(eventColor);
+    } else {
+        // Fallback
+        const colorInput = document.getElementById('eventColor');
+        const eventColorSwatch = document.getElementById('eventColorSwatch');
+        const eventColorNative = document.getElementById('eventColorNative');
+        const eventColorHex = document.getElementById('eventColorHex');
+        if (colorInput) colorInput.value = eventColor;
+        if (eventColorSwatch) eventColorSwatch.style.background = eventColor;
+        if (eventColorNative) eventColorNative.value = eventColor;
+        if (eventColorHex) eventColorHex.value = eventColor;
+    }
     
-    // Update event color option selection (unified style)
-    document.querySelectorAll('.unified-color-option').forEach(btn => {
-        if (btn.dataset.color === colorInput.value) {
-            btn.classList.add('selected');
-        } else {
-            btn.classList.remove('selected');
-        }
+    // Set icon using inline icon picker
+    const eventIcon = event.icon || 'calendar';
+    const eventIconInput = document.getElementById('eventIcon');
+    const iconSelected = document.getElementById('eventIconSelected');
+    const iconOptions = document.querySelectorAll('#eventIconOptions .icon-picker-option');
+    if (eventIconInput) eventIconInput.value = eventIcon;
+    if (iconSelected && window.EVENT_ICONS && window.EVENT_ICONS[eventIcon]) {
+        iconSelected.innerHTML = window.EVENT_ICONS[eventIcon];
+    }
+    iconOptions.forEach(opt => {
+        opt.classList.toggle('selected', opt.dataset.icon === eventIcon);
     });
     
     // Set visibility
@@ -24219,17 +26064,28 @@ async function loadTeamData() {
             loadActivities(),
             subscribeLinkLobbyGroups(),
             ensureTeamJoinInfoExists(),
-            initTeamSection()
+            initTeamSection(),
+            loadCustomers()
         ].filter(Boolean);
 
         await Promise.all(parallelLoads);
 
         await loadCompletedTaskCounts();
+        
+        // Hide skeleton loaders now that data is loaded
+        if (typeof hideAllSkeletons === 'function') {
+            hideAllSkeletons();
+        }
 
         debugLog('Team data loaded successfully');
     } catch (error) {
         console.error('Error loading team data:', error.code || error.message);
         debugError('Full error:', error);
+        
+        // Hide skeletons even on error so user sees empty state instead of forever loading
+        if (typeof hideAllSkeletons === 'function') {
+            hideAllSkeletons();
+        }
     }
 }
 
@@ -26893,11 +28749,41 @@ function navigateToSearchResult(route, sectionId) {
     navigateToSection(route, sectionId);
 }
 
+/**
+ * Navigate to chat and scroll to a specific message with highlight
+ * @param {string} messageId - The ID of the message to scroll to
+ */
+function navigateToChatMessage(messageId) {
+    clearSearchUI();
+    navigateToSection('chat', 'chat-section');
+    
+    // Wait for the chat to render, then scroll to the message
+    setTimeout(() => {
+        const messageEl = document.querySelector(`.message[data-message-id="${messageId}"]`);
+        
+        if (messageEl) {
+            // Scroll to the message
+            messageEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+            
+            // Add highlight effect
+            messageEl.classList.add('search-highlight');
+            
+            // Remove highlight after animation completes
+            setTimeout(() => {
+                messageEl.classList.remove('search-highlight');
+            }, 3000);
+        } else {
+            showToast('Message not found in current view', 'info', 3000);
+        }
+    }, 300);
+}
+
 // Expose search functions globally for onclick handlers
 window.executeSearchResult = executeSearchResult;
 window.executeSearchCommand = executeSearchCommand;
 window.navigateToSearchResult = navigateToSearchResult;
 window.navigateToSection = navigateToSection;
+window.navigateToChatMessage = navigateToChatMessage;
 
 /**
  * Perform the search and render results
@@ -26988,7 +28874,7 @@ function performSearch(query) {
         html += '<div class="search-section-title"><i class="fas fa-comment"></i> Messages</div>';
         results.messages.forEach(msg => {
             html += `
-                <div class="search-result-item" data-index="${resultIndex}" data-type="navigation" onclick="executeSearchResult(null, 'navigation', 'chat', 'chat-section')">
+                <div class="search-result-item" data-index="${resultIndex}" data-type="navigation" onclick="navigateToChatMessage('${msg.id}')">
                     <div class="search-result-icon"><i class="fas fa-comment"></i></div>
                     <div class="search-result-content">
                         <div class="search-result-title">${escapeHtml(msg.username || 'Unknown')}</div>
@@ -27089,8 +28975,8 @@ function initSettings() {
     // Initialize account settings form
     loadAccountSettings();
     
-    // Setup color picker
-    setupAvatarColorPicker();
+    // Setup color pickers
+    initPresetOnlyColorPickers();
     
     // Setup form submission
     const settingsForm = document.getElementById('accountSettingsForm');
@@ -27112,9 +28998,8 @@ function initSettings() {
     
     // Initialize appearance settings (dark mode)
     initAppearanceForm();
-    
-    // Initialize accent color settings
-    initAccentColorPicker();
+
+    // Accent color settings handled by preset-only picker init
     
     // Initialize inline avatar upload (dropzone)
     initInlineAvatarUpload();
@@ -27146,8 +29031,47 @@ function initSettingsTabs() {
                     pane.classList.add('active');
                 }
             });
+            
+            // Render achievements when tab is opened
+            if (targetTab === 'achievements') {
+                // Update login streak
+                updateLoginStreak();
+                // Sync retroactive achievements (runs once per team)
+                syncRetroactiveAchievements();
+                renderAchievementsTab();
+            }
         });
     });
+    
+    // Initialize gamification toggle
+    const gamificationToggle = document.getElementById('gamificationEnabled');
+    if (gamificationToggle) {
+        // Load saved state (default is enabled)
+        const isEnabled = localStorage.getItem('gamificationEnabled') !== 'false';
+        gamificationToggle.checked = isEnabled;
+        
+        // Update achievements tab visibility
+        const achievementsTab = document.getElementById('achievementsSettingsTab');
+        if (achievementsTab) {
+            achievementsTab.style.display = isEnabled ? '' : 'none';
+        }
+        
+        gamificationToggle.addEventListener('change', () => {
+            localStorage.setItem('gamificationEnabled', gamificationToggle.checked);
+            
+            // Show/hide achievements tab
+            const achievementsTab = document.getElementById('achievementsSettingsTab');
+            if (achievementsTab) {
+                achievementsTab.style.display = gamificationToggle.checked ? '' : 'none';
+            }
+            
+            if (gamificationToggle.checked) {
+                showToast('Achievements enabled! 🎮', 'success');
+            } else {
+                showToast('Achievements disabled', 'info');
+            }
+        });
+    }
     
     // Initialize theme selector in Appearance tab
     initThemeSelectorModern();
@@ -27483,7 +29407,7 @@ async function loadAccountSettings() {
             displayName: currentAuthUser.displayName || currentAuthUser.email.split('@')[0],
             email: currentAuthUser.email,
             jobTitle: '',
-            avatarColor: '#0078D4'
+            avatarColor: '#0A84FF'
         };
         
         if (db && appState.currentTeamId) {
@@ -27496,7 +29420,7 @@ async function loadAccountSettings() {
             if (userDoc.exists()) {
                 const data = userDoc.data();
                 userData.jobTitle = data.jobTitle || '';
-                userData.avatarColor = data.avatarColor || '#0078D4';
+                userData.avatarColor = data.avatarColor || '#0A84FF';
                 userData.displayName = data.displayName || userData.displayName;
             }
         }
@@ -27546,51 +29470,158 @@ function updateProfilePreview(userData) {
     }
 }
 
-// Setup avatar color picker - supports both old (.color-option), (.color-circle), and new (.color-dot) styles
-function setupAvatarColorPicker() {
-    const colorOptions = document.querySelectorAll('.color-option, .color-circle, .color-dot');
-    
-    colorOptions.forEach(option => {
-        // Make options keyboard accessible
-        option.tabIndex = 0;
-        option.addEventListener('keydown', function(e) {
-            if (e.key === 'Enter' || e.key === ' ') {
-                e.preventDefault();
-                this.click();
-            }
-        });
+function initPresetOnlyColorPickers() {
+    const pickers = document.querySelectorAll('.color-picker-inline.preset-only');
+    if (!pickers.length) return;
 
-        option.addEventListener('click', function() {
-            // Remove selected class from all
-            colorOptions.forEach(opt => opt.classList.remove('selected'));
-            
-            // Add selected class to clicked option
-            this.classList.add('selected');
-            
+    pickers.forEach(picker => {
+        // Prevent double-initialization
+        if (picker.dataset.pickerReady === 'true') return;
+        picker.dataset.pickerReady = 'true';
+
+        const type = picker.dataset.picker || 'generic'; // 'avatar' | 'accent' | 'generic'
+
+        // Gather the swatch and hidden input from data attributes
+        const swatchId = picker.dataset.swatch;
+        const swatch = swatchId ? document.getElementById(swatchId) : picker.querySelector('.color-picker-current-swatch');
+        const inputId = picker.dataset.input;
+        const hiddenInput = inputId ? document.getElementById(inputId) : null;
+
+        const normalizeColorValue = (value) => {
+            if (!value) return null;
+            const trimmed = value.trim();
+            if (trimmed.toLowerCase().startsWith('rgb')) {
+                const match = trimmed.match(/rgba?\s*\(([^)]+)\)/i);
+                if (!match) return null;
+                const parts = match[1].split(',').map(p => parseInt(p.trim(), 10));
+                if (parts.length < 3 || parts.some(n => Number.isNaN(n))) return null;
+                const [r, g, b] = parts;
+                const toHex = (n) => Math.max(0, Math.min(255, n)).toString(16).padStart(2, '0');
+                return `#${toHex(r)}${toHex(g)}${toHex(b)}`.toUpperCase();
+            }
+            return trimmed.toUpperCase();
+        };
+
+        /**
+         * Apply a color selection
+         * @param {HTMLElement} btn - The clicked button
+         * @param {Object} opts - { save: boolean, toast: boolean }
+         */
+        const applyColor = async (btn, opts = {}) => {
+            if (!btn) return;
+            // Read color directly from the button's data-color (never overwritten)
+            const rawColor = btn.dataset.color;
+            if (!rawColor) return;
+            const normalized = normalizeColorValue(rawColor);
+            if (!normalized) return;
+
+            // Update visual selection state
+            picker.querySelectorAll('.color-picker-recent-btn').forEach(b => {
+                b.classList.toggle('selected', b === btn);
+            });
+
+            // Update swatch preview
+            if (swatch) swatch.style.background = rawColor;
+
             // Update hidden input
-            const color = this.getAttribute('data-color');
-            document.getElementById('settingsAvatarColor').value = color;
-            
-            // Update preview
-            const userData = {
-                displayName: document.getElementById('settingsDisplayName').value,
-                email: document.getElementById('settingsEmail').value,
-                avatarColor: color
-            };
-            updateProfilePreview(userData);
+            if (hiddenInput) hiddenInput.value = normalized;
+
+            // Type-specific side effects
+            if (type === 'avatar') {
+                const nameEl = document.getElementById('settingsDisplayName');
+                const emailEl = document.getElementById('settingsEmail');
+                if (nameEl && emailEl) {
+                    updateProfilePreview({
+                        displayName: nameEl.value,
+                        email: emailEl.value,
+                        avatarColor: normalized
+                    });
+                }
+                return;
+            }
+
+            if (type === 'accent') {
+                const accentName = btn.dataset.accent;
+                if (!accentName || !ACCENT_COLORS[accentName]) return;
+                const colorData = ACCENT_COLORS[accentName];
+
+                applyAccentColor(accentName, colorData);
+
+                if (opts.save !== false) {
+                    localStorage.setItem('accentColor', accentName);
+                    await saveAccentColorPreference({ name: accentName, ...colorData });
+                }
+                if (opts.toast) {
+                    showToast('Accent color updated', 'success');
+                }
+            }
+        };
+
+        // --- Set initial selection ---
+        const buttons = Array.from(picker.querySelectorAll('.color-picker-recent-btn'));
+
+        if (type === 'accent') {
+            // Restore from localStorage, then overlay from Firestore
+            const saved = localStorage.getItem('accentColor');
+            const initial = saved
+                ? buttons.find(b => b.dataset.accent === saved)
+                : buttons.find(b => b.classList.contains('selected')) || buttons[0];
+            if (initial) applyColor(initial, { save: false });
+
+            // Async: check Firestore for remote preference
+            if (typeof loadAccentColorPreference === 'function') {
+                loadAccentColorPreference().then(data => {
+                    if (!data?.name || !ACCENT_COLORS[data.name]) return;
+                    const remote = buttons.find(b => b.dataset.accent === data.name);
+                    if (remote) {
+                        localStorage.setItem('accentColor', data.name);
+                        applyColor(remote, { save: false });
+                    }
+                });
+            }
+        } else {
+            // For avatar / generic: match hidden input value
+            const currentVal = hiddenInput?.value?.toUpperCase();
+            const initial = currentVal
+                ? buttons.find(b => b.dataset.color?.toUpperCase() === currentVal)
+                : buttons[0];
+            if (initial) applyColor(initial, { save: false });
+        }
+
+        // --- Click handler via delegation ---
+        picker.addEventListener('click', e => {
+            const btn = e.target.closest('.color-picker-recent-btn');
+            if (!btn || !picker.contains(btn) || !btn.dataset.color) return;
+            applyColor(btn, { save: true, toast: type === 'accent' });
         });
     });
 }
 
-// Select color option - supports old (.color-option), (.color-circle), and new (.color-dot') styles
+// Select color option - supports old and new styles
 function selectColorOption(color) {
-    const colorOptions = document.querySelectorAll('.color-option, .color-circle, .color-dot');
-    colorOptions.forEach(option => {
-        if (option.getAttribute('data-color') === color) {
-            option.classList.add('selected');
-        } else {
-            option.classList.remove('selected');
+    const picker = document.getElementById('avatarColorPicker');
+    if (!picker) return;
+
+    const normalizeColorValue = (value) => {
+        if (!value) return null;
+        const trimmed = value.trim();
+        if (trimmed.toLowerCase().startsWith('rgb')) {
+            const match = trimmed.match(/rgba?\s*\(([^)]+)\)/i);
+            if (!match) return null;
+            const parts = match[1].split(',').map(p => parseInt(p.trim(), 10));
+            if (parts.length < 3 || parts.some(n => Number.isNaN(n))) return null;
+            const [r, g, b] = parts;
+            const toHex = (n) => Math.max(0, Math.min(255, n)).toString(16).padStart(2, '0');
+            return `#${toHex(r)}${toHex(g)}${toHex(b)}`.toUpperCase();
         }
+        return trimmed.toUpperCase();
+    };
+
+    const normalized = normalizeColorValue(color);
+    const colorOptions = picker.querySelectorAll('.color-picker-recent-btn');
+    colorOptions.forEach(option => {
+        const optionColor = normalizeColorValue(option.getAttribute('data-color'));
+        option.classList.toggle('selected', normalized && optionColor === normalized);
     });
 }
 
@@ -28327,12 +30358,10 @@ async function saveDarkModePreference() {
 // ACCENT COLOR SETTINGS
 // ===================================
 
-// Apply accent color theme
 function applyAccentColor(accentName, colorData) {
     const isDark = document.body.classList.contains('dark-mode');
     const root = document.documentElement;
-    
-    // Apply the appropriate colors based on light/dark mode
+
     if (isDark) {
         root.style.setProperty('--accent', colorData.dark);
         root.style.setProperty('--accent-hover', colorData.darkHover);
@@ -28342,117 +30371,36 @@ function applyAccentColor(accentName, colorData) {
         root.style.setProperty('--accent-hover', colorData.hover);
         root.style.setProperty('--accent-soft', colorData.soft);
     }
-    
-    // Also update the primary-blue alias for backward compatibility
+
     root.style.setProperty('--primary-blue', isDark ? colorData.dark : colorData.color);
     root.style.setProperty('--primary-dark', isDark ? colorData.darkHover : colorData.hover);
 }
 
-// Initialize accent color picker
-function initAccentColorPicker() {
-    const picker = document.getElementById('accentColorPicker');
-    if (!picker) return;
-    
-    // Load saved accent from localStorage first for instant load
-    const savedAccent = localStorage.getItem('accentColor') || 'blue';
-    
-    // Select the saved option and apply colors
-    picker.querySelectorAll('.accent-color-option').forEach(opt => {
-        opt.classList.remove('selected');
-        if (opt.dataset.accent === savedAccent) {
-            opt.classList.add('selected');
-            applyAccentColor(savedAccent, {
-                color: opt.dataset.color,
-                hover: opt.dataset.hover,
-                soft: opt.dataset.soft,
-                dark: opt.dataset.dark,
-                darkHover: opt.dataset.darkHover,
-                darkSoft: opt.dataset.darkSoft
-            });
-        }
-    });
-    
-    // Load from Firestore and override if set
-    loadAccentColorPreference().then(accentData => {
-        if (accentData && accentData.name) {
-            const option = picker.querySelector(`[data-accent="${accentData.name}"]`);
-            if (option) {
-                picker.querySelectorAll('.accent-color-option').forEach(opt => opt.classList.remove('selected'));
-                option.classList.add('selected');
-                applyAccentColor(accentData.name, accentData);
-                localStorage.setItem('accentColor', accentData.name);
-            }
-        }
-    });
-    
-    // Add click handlers for each color option
-    picker.querySelectorAll('.accent-color-option').forEach(option => {
-        option.addEventListener('click', async () => {
-            // Update selected state
-            picker.querySelectorAll('.accent-color-option').forEach(opt => opt.classList.remove('selected'));
-            option.classList.add('selected');
-            
-            // Get color data from data attributes
-            const accentName = option.dataset.accent;
-            const colorData = {
-                name: accentName,
-                color: option.dataset.color,
-                hover: option.dataset.hover,
-                soft: option.dataset.soft,
-                dark: option.dataset.dark,
-                darkHover: option.dataset.darkHover,
-                darkSoft: option.dataset.darkSoft
-            };
-            
-            // Apply instantly
-            applyAccentColor(accentName, colorData);
-            
-            // Save to localStorage for instant load next time
-            localStorage.setItem('accentColor', accentName);
-            
-            // Save to Firestore
-            await saveAccentColorPreference(colorData);
-            
-            showToast('Accent color updated', 'success');
-        });
-    });
-    
-    // Listen for dark mode changes to re-apply accent with correct dark/light variant
-    const darkModeObserver = new MutationObserver((mutations) => {
-        mutations.forEach((mutation) => {
-            if (mutation.attributeName === 'class') {
-                const selectedOption = picker.querySelector('.accent-color-option.selected');
-                if (selectedOption) {
-                    applyAccentColor(selectedOption.dataset.accent, {
-                        color: selectedOption.dataset.color,
-                        hover: selectedOption.dataset.hover,
-                        soft: selectedOption.dataset.soft,
-                        dark: selectedOption.dataset.dark,
-                        darkHover: selectedOption.dataset.darkHover,
-                        darkSoft: selectedOption.dataset.darkSoft
-                    });
-                }
-            }
-        });
-    });
-    darkModeObserver.observe(document.body, { attributes: true });
-}
+const ACCENT_COLORS = {
+    blue: { color: '#0A84FF', hover: '#0066CC', soft: 'rgba(10, 132, 255, 0.12)', dark: '#409CFF', darkHover: '#0A84FF', darkSoft: 'rgba(64, 156, 255, 0.15)' },
+    teal: { color: '#14B8A6', hover: '#0F8C7D', soft: 'rgba(20, 184, 166, 0.12)', dark: '#2DD4BF', darkHover: '#14B8A6', darkSoft: 'rgba(45, 212, 191, 0.15)' },
+    green: { color: '#22C55E', hover: '#1B9A4A', soft: 'rgba(34, 197, 94, 0.12)', dark: '#4ADE80', darkHover: '#22C55E', darkSoft: 'rgba(74, 222, 128, 0.15)' },
+    purple: { color: '#8B5CF6', hover: '#7C3AED', soft: 'rgba(139, 92, 246, 0.12)', dark: '#A78BFA', darkHover: '#8B5CF6', darkSoft: 'rgba(167, 139, 250, 0.15)' },
+    red: { color: '#EF4444', hover: '#DC2626', soft: 'rgba(239, 68, 68, 0.12)', dark: '#F87171', darkHover: '#EF4444', darkSoft: 'rgba(248, 113, 113, 0.15)' },
+    orange: { color: '#F59E0B', hover: '#D97706', soft: 'rgba(245, 158, 11, 0.12)', dark: '#FBBF24', darkHover: '#F59E0B', darkSoft: 'rgba(251, 191, 36, 0.15)' }
+};
 
-// Load accent color preference from Firestore
+
+
 async function loadAccentColorPreference() {
     if (!currentAuthUser || !db) {
         return null;
     }
-    
+
     try {
         const { doc, getDoc } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
         const userRef = doc(db, 'users', currentAuthUser.uid);
         const userDoc = await getDoc(userRef);
-        
+
         if (userDoc.exists()) {
             return userDoc.data().preferences?.style?.accentColor || null;
         }
-        
+
         return null;
     } catch (error) {
         console.error('Error loading accent color preference:', error);
@@ -28460,58 +30408,43 @@ async function loadAccentColorPreference() {
     }
 }
 
-// Save accent color preference to Firestore
 async function saveAccentColorPreference(colorData) {
     if (!currentAuthUser || !db) {
-        console.warn('Cannot save accent preference - not logged in');
         return;
     }
-    
+
     try {
-        await updateUserPreferences({ 
-            style: { 
-                accentColor: colorData 
-            } 
+        await updateUserPreferences({
+            style: {
+                accentColor: colorData
+            }
         });
     } catch (error) {
         console.error('Error saving accent color preference:', error);
     }
 }
 
-// Apply accent color early (before page fully loads) from localStorage
 function applyAccentColorEarly() {
     const savedAccent = localStorage.getItem('accentColor');
-    if (!savedAccent || savedAccent === 'blue') return; // Default blue, no need to change
-    
-    const accentPresets = {
-        blue: { color: '#0070F3', hover: '#0051CC', soft: 'rgba(0, 112, 243, 0.12)', dark: '#0A84FF', darkHover: '#0070F3', darkSoft: 'rgba(10, 132, 255, 0.15)' },
-        purple: { color: '#AF52DE', hover: '#9340C7', soft: 'rgba(175, 82, 222, 0.12)', dark: '#BF5AF2', darkHover: '#AF52DE', darkSoft: 'rgba(191, 90, 242, 0.15)' },
-        green: { color: '#34C759', hover: '#2DB04E', soft: 'rgba(52, 199, 89, 0.12)', dark: '#32D74B', darkHover: '#34C759', darkSoft: 'rgba(50, 215, 75, 0.15)' },
-        orange: { color: '#FF9500', hover: '#E68600', soft: 'rgba(255, 149, 0, 0.12)', dark: '#FF9F0A', darkHover: '#FF9500', darkSoft: 'rgba(255, 159, 10, 0.15)' },
-        pink: { color: '#FF2D55', hover: '#E6264D', soft: 'rgba(255, 45, 85, 0.12)', dark: '#FF375F', darkHover: '#FF2D55', darkSoft: 'rgba(255, 55, 95, 0.15)' },
-        teal: { color: '#00C7BE', hover: '#00ADA6', soft: 'rgba(0, 199, 190, 0.12)', dark: '#64D2FF', darkHover: '#00C7BE', darkSoft: 'rgba(100, 210, 255, 0.15)' }
-    };
-    
-    const preset = accentPresets[savedAccent];
-    if (preset) {
-        const isDark = localStorage.getItem('darkMode') === 'true';
-        const root = document.documentElement;
-        
-        if (isDark) {
-            root.style.setProperty('--accent', preset.dark);
-            root.style.setProperty('--accent-hover', preset.darkHover);
-            root.style.setProperty('--accent-soft', preset.darkSoft);
-        } else {
-            root.style.setProperty('--accent', preset.color);
-            root.style.setProperty('--accent-hover', preset.hover);
-            root.style.setProperty('--accent-soft', preset.soft);
-        }
-        root.style.setProperty('--primary-blue', isDark ? preset.dark : preset.color);
-        root.style.setProperty('--primary-dark', isDark ? preset.darkHover : preset.hover);
+    const preset = ACCENT_COLORS[savedAccent];
+    if (!preset) return;
+
+    const isDark = localStorage.getItem('darkMode') === 'true';
+    const root = document.documentElement;
+
+    if (isDark) {
+        root.style.setProperty('--accent', preset.dark);
+        root.style.setProperty('--accent-hover', preset.darkHover);
+        root.style.setProperty('--accent-soft', preset.darkSoft);
+    } else {
+        root.style.setProperty('--accent', preset.color);
+        root.style.setProperty('--accent-hover', preset.hover);
+        root.style.setProperty('--accent-soft', preset.soft);
     }
+    root.style.setProperty('--primary-blue', isDark ? preset.dark : preset.color);
+    root.style.setProperty('--primary-dark', isDark ? preset.darkHover : preset.hover);
 }
 
-// Call early application
 applyAccentColorEarly();
 
 // ===================================
@@ -31202,7 +33135,7 @@ async function saveTaskToFirestore(task) {
         const allowedFields = ['title', 'description', 'status', 'assignee', 'assigneeId', 'priority', 
                                'dueAt', 'dueDate', 'tags', 'completed', 'completedAt', 'completedBy', 
                                'progress', 'estimatedTime', 'budget', 'spreadsheetId', 'showOnCalendar',
-                               'isRecurring', 'recurrence',
+                       'isRecurring', 'recurrence', 'xpA',
                                // Lead-specific fields
                                'leadName', 'source', 'value', 'contact', 'notes',
                                // Custom fields
@@ -31301,7 +33234,7 @@ async function updateTaskInFirestore(task) {
         // NOTE: createdBy, teamId, createdAt are immutable - don't send on UPDATE
         const allowedFields = ['title', 'description', 'status', 'assignee', 'assigneeId', 'priority', 
                                'dueAt', 'dueDate', 'tags', 'completed', 'completedAt', 'completedBy', 
-                               'progress', 'estimatedTime',
+                       'progress', 'estimatedTime', 'xpA',
                                // Lead-specific fields
                                'leadName', 'source', 'value', 'contact', 'notes',
                                // Custom fields
@@ -33480,6 +35413,76 @@ const FINANCE_CATEGORIES = {
 };
 
 /**
+ * Initialize transaction category dropdown
+ * @param {string} type - 'Income' or 'Expense'
+ */
+function initTransactionCategoryDropdown(type) {
+    const isIncome = type === 'Income';
+    const trigger = document.getElementById(`transactionCategory${type}Trigger`);
+    const menu = document.getElementById(`transactionCategory${type}Menu`);
+    const display = document.getElementById(`transactionCategory${type}Display`);
+    const hiddenInput = document.getElementById(`transactionCategory${type}`);
+    
+    if (!trigger || !menu) return;
+    
+    // Toggle menu on trigger click
+    trigger.addEventListener('click', (e) => {
+        e.stopPropagation();
+        // Close other dropdown
+        const otherType = isIncome ? 'Expense' : 'Income';
+        const otherMenu = document.getElementById(`transactionCategory${otherType}Menu`);
+        const otherTrigger = document.getElementById(`transactionCategory${otherType}Trigger`);
+        if (otherMenu) otherMenu.classList.remove('visible');
+        if (otherTrigger) otherTrigger.classList.remove('active');
+        
+        // Toggle this menu
+        menu.classList.toggle('visible');
+        trigger.classList.toggle('active');
+    });
+    
+    // Handle option selection
+    const options = menu.querySelectorAll('.dropdown-menu-option');
+    options.forEach(option => {
+        option.addEventListener('click', () => {
+            const value = option.dataset.value;
+            const label = option.textContent;
+            
+            // Update hidden input
+            if (hiddenInput) {
+                hiddenInput.value = value;
+            }
+            
+            // Update display
+            if (display) {
+                if (value) {
+                    display.textContent = label;
+                    display.classList.remove('dropdown-placeholder');
+                } else {
+                    display.textContent = 'Select category...';
+                    display.classList.add('dropdown-placeholder');
+                }
+            }
+            
+            // Close menu
+            menu.classList.remove('visible');
+            trigger.classList.remove('active');
+        });
+    });
+}
+
+// Close dropdowns when clicking outside
+document.addEventListener('click', (e) => {
+    if (!e.target.closest('.transaction-category-dropdown')) {
+        document.querySelectorAll('.transaction-category-dropdown .custom-dropdown-menu').forEach(menu => {
+            menu.classList.remove('visible');
+        });
+        document.querySelectorAll('.transaction-category-dropdown .custom-dropdown-trigger').forEach(trigger => {
+            trigger.classList.remove('active');
+        });
+    }
+});
+
+/**
  * Initialize finances tab event listeners
  */
 function initFinances() {
@@ -33541,6 +35544,17 @@ function initFinances() {
             btn.classList.add('active');
             document.getElementById('transactionType').value = btn.dataset.type;
             
+            // Toggle category dropdowns based on type
+            const incomeContainer = document.getElementById('transactionCategoryIncomeContainer');
+            const expenseContainer = document.getElementById('transactionCategoryExpenseContainer');
+            if (btn.dataset.type === 'income') {
+                if (incomeContainer) incomeContainer.style.display = 'block';
+                if (expenseContainer) expenseContainer.style.display = 'none';
+            } else {
+                if (incomeContainer) incomeContainer.style.display = 'none';
+                if (expenseContainer) expenseContainer.style.display = 'block';
+            }
+            
             // Update party label
             const partyLabel = document.getElementById('transactionPartyLabel');
             if (partyLabel) {
@@ -33550,6 +35564,10 @@ function initFinances() {
             }
         });
     });
+    
+    // Initialize transaction category dropdowns
+    initTransactionCategoryDropdown('Income');
+    initTransactionCategoryDropdown('Expense');
     
     // Recurring toggle
     const recurringToggle = document.getElementById('transactionRecurring');
@@ -33639,6 +35657,32 @@ function openTransactionModal(transaction = null, defaultType = 'income') {
         btn.classList.toggle('active', btn.dataset.type === defaultType);
     });
     
+    // Show appropriate category dropdown and reset displays
+    const incomeContainer = document.getElementById('transactionCategoryIncomeContainer');
+    const expenseContainer = document.getElementById('transactionCategoryExpenseContainer');
+    const incomeDisplay = document.getElementById('transactionCategoryIncomeDisplay');
+    const expenseDisplay = document.getElementById('transactionCategoryExpenseDisplay');
+    
+    if (defaultType === 'income') {
+        if (incomeContainer) incomeContainer.style.display = 'block';
+        if (expenseContainer) expenseContainer.style.display = 'none';
+        if (incomeDisplay) {
+            incomeDisplay.textContent = 'Select category...';
+            incomeDisplay.classList.add('dropdown-placeholder');
+        }
+    } else {
+        if (incomeContainer) incomeContainer.style.display = 'none';
+        if (expenseContainer) expenseContainer.style.display = 'block';
+        if (expenseDisplay) {
+            expenseDisplay.textContent = 'Select category...';
+            expenseDisplay.classList.add('dropdown-placeholder');
+        }
+    }
+    
+    // Reset category inputs
+    document.getElementById('transactionCategoryIncome').value = '';
+    document.getElementById('transactionCategoryExpense').value = '';
+    
     // Reset recurring field
     const frequencyField = document.getElementById('recurringFrequencyField');
     if (frequencyField) {
@@ -33670,16 +35714,50 @@ function openTransactionModal(transaction = null, defaultType = 'income') {
         document.getElementById('transactionAmount').value = transaction.amount;
         document.getElementById('transactionDate').value = transaction.date?.toDate?.()?.toISOString().split('T')[0] || transaction.date;
         document.getElementById('transactionDescription').value = transaction.description || '';
-        document.getElementById('transactionCategory').value = transaction.category || '';
+        
+        // Set category in appropriate dropdown and display
+        const catValue = transaction.category || '';
+        const catLabel = catValue ? FINANCE_CATEGORIES[transaction.type]?.find(c => c.value === catValue)?.label || catValue : 'Select category...';
+        const isPlaceholder = !catValue;
+        
+        if (transaction.type === 'income') {
+            document.getElementById('transactionCategoryIncome').value = catValue;
+            const incomeDisplay = document.getElementById('transactionCategoryIncomeDisplay');
+            if (incomeDisplay) {
+                incomeDisplay.textContent = catLabel;
+                incomeDisplay.classList.toggle('dropdown-placeholder', isPlaceholder);
+            }
+            document.getElementById('transactionCategoryExpense').value = '';
+            if (incomeContainer) incomeContainer.style.display = 'block';
+            if (expenseContainer) expenseContainer.style.display = 'none';
+        } else {
+            document.getElementById('transactionCategoryExpense').value = catValue;
+            const expenseDisplay = document.getElementById('transactionCategoryExpenseDisplay');
+            if (expenseDisplay) {
+                expenseDisplay.textContent = catLabel;
+                expenseDisplay.classList.toggle('dropdown-placeholder', isPlaceholder);
+            }
+            document.getElementById('transactionCategoryIncome').value = '';
+            if (incomeContainer) incomeContainer.style.display = 'none';
+            if (expenseContainer) expenseContainer.style.display = 'block';
+        }
+        
         document.getElementById('transactionParty').value = transaction.party || '';
         document.getElementById('transactionRecurring').checked = transaction.isRecurring || false;
         document.getElementById('transactionFrequency').value = transaction.frequency || 'monthly';
         document.getElementById('transactionNotes').value = transaction.notes || '';
         
-        // Update type buttons
+        // Update type buttons and category visibility
         typeButtons.forEach(btn => {
             btn.classList.toggle('active', btn.dataset.type === transaction.type);
         });
+        if (transaction.type === 'income') {
+            if (incomeContainer) incomeContainer.style.display = 'block';
+            if (expenseContainer) expenseContainer.style.display = 'none';
+        } else {
+            if (incomeContainer) incomeContainer.style.display = 'none';
+            if (expenseContainer) expenseContainer.style.display = 'block';
+        }
         
         // Show frequency field if recurring
         if (transaction.isRecurring && frequencyField) {
@@ -33699,6 +35777,13 @@ function openTransactionModal(transaction = null, defaultType = 'income') {
         subtitle.textContent = `Record a new ${typeLabel.toLowerCase()} transaction`;
     }
     
+    // Populate customer name suggestions from customers registry
+    const customerSuggestions = document.getElementById('customerSuggestions');
+    if (customerSuggestions) {
+        const names = getCustomerNameSuggestions();
+        customerSuggestions.innerHTML = names.map(n => `<option value="${escapeHtml(n)}">`).join('');
+    }
+
     modal.classList.add('active');
 }
 
@@ -33727,15 +35812,25 @@ async function handleTransactionSave(event) {
     const isEdit = !!transactionId;
     
     // Get form values
+    const transactionType = document.getElementById('transactionType').value;
+    
+    // Validate type is set (critical for proper categorization)
+    if (!transactionType || (transactionType !== 'income' && transactionType !== 'expense')) {
+        showToast('Please select a transaction type (Income or Expense)', 'error');
+        return;
+    }
+    
     const transactionData = {
-        type: document.getElementById('transactionType').value,
+        type: transactionType, // 'income' or 'expense' - REQUIRED
         amount: parseFloat(document.getElementById('transactionAmount').value) || 0,
         date: new Date(document.getElementById('transactionDate').value),
         description: document.getElementById('transactionDescription').value.trim(),
-        category: document.getElementById('transactionCategory').value,
+        category: transactionType === 'income' 
+            ? (document.getElementById('transactionCategoryIncome').value || 'other')
+            : (document.getElementById('transactionCategoryExpense').value || 'other'),
         party: document.getElementById('transactionParty').value.trim(),
-        isRecurring: document.getElementById('transactionRecurring').checked,
-        frequency: document.getElementById('transactionFrequency').value,
+        isRecurring: document.getElementById('transactionRecurring').checked === true,
+        frequency: document.getElementById('transactionRecurring').checked ? document.getElementById('transactionFrequency').value : '',
         notes: document.getElementById('transactionNotes').value.trim(),
         updatedAt: new Date()
     };
@@ -33832,6 +35927,82 @@ async function handleDeleteTransaction() {
 }
 
 /**
+ * Normalize a transaction to ensure all required fields exist
+ * This handles old transactions that may not have all fields set
+ * @param {Object} transaction - The raw transaction from database
+ * @returns {Object} Normalized transaction with all fields
+ */
+function normalizeTransaction(transaction) {
+    // Check if type exists and is valid
+    const hasValidType = transaction.type === 'income' || transaction.type === 'expense';
+    const finalType = hasValidType ? transaction.type : inferTransactionType(transaction);
+    
+    // DEBUG: Log when type inference is used
+    if (!hasValidType) {
+        console.warn(`[normalizeTransaction] Transaction "${transaction.id}" missing valid type. Raw type: "${transaction.type}", Inferred: "${finalType}"`);
+    }
+    
+    // Default values for missing fields
+    const normalized = {
+        id: transaction.id,
+        // Type is REQUIRED - if missing or invalid, infer from other fields
+        type: finalType,
+        amount: parseFloat(transaction.amount) || 0,
+        date: transaction.date,
+        description: transaction.description || '',
+        category: transaction.category || 'other',
+        party: transaction.party || '',
+        isRecurring: transaction.isRecurring === true,
+        frequency: transaction.frequency || '',
+        notes: transaction.notes || '',
+        createdBy: transaction.createdBy || null,
+        createdAt: transaction.createdAt || null,
+        updatedAt: transaction.updatedAt || null
+    };
+    
+    return normalized;
+}
+
+/**
+ * Infer transaction type from available data when type field is missing
+ * This is for backwards compatibility with old transactions
+ * @param {Object} transaction - The transaction to analyze
+ * @returns {string} 'income' or 'expense'
+ */
+function inferTransactionType(transaction) {
+    // Check if category suggests income (revenue categories)
+    const incomeCategories = ['sales', 'services', 'consulting', 'subscription', 'recurring', 'client', 'revenue', 'income', 'payment'];
+    const expenseCategories = ['rent', 'utilities', 'software', 'hardware', 'salary', 'marketing', 'office', 'travel', 'supplies', 'expense', 'cost'];
+    
+    const category = (transaction.category || '').toLowerCase();
+    const description = (transaction.description || '').toLowerCase();
+    const party = (transaction.party || '').toLowerCase();
+    
+    // Check category first
+    if (incomeCategories.some(c => category.includes(c))) {
+        return 'income';
+    }
+    if (expenseCategories.some(c => category.includes(c))) {
+        return 'expense';
+    }
+    
+    // Check description for income keywords
+    const incomeKeywords = ['payment from', 'received', 'revenue', 'income', 'client payment', 'sale', 'invoice'];
+    const expenseKeywords = ['paid to', 'payment to', 'expense', 'cost', 'purchased', 'bought', 'subscription to'];
+    
+    if (incomeKeywords.some(k => description.includes(k))) {
+        return 'income';
+    }
+    if (expenseKeywords.some(k => description.includes(k))) {
+        return 'expense';
+    }
+    
+    // Default to expense (safer default - won't inflate revenue numbers)
+    console.warn('Could not infer transaction type, defaulting to expense:', transaction.id, transaction.description);
+    return 'expense';
+}
+
+/**
  * Load transactions from Firestore
  */
 async function loadTransactions() {
@@ -33846,13 +36017,25 @@ async function loadTransactions() {
         const q = query(transactionsRef, orderBy('date', 'desc'));
         const snapshot = await getDocs(q);
         
-        appState.transactions = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data()
-        }));
+        // Normalize all transactions to ensure required fields exist
+        appState.transactions = snapshot.docs.map(doc => {
+            const rawData = { id: doc.id, ...doc.data() };
+            return normalizeTransaction(rawData);
+        });
         
-        debugLog('💰 Loaded transactions:', appState.transactions.length);
+        // DEBUG: Log type distribution after loading
+        const typeBreakdown = { income: 0, expense: 0, other: 0 };
+        appState.transactions.forEach(t => {
+            if (t.type === 'income') typeBreakdown.income++;
+            else if (t.type === 'expense') typeBreakdown.expense++;
+            else typeBreakdown.other++;
+        });
+        console.log('💰 Loaded and normalized transactions:', appState.transactions.length, 'Type breakdown:', typeBreakdown);
+        
         renderFinances();
+        if (document.getElementById('customersList')) {
+            renderCustomers();
+        }
         
         // Check for milestone achievements
         checkRevenueMilestones();
@@ -34031,6 +36214,7 @@ function calculateFinanceMetrics(transactions = appState.transactions) {
         const amount = t.amount || 0;
         const transactionDate = t.date?.toDate?.() || new Date(t.date);
         
+        // IMPORTANT: Explicitly check for 'income' type
         if (t.type === 'income') {
             totalIncome += amount;
             
@@ -34044,8 +36228,8 @@ function calculateFinanceMetrics(transactions = appState.transactions) {
                 ytdIncome += amount;
             }
             
-            // MRR calculation - recurring monthly income
-            if (t.isRecurring) {
+            // MRR calculation - recurring monthly income only
+            if (t.isRecurring === true) {
                 switch (t.frequency) {
                     case 'monthly':
                         mrr += amount;
@@ -34056,9 +36240,15 @@ function calculateFinanceMetrics(transactions = appState.transactions) {
                     case 'yearly':
                         mrr += amount / 12;
                         break;
+                    case 'weekly':
+                        mrr += amount * 4;
+                        break;
+                    // Don't add anything for invalid/missing frequency
                 }
             }
-        } else {
+        } 
+        // IMPORTANT: Explicitly check for 'expense' type - don't count undefined or other types
+        else if (t.type === 'expense') {
             totalExpenses += amount;
             
             // YTD expenses
@@ -34066,6 +36256,7 @@ function calculateFinanceMetrics(transactions = appState.transactions) {
                 ytdExpenses += amount;
             }
         }
+        // Ignore transactions with invalid or missing type
     });
     
     // Find main customer (highest total)
@@ -34536,6 +36727,535 @@ function getFinanceMetricsData() {
 // Expose functions to window for inline onclick handlers
 window.editTransaction = editTransaction;
 window.openDeleteTransactionModal = openDeleteTransactionModal;
+
+// ===================================
+// CUSTOMERS MANAGEMENT (Unified Customer Registry)
+// ===================================
+
+/**
+ * Load customers from Firestore into appState.customers
+ */
+async function loadCustomers() {
+    if (!db || !appState.currentTeamId) {
+        appState.customers = [];
+        return;
+    }
+
+    try {
+        const { collection, query, orderBy, getDocs } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+        const customersRef = collection(db, 'teams', appState.currentTeamId, 'customers');
+        const q = query(customersRef, orderBy('name', 'asc'));
+        const snapshot = await getDocs(q);
+
+        appState.customers = snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data()
+        }));
+
+        console.log('👥 Loaded customers:', appState.customers.length);
+        renderCustomers();
+    } catch (error) {
+        console.error('Error loading customers:', error);
+        appState.customers = [];
+    }
+}
+
+/**
+ * Render the customers list in the Finances tab
+ */
+function renderCustomers() {
+    const customers = appState.customers || [];
+    const listEl = document.getElementById('customersList');
+    const emptyEl = document.getElementById('customersEmptyState');
+    const countEl = document.getElementById('customersCount');
+    const searchRow = document.getElementById('customersSearchRow');
+    const canEdit = hasPermission('editFinances');
+
+    // Update count badge
+    if (countEl) countEl.textContent = customers.length;
+
+    // Show/hide add buttons based on permissions
+    const addBtn = document.getElementById('addCustomerBtn');
+    const addFirstBtn = document.getElementById('addFirstCustomerBtn');
+    if (addBtn) addBtn.style.display = canEdit ? 'inline-flex' : 'none';
+    if (addFirstBtn) addFirstBtn.style.display = canEdit ? 'inline-flex' : 'none';
+
+    // Show search bar when >= 5 customers
+    if (searchRow) searchRow.style.display = customers.length >= 5 ? 'block' : 'none';
+
+    if (customers.length === 0) {
+        if (listEl) listEl.innerHTML = '';
+        if (emptyEl) emptyEl.style.display = 'flex';
+        return;
+    }
+
+    if (emptyEl) emptyEl.style.display = 'none';
+
+    // Get search filter
+    const searchInput = document.getElementById('customerSearchInput');
+    const searchTerm = (searchInput?.value || '').trim().toLowerCase();
+
+    // Compute revenue per customer from transactions
+    const revenueByCustomer = {};
+    (appState.transactions || []).forEach(t => {
+        if (t.type === 'income' && t.party) {
+            const normalized = t.party.trim().toLowerCase();
+            revenueByCustomer[normalized] = (revenueByCustomer[normalized] || 0) + (t.amount || 0);
+        }
+    });
+
+    // Filter and render
+    let filteredCustomers = customers;
+    if (searchTerm) {
+        filteredCustomers = customers.filter(c => {
+            const name = (c.name || '').toLowerCase();
+            const company = (c.company || '').toLowerCase();
+            const email = (c.email || '').toLowerCase();
+            return name.includes(searchTerm) || company.includes(searchTerm) || email.includes(searchTerm);
+        });
+    }
+
+    if (listEl) {
+        listEl.innerHTML = filteredCustomers.map(c => renderCustomerRow(c, revenueByCustomer, canEdit)).join('');
+    }
+}
+
+/**
+ * Render a single customer row
+ */
+function renderCustomerRow(customer, revenueByCustomer, canEdit) {
+    const c = customer;
+    const normalizedName = (c.name || '').trim().toLowerCase();
+    const revenue = revenueByCustomer[normalizedName] || 0;
+
+    // Build meta items
+    const metaParts = [];
+    if (c.company) metaParts.push(escapeHtml(c.company));
+    if (c.email) metaParts.push(escapeHtml(c.email));
+
+    const metaHtml = metaParts.length > 0
+        ? metaParts.join('<span class="customer-meta-dot"></span>')
+        : '<span style="opacity:0.5;">No details</span>';
+
+    // Source badge
+    const sourceLabel = c.source === 'lead' ? 'Lead' : c.source === 'transaction' ? 'Transaction' : 'Manual';
+    const sourceClass = c.source === 'lead' ? 'source-lead' : c.source === 'transaction' ? 'source-transaction' : 'source-manual';
+
+    // Get creator info
+    let addedBy = 'Unknown';
+    if (c.createdByName) {
+        addedBy = c.createdByName;
+    } else if (c.createdBy) {
+        const identity = getIdentity(c.createdBy);
+        if (identity && identity.displayName) addedBy = identity.displayName;
+    }
+    const createdAtDate = c.createdAt?.toDate?.() || (c.createdAt ? new Date(c.createdAt) : null);
+    const createdAtStr = createdAtDate
+        ? createdAtDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })
+        : '';
+
+    return `
+        <div class="customer-row" data-id="${c.id}" onclick="toggleCustomerRow(this)">
+            <div class="customer-row-header">
+                <div class="customer-row-info">
+                    <div class="customer-row-name">${escapeHtml(c.name)}</div>
+                    <div class="customer-row-meta">${metaHtml}</div>
+                </div>
+                ${revenue > 0 ? `
+                <div class="customer-row-revenue">
+                    <div class="customer-revenue-amount">${formatCurrency(revenue)}</div>
+                    <div class="customer-revenue-label">total revenue</div>
+                </div>
+                ` : ''}
+                <span class="customer-row-source ${sourceClass}">${sourceLabel}</span>
+            </div>
+            <div class="customer-row-details">
+                <div class="customer-detail-grid">
+                    ${c.company ? `
+                    <div class="customer-detail-item">
+                        <span class="detail-label">Company</span>
+                        <span class="detail-value">${escapeHtml(c.company)}</span>
+                    </div>` : ''}
+                    ${c.email ? `
+                    <div class="customer-detail-item">
+                        <span class="detail-label">Email</span>
+                        <span class="detail-value">${escapeHtml(c.email)}</span>
+                    </div>` : ''}
+                    ${c.phone ? `
+                    <div class="customer-detail-item">
+                        <span class="detail-label">Phone</span>
+                        <span class="detail-value">${escapeHtml(c.phone)}</span>
+                    </div>` : ''}
+                    <div class="customer-detail-item">
+                        <span class="detail-label">Total Revenue</span>
+                        <span class="detail-value" style="color: #22c55e; font-weight: 600;">${formatCurrency(revenue)}</span>
+                    </div>
+                    ${c.notes ? `
+                    <div class="customer-detail-item full-width">
+                        <span class="detail-label">Notes</span>
+                        <span class="detail-value">${escapeHtml(c.notes)}</span>
+                    </div>` : ''}
+                    <div class="customer-detail-item">
+                        <span class="detail-label">Added By</span>
+                        <span class="detail-value">${escapeHtml(addedBy)}</span>
+                    </div>
+                    ${createdAtStr ? `
+                    <div class="customer-detail-item">
+                        <span class="detail-label">Added On</span>
+                        <span class="detail-value">${createdAtStr}</span>
+                    </div>` : ''}
+                </div>
+                ${canEdit ? `
+                <div class="customer-row-actions">
+                    <button class="btn-sm btn-edit" onclick="event.stopPropagation(); editCustomer('${c.id}')">
+                        <i class="fas fa-pen"></i> Edit
+                    </button>
+                    <button class="btn-sm btn-delete" onclick="event.stopPropagation(); openDeleteCustomerModal('${c.id}')">
+                        <i class="fas fa-trash"></i> Delete
+                    </button>
+                </div>` : ''}
+            </div>
+        </div>
+    `;
+}
+
+/**
+ * Toggle customer row expansion
+ */
+function toggleCustomerRow(el) {
+    el.classList.toggle('expanded');
+}
+
+/**
+ * Open customer modal for adding or editing
+ */
+function openCustomerModal(customer = null) {
+    const modal = document.getElementById('customerModal');
+    const form = document.getElementById('customerForm');
+    const title = document.getElementById('customerModalTitle');
+    const subtitle = document.getElementById('customerModalSubtitle');
+
+    if (!modal || !form) return;
+
+    form.reset();
+    document.getElementById('customerId').value = '';
+
+    // Reset source field
+    const sourceField = document.getElementById('customerSourceField');
+    if (sourceField) sourceField.style.display = 'none';
+
+    if (customer) {
+        // Edit mode
+        title.innerHTML = '<i class="fas fa-user-edit"></i> Edit Customer';
+        subtitle.textContent = 'Update customer information';
+        document.getElementById('customerId').value = customer.id;
+        document.getElementById('customerName').value = customer.name || '';
+        document.getElementById('customerCompany').value = customer.company || '';
+        document.getElementById('customerEmail').value = customer.email || '';
+        document.getElementById('customerPhone').value = customer.phone || '';
+        document.getElementById('customerNotes').value = customer.notes || '';
+
+        // Show source if auto-created
+        if (customer.source && customer.source !== 'manual') {
+            if (sourceField) sourceField.style.display = 'block';
+            const sourceDisplay = document.getElementById('customerSourceDisplay');
+            if (sourceDisplay) {
+                sourceDisplay.value = customer.source === 'lead' ? 'Auto-created from won lead' : 'Auto-created from transaction';
+            }
+        }
+    } else {
+        title.innerHTML = '<i class="fas fa-user-plus"></i> New Customer';
+        subtitle.textContent = 'Add a new customer to your registry';
+    }
+
+    modal.classList.add('active');
+}
+
+/**
+ * Close customer modal
+ */
+function closeCustomerModalFn() {
+    const modal = document.getElementById('customerModal');
+    if (modal) modal.classList.remove('active');
+}
+
+/**
+ * Handle customer form save
+ */
+async function handleCustomerSave(event) {
+    event.preventDefault();
+
+    if (!db || !appState.currentTeamId || !currentAuthUser) {
+        showToast('Unable to save customer. Please try again.', 'error');
+        return;
+    }
+
+    const customerId = document.getElementById('customerId').value;
+    const isEdit = !!customerId;
+
+    const name = document.getElementById('customerName').value.trim();
+    if (!name) {
+        showToast('Please enter a customer name', 'error');
+        return;
+    }
+
+    // Check for duplicate name (case-insensitive) when adding new
+    if (!isEdit) {
+        const normalizedNew = name.toLowerCase();
+        const duplicate = (appState.customers || []).find(c => (c.name || '').trim().toLowerCase() === normalizedNew);
+        if (duplicate) {
+            showToast(`Customer "${duplicate.name}" already exists`, 'error');
+            return;
+        }
+    }
+
+    const customerData = {
+        name,
+        email: document.getElementById('customerEmail').value.trim(),
+        phone: document.getElementById('customerPhone').value.trim(),
+        company: document.getElementById('customerCompany').value.trim(),
+        notes: document.getElementById('customerNotes').value.trim(),
+        updatedAt: new Date()
+    };
+
+    try {
+        const { doc, collection, addDoc, updateDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+
+        if (isEdit) {
+            const customerRef = doc(db, 'teams', appState.currentTeamId, 'customers', customerId);
+            await updateDoc(customerRef, {
+                ...customerData,
+                updatedAt: serverTimestamp()
+            });
+            showToast('Customer updated', 'success');
+        } else {
+            const customersRef = collection(db, 'teams', appState.currentTeamId, 'customers');
+            const identity = getIdentity(currentAuthUser.uid, currentAuthUser.displayName || currentAuthUser.email);
+            await addDoc(customersRef, {
+                ...customerData,
+                source: 'manual',
+                createdBy: currentAuthUser.uid,
+                createdByName: identity.displayName || currentAuthUser.displayName || currentAuthUser.email || '',
+                createdAt: serverTimestamp(),
+                updatedAt: serverTimestamp()
+            });
+            showToast('Customer added', 'success');
+        }
+
+        closeCustomerModalFn();
+        loadCustomers();
+
+    } catch (error) {
+        console.error('Error saving customer:', error);
+        showToast('Failed to save customer', 'error');
+    }
+}
+
+/**
+ * Edit a customer by ID
+ */
+function editCustomer(customerId) {
+    const customer = (appState.customers || []).find(c => c.id === customerId);
+    if (customer) {
+        openCustomerModal(customer);
+    }
+}
+
+/**
+ * Open delete customer confirmation modal
+ */
+function openDeleteCustomerModal(customerId) {
+    const modal = document.getElementById('deleteCustomerModal');
+    const idInput = document.getElementById('deleteCustomerId');
+    if (modal && idInput) {
+        idInput.value = customerId;
+        modal.classList.add('active');
+    }
+}
+
+/**
+ * Close delete customer modal
+ */
+function closeDeleteCustomerModalFn() {
+    const modal = document.getElementById('deleteCustomerModal');
+    if (modal) modal.classList.remove('active');
+}
+
+/**
+ * Handle customer deletion
+ */
+async function handleDeleteCustomer() {
+    const customerId = document.getElementById('deleteCustomerId').value;
+
+    if (!db || !appState.currentTeamId || !customerId) {
+        showToast('Unable to delete customer', 'error');
+        return;
+    }
+
+    try {
+        const { doc, deleteDoc } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+        const customerRef = doc(db, 'teams', appState.currentTeamId, 'customers', customerId);
+        await deleteDoc(customerRef);
+
+        showToast('Customer profile deleted', 'success');
+        closeDeleteCustomerModalFn();
+        loadCustomers();
+
+    } catch (error) {
+        console.error('Error deleting customer:', error);
+        showToast('Failed to delete customer', 'error');
+    }
+}
+
+/**
+ * Find a customer by name (case-insensitive match)
+ * @param {string} name - Customer name to search for
+ * @returns {Object|null} The matching customer or null
+ */
+function findCustomerByName(name) {
+    if (!name || !appState.customers) return null;
+    const normalized = name.trim().toLowerCase();
+    return appState.customers.find(c => (c.name || '').trim().toLowerCase() === normalized) || null;
+}
+
+/**
+ * Auto-create a customer from a won lead
+ * Called when a lead status changes to 'won'
+ * @param {Object} lead - The lead task object
+ */
+async function autoCreateCustomerFromLead(lead) {
+    if (!db || !appState.currentTeamId || !currentAuthUser) return;
+
+    const customerName = (lead.leadName || lead.title || '').trim();
+    if (!customerName) return;
+
+    // Check if customer already exists
+    if (findCustomerByName(customerName)) {
+        console.log('👥 Customer already exists for lead:', customerName);
+        return;
+    }
+
+    try {
+        const { collection, addDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
+        const customersRef = collection(db, 'teams', appState.currentTeamId, 'customers');
+
+        const identity = getIdentity(currentAuthUser.uid, currentAuthUser.displayName || currentAuthUser.email);
+
+        // Extract as much info as possible from the lead row
+        const contactRaw = (lead.contact || '').trim();
+        // Determine if contact looks like an email or phone
+        const isEmail = contactRaw.includes('@');
+        const customerEmail = isEmail ? contactRaw : '';
+        const customerPhone = !isEmail && contactRaw ? contactRaw : '';
+
+        // Build notes from lead data
+        const notesParts = [];
+        notesParts.push('Auto-created from won lead.');
+        if (lead.value) notesParts.push(`Deal value: $${lead.value}`);
+        if (lead.source) notesParts.push(`Lead source: ${lead.source}`);
+        if (lead.notes) notesParts.push(lead.notes);
+        const customerNotes = notesParts.join(' ');
+
+        // Check custom fields for company or extra info
+        const customFields = lead.customFields || {};
+        const companyFromCustom = customFields.company || customFields.Company || '';
+
+        await addDoc(customersRef, {
+            name: customerName,
+            email: customerEmail,
+            phone: customerPhone,
+            company: companyFromCustom,
+            notes: customerNotes,
+            source: 'lead',
+            leadId: lead.id || '',
+            createdBy: currentAuthUser.uid,
+            createdByName: identity.displayName || currentAuthUser.displayName || currentAuthUser.email || '',
+            createdAt: serverTimestamp(),
+            updatedAt: serverTimestamp()
+        });
+
+        console.log('👥 Auto-created customer from lead:', customerName);
+        showToast(`Customer "${customerName}" added from won lead`, 'success');
+        loadCustomers();
+
+    } catch (error) {
+        console.error('Error auto-creating customer from lead:', error);
+    }
+}
+
+/**
+ * Get customer name suggestions for autocomplete
+ * Returns an array of customer names
+ */
+function getCustomerNameSuggestions() {
+    return (appState.customers || []).map(c => c.name).filter(Boolean);
+}
+
+/**
+ * Initialize customer section event listeners
+ * Called from initFinances()
+ */
+function initCustomers() {
+    // Add customer buttons
+    const addCustomerBtn = document.getElementById('addCustomerBtn');
+    const addFirstCustomerBtn = document.getElementById('addFirstCustomerBtn');
+
+    if (addCustomerBtn) {
+        addCustomerBtn.addEventListener('click', () => openCustomerModal());
+    }
+    if (addFirstCustomerBtn) {
+        addFirstCustomerBtn.addEventListener('click', () => openCustomerModal());
+    }
+
+    // Modal controls
+    const closeBtn = document.getElementById('closeCustomerModal');
+    const cancelBtn = document.getElementById('cancelCustomerBtn');
+
+    if (closeBtn) closeBtn.addEventListener('click', closeCustomerModalFn);
+    if (cancelBtn) cancelBtn.addEventListener('click', closeCustomerModalFn);
+
+    // Customer form
+    const customerForm = document.getElementById('customerForm');
+    if (customerForm) {
+        customerForm.addEventListener('submit', handleCustomerSave);
+    }
+
+    // Close modal on background click
+    const customerModal = document.getElementById('customerModal');
+    if (customerModal) {
+        customerModal.addEventListener('click', (e) => {
+            if (e.target === customerModal) closeCustomerModalFn();
+        });
+    }
+
+    // Delete confirmation modal
+    const closeDeleteBtn = document.getElementById('closeDeleteCustomerModal');
+    const cancelDeleteBtn = document.getElementById('cancelDeleteCustomer');
+    const confirmDeleteBtn = document.getElementById('confirmDeleteCustomer');
+
+    if (closeDeleteBtn) closeDeleteBtn.addEventListener('click', closeDeleteCustomerModalFn);
+    if (cancelDeleteBtn) cancelDeleteBtn.addEventListener('click', closeDeleteCustomerModalFn);
+    if (confirmDeleteBtn) confirmDeleteBtn.addEventListener('click', handleDeleteCustomer);
+
+    // Close delete modal on background click
+    const deleteModal = document.getElementById('deleteCustomerModal');
+    if (deleteModal) {
+        deleteModal.addEventListener('click', (e) => {
+            if (e.target === deleteModal) closeDeleteCustomerModalFn();
+        });
+    }
+
+    // Search input
+    const searchInput = document.getElementById('customerSearchInput');
+    if (searchInput) {
+        searchInput.addEventListener('input', () => renderCustomers());
+    }
+}
+
+// Expose customer functions to window for inline onclick handlers
+window.toggleCustomerRow = toggleCustomerRow;
+window.editCustomer = editCustomer;
+window.openDeleteCustomerModal = openDeleteCustomerModal;
 
 // ===================================
 // SUBSCRIPTIONS MANAGEMENT
@@ -35568,8 +38288,54 @@ function focusSearchInput() {
 // ===================================
 // INITIALIZATION
 // ===================================
+
+/**
+ * Show skeleton loading state for a section
+ * @param {string} sectionId - The section to show skeleton for (activity, tasks, chat, calendar)
+ */
+function showSkeleton(sectionId) {
+    const section = document.getElementById(`${sectionId}-section`);
+    const skeleton = document.getElementById(`${sectionId}-skeleton`);
+    if (section) section.classList.add('content-loading');
+    if (skeleton) skeleton.classList.add('loading');
+}
+
+/**
+ * Hide skeleton loading state for a section
+ * @param {string} sectionId - The section to hide skeleton for
+ */
+function hideSkeleton(sectionId) {
+    const section = document.getElementById(`${sectionId}-section`);
+    const skeleton = document.getElementById(`${sectionId}-skeleton`);
+    if (section) section.classList.remove('content-loading');
+    if (skeleton) skeleton.classList.remove('loading');
+}
+
+/**
+ * Show all skeleton loaders
+ */
+function showAllSkeletons() {
+    ['activity', 'tasks', 'chat', 'calendar'].forEach(showSkeleton);
+}
+
+/**
+ * Hide all skeleton loaders
+ */
+function hideAllSkeletons() {
+    ['activity', 'tasks', 'chat', 'calendar'].forEach(hideSkeleton);
+}
+
+// Expose skeleton functions globally
+window.showSkeleton = showSkeleton;
+window.hideSkeleton = hideSkeleton;
+window.showAllSkeletons = showAllSkeletons;
+window.hideAllSkeletons = hideAllSkeletons;
+
 document.addEventListener('DOMContentLoaded', async () => {
     console.log('Teamster App Initializing...');
+    
+    // Show skeleton loaders immediately
+    showAllSkeletons();
     
     // Check for join code in URL
     const urlParams = new URLSearchParams(window.location.search);
@@ -35598,6 +38364,7 @@ document.addEventListener('DOMContentLoaded', async () => {
     initJoinTeamModal(); // Initialize join team modal
     initLinkLobby(); // Initialize Link Lobby
     initFinances(); // Initialize Finances tab
+    initCustomers(); // Initialize Customers section
     initSubscriptionEventListeners(); // Initialize Subscriptions
     initDropdownGuards(); // Ensure dropdown options close on selection
     initDocsModule(); // Initialize Docs feature
