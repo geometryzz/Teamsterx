@@ -7481,51 +7481,6 @@ body.dark-mode .btn-primary:hover {
     opacity: 0.5;
 }
 
-/* Status Badge - Refined */
-.status-badge {
-    display: inline-flex;
-    align-items: center;
-    gap: 6px;
-    padding: 4px 10px;
-    border-radius: 12px;
-    font-size: 11px;
-    font-weight: 600;
-    letter-spacing: 0.01em;
-}
-
-.status-badge .dot {
-    width: 6px;
-    height: 6px;
-    border-radius: 50%;
-}
-
-.status-badge.todo {
-    background: rgba(0, 112, 243, 0.1);
-    color: var(--accent);
-}
-
-.status-badge.todo .dot {
-    background: var(--accent);
-}
-
-.status-badge.inprogress {
-    background: rgba(255, 149, 0, 0.12);
-    color: #D97706;
-}
-
-.status-badge.inprogress .dot {
-    background: #F59E0B;
-}
-
-.status-badge.done {
-    background: rgba(52, 199, 89, 0.12);
-    color: #059669;
-}
-
-.status-badge.done .dot {
-    background: #10B981;
-}
-
 /* Priority Badge - Refined */
 .priority-badge {
     display: inline-flex;
@@ -11567,6 +11522,14 @@ body.dark-mode .dropdown-menu-option.active {
     gap: 12px;
 }
 
+.event-modal-footer-clean .unified-btn,
+.event-modal-footer-clean .btn-clean {
+    border-radius: 999px !important;
+    padding: 10px 22px !important;
+    font-weight: 600 !important;
+    font-size: 0.9rem !important;
+}
+
 .btn-clean {
     border-radius: 12px !important;
     padding: 10px 20px !important;
@@ -14102,6 +14065,64 @@ body.dark-mode .streak-fire-icon .streak-number {
 
 .settings-group-label.danger {
     color: #FF3B30;
+}
+
+/* Help Tab FAQ Accordion */
+.help-faq-list {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.help-faq-item {
+    border-radius: 8px;
+    background: var(--bg-secondary);
+    overflow: hidden;
+}
+
+.help-faq-item summary {
+    padding: 14px 16px;
+    font-size: 14px;
+    font-weight: 500;
+    color: var(--text-primary);
+    cursor: pointer;
+    list-style: none;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 12px;
+    transition: background 0.15s;
+    user-select: none;
+}
+
+.help-faq-item summary:hover {
+    background: var(--bg-surface-soft);
+}
+
+.help-faq-item summary::-webkit-details-marker {
+    display: none;
+}
+
+.help-faq-item summary::after {
+    content: '\f078';
+    font-family: 'Font Awesome 6 Free';
+    font-weight: 900;
+    font-size: 10px;
+    color: var(--text-muted);
+    transition: transform 0.2s;
+    flex-shrink: 0;
+}
+
+.help-faq-item[open] summary::after {
+    transform: rotate(180deg);
+}
+
+.help-faq-item p {
+    padding: 0 16px 14px;
+    margin: 0;
+    font-size: 13px;
+    color: var(--text-secondary);
+    line-height: 1.65;
 }
 
 /* Minimal Toggle */
@@ -19611,6 +19632,80 @@ body.dark-mode .column-drag-handle:hover {
     white-space: nowrap;
 }
 
+/* Doc counter (word/character toggle) */
+.toolbar-spacer {
+    flex: 1;
+}
+
+.doc-counter-wrapper {
+    position: relative;
+    cursor: pointer;
+    margin-left: auto;
+    flex-shrink: 0;
+}
+
+.doc-counter {
+    font-size: 12px;
+    color: var(--text-muted);
+    opacity: 0.7;
+    white-space: nowrap;
+    padding: 4px 8px;
+    border-radius: 6px;
+    transition: all 0.15s ease;
+    user-select: none;
+}
+
+.doc-counter-wrapper:hover .doc-counter {
+    opacity: 1;
+    background: var(--bg-surface-soft);
+}
+
+.doc-counter.near-limit {
+    color: #F59E0B;
+    opacity: 1;
+}
+
+.doc-counter.over-limit {
+    color: #EF4444;
+    opacity: 1;
+    font-weight: 600;
+}
+
+.doc-counter-dropdown {
+    display: none;
+    position: absolute;
+    bottom: calc(100% + 4px);
+    right: 0;
+    background: var(--bg-surface);
+    border: 1px solid var(--border-subtle);
+    border-radius: 8px;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.12);
+    overflow: hidden;
+    z-index: 50;
+    min-width: 120px;
+}
+
+.doc-counter-dropdown.open {
+    display: block;
+}
+
+.doc-counter-option {
+    padding: 8px 14px;
+    font-size: 13px;
+    color: var(--text-secondary);
+    cursor: pointer;
+    transition: background 0.12s;
+}
+
+.doc-counter-option:hover {
+    background: var(--bg-surface-soft);
+}
+
+.doc-counter-option.active {
+    color: var(--accent);
+    font-weight: 600;
+}
+
 .doc-save-status.saving {
     color: var(--accent);
 }
@@ -21383,11 +21478,27 @@ body.dark-mode .task-conversion-item {
     }
     
     .doc-toolbar {
-        padding: 10px 16px;
+        padding: 8px 12px;
+        gap: 2px;
     }
-    
+
+    .toolbar-btn {
+        width: 32px;
+        height: 32px;
+        font-size: 13px;
+    }
+
     .toolbar-divider {
         display: none;
+    }
+
+    .doc-counter {
+        font-size: 11px;
+        padding: 3px 6px;
+    }
+
+    .doc-counter-dropdown {
+        min-width: 110px;
     }
     
     .doc-panel-body {
@@ -21405,6 +21516,36 @@ body.dark-mode .task-conversion-item {
     
     .doc-title-input {
         font-size: 16px;
+    }
+}
+
+@media (max-width: 480px) {
+    .doc-toolbar {
+        padding: 6px 8px;
+        gap: 1px;
+    }
+
+    .toolbar-btn {
+        width: 28px;
+        height: 28px;
+        font-size: 12px;
+        border-radius: 4px;
+    }
+
+    /* Hide Export label on very small screens */
+    .toolbar-btn .toolbar-btn-label {
+        display: none;
+    }
+
+    .toolbar-btn:has(.toolbar-btn-label) {
+        width: 28px;
+        padding: 0;
+        gap: 0;
+    }
+
+    .doc-counter {
+        font-size: 10px;
+        padding: 2px 4px;
     }
 }
 
@@ -21456,6 +21597,16 @@ body.dark-mode .doc-editor-container {
 }
 
 body.dark-mode .toolbar-btn:hover {
+    background: #3a3a3c;
+}
+
+body.dark-mode .doc-counter-dropdown {
+    background: #2a2a2c;
+    border-color: #3a3a3c;
+    box-shadow: 0 4px 12px rgba(0,0,0,0.4);
+}
+
+body.dark-mode .doc-counter-option:hover {
     background: #3a3a3c;
 }
 

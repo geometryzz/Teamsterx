@@ -770,9 +770,27 @@
                 <!-- Skeleton Loading State -->
                 <div class="skeleton-section" id="tasks-skeleton">
                     <div style="padding: 0 24px;">
-                        <div class="skeleton skeleton-title" style="width: 150px; margin-bottom: 8px;"></div>
-                        <div class="skeleton skeleton-text short" style="margin-bottom: 24px;"></div>
+                        <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px;">
+                            <div>
+                                <div class="skeleton skeleton-title" style="width: 150px; margin-bottom: 8px;"></div>
+                                <div class="skeleton skeleton-text short" style="width: 220px;"></div>
+                            </div>
+                            <div class="skeleton" style="width: 84px; height: 34px; border-radius: 999px;"></div>
+                        </div>
+                        <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; margin-bottom: 24px;">
+                            <div class="skeleton" style="width: 180px; height: 34px; border-radius: 999px;"></div>
+                            <div class="skeleton" style="width: 110px; height: 34px; border-radius: 999px;"></div>
+                        </div>
                         <div style="display: grid; grid-template-columns: repeat(auto-fill, minmax(280px, 1fr)); gap: 16px;">
+                            <div class="skeleton-spreadsheet-card">
+                                <div class="skeleton-spreadsheet-header">
+                                    <div class="skeleton skeleton-spreadsheet-icon"></div>
+                                    <div style="flex: 1;">
+                                        <div class="skeleton skeleton-text medium"></div>
+                                        <div class="skeleton skeleton-text short"></div>
+                                    </div>
+                                </div>
+                            </div>
                             <div class="skeleton-spreadsheet-card">
                                 <div class="skeleton-spreadsheet-header">
                                     <div class="skeleton skeleton-spreadsheet-icon"></div>
@@ -805,7 +823,7 @@
                 </div>
                 
                 <!-- Workspace Header (shown when Workspace view active) -->
-                <div class="spreadsheet-header" id="spreadsheetsViewHeader">
+                <div class="spreadsheet-header real-content" id="spreadsheetsViewHeader">
                     <div class="spreadsheet-header-left">
                         <h3><i class="fas fa-table-cells"></i> Your Sheets</h3>
                         <p class="spreadsheet-subtitle">Organize and track your team's work</p>
@@ -827,7 +845,7 @@
                 </div>
 
                 <!-- Project View Header (shown when viewing a specific project) -->
-                <div class="spreadsheet-header project-view-header" id="projectViewHeader" style="display: none;">
+                <div class="spreadsheet-header project-view-header real-content" id="projectViewHeader" style="display: none;">
                     <div class="spreadsheet-header-left">
                         <h3 id="projectViewTitle"><i class="fas fa-folder"></i> Project</h3>
                         <p class="spreadsheet-subtitle" id="projectViewSubtitle">Sheets and docs in this project</p>
@@ -844,7 +862,7 @@
                 </div>
 
                 <!-- Spreadsheet Cards Grid -->
-                <div class="spreadsheet-cards" id="spreadsheetCards">
+                <div class="spreadsheet-cards real-content" id="spreadsheetCards">
                     <!-- Spreadsheet cards will be rendered by JS -->
                     <div class="spreadsheet-card create-new" id="createSpreadsheetCard">
                         <div class="spreadsheet-card-icon"><i class="fas fa-plus"></i></div>
@@ -853,14 +871,14 @@
                 </div>
 
                 <!-- Unified Project Empty State (when project has no sheets or docs) -->
-                <div class="project-empty-state" id="projectEmptyState" style="display: none;">
+                <div class="project-empty-state real-content" id="projectEmptyState" style="display: none;">
                     <i class="fas fa-folder-open"></i>
                     <h4 id="projectEmptyTitle">No items in this project</h4>
                     <p>Create sheets or docs and assign them to this project</p>
                 </div>
 
                 <!-- Docs Header (shown when Docs view active) -->
-                <div class="docs-header" id="docsViewHeader" style="display: none;">
+                <div class="docs-header real-content" id="docsViewHeader" style="display: none;">
                     <div class="docs-header-left">
                         <h3><i class="fas fa-file-lines"></i> Your Docs</h3>
                         <p class="docs-subtitle">Create and collaborate on documents</p>
@@ -882,7 +900,7 @@
                 </div>
 
                 <!-- Doc Cards Grid -->
-                <div class="doc-cards" id="docCards" style="display: none;">
+                <div class="doc-cards real-content" id="docCards" style="display: none;">
                     <!-- Doc cards will be rendered by JS -->
                     <div class="doc-card create-new" id="createDocCard">
                         <div class="doc-card-icon"><i class="fas fa-plus"></i></div>
@@ -891,7 +909,7 @@
                 </div>
 
                 <!-- Full-screen Spreadsheet Panel -->
-                <div class="spreadsheet-panel" id="spreadsheetPanel">
+                <div class="spreadsheet-panel real-content" id="spreadsheetPanel">
                     <div class="spreadsheet-panel-header">
                         <div class="panel-header-left">
                             <button class="back-btn" id="spreadsheetBackBtn">
@@ -968,7 +986,7 @@
                 </div>
 
                 <!-- Full-screen Doc Panel -->
-                <div class="doc-panel" id="docPanel">
+                <div class="doc-panel real-content" id="docPanel">
                     <div class="doc-panel-header">
                         <div class="panel-header-left">
                             <button class="back-btn" id="docBackBtn">
@@ -978,7 +996,7 @@
                                 <div class="doc-icon-preview">
                                     <i class="fas fa-file-lines"></i>
                                 </div>
-                                <input type="text" class="doc-title-input" id="docTitleInput" value="Untitled" placeholder="Doc title">
+                                <input type="text" class="doc-title-input" id="docTitleInput" value="Untitled" placeholder="Doc title" maxlength="200">
                             </div>
                         </div>
                         <div class="panel-header-right">
@@ -1067,6 +1085,14 @@
                                 <i class="fas fa-download"></i>
                                 <span class="toolbar-btn-label">Export</span>
                             </button>
+                        </div>
+                        <div class="toolbar-spacer"></div>
+                        <div class="doc-counter-wrapper" id="docCounterWrapper">
+                            <span class="doc-counter" id="docCounter">0 words</span>
+                            <div class="doc-counter-dropdown" id="docCounterDropdown">
+                                <div class="doc-counter-option" data-mode="words">Words</div>
+                                <div class="doc-counter-option" data-mode="characters">Characters</div>
+                            </div>
                         </div>
                     </div>
                     
@@ -1585,7 +1611,100 @@
                             <!-- Help Tab -->
                             <div class="settings-tab-pane" id="settings-pane-help">
                                 <div class="settings-minimal-form">
-                                    <div class="settings-group-label">Keyboard Shortcuts</div>
+                                    <!-- Quick Tips Section -->
+                                    <div class="settings-group-label">Quick Tips</div>
+
+                                    <div style="display: flex; flex-direction: column; gap: 12px; margin-bottom: 24px;">
+                                        <div style="display: flex; gap: 12px; align-items: flex-start; padding: 12px; background: var(--bg-secondary); border-radius: 8px;">
+                                            <i class="fas fa-lightbulb" style="color: #F59E0B; margin-top: 2px;"></i>
+                                            <span style="font-size: 13px; color: var(--text-secondary); line-height: 1.5;"><strong style="color: var(--text-primary);">Drag &amp; drop</strong> — Drag events on the calendar to reschedule them to a different day or time.</span>
+                                        </div>
+                                        <div style="display: flex; gap: 12px; align-items: flex-start; padding: 12px; background: var(--bg-secondary); border-radius: 8px;">
+                                            <i class="fas fa-lightbulb" style="color: #F59E0B; margin-top: 2px;"></i>
+                                            <span style="font-size: 13px; color: var(--text-secondary); line-height: 1.5;"><strong style="color: var(--text-primary);">@mentions</strong> — Type <strong>@</strong> in chat to mention a team member. They'll get a notification.</span>
+                                        </div>
+                                        <div style="display: flex; gap: 12px; align-items: flex-start; padding: 12px; background: var(--bg-secondary); border-radius: 8px;">
+                                            <i class="fas fa-lightbulb" style="color: #F59E0B; margin-top: 2px;"></i>
+                                            <span style="font-size: 13px; color: var(--text-secondary); line-height: 1.5;"><strong style="color: var(--text-primary);">Pin sheets &amp; docs</strong> — Click the pin icon on any sheet or doc card to keep it at the top of your workspace.</span>
+                                        </div>
+                                        <div style="display: flex; gap: 12px; align-items: flex-start; padding: 12px; background: var(--bg-secondary); border-radius: 8px;">
+                                            <i class="fas fa-lightbulb" style="color: #F59E0B; margin-top: 2px;"></i>
+                                            <span style="font-size: 13px; color: var(--text-secondary); line-height: 1.5;"><strong style="color: var(--text-primary);">Projects</strong> — Group related sheets and docs together using Projects. Create a project from the workspace view to organize your work.</span>
+                                        </div>
+                                        <div style="display: flex; gap: 12px; align-items: flex-start; padding: 12px; background: var(--bg-secondary); border-radius: 8px;">
+                                            <i class="fas fa-lightbulb" style="color: #F59E0B; margin-top: 2px;"></i>
+                                            <span style="font-size: 13px; color: var(--text-secondary); line-height: 1.5;"><strong style="color: var(--text-primary);">Link Lobby</strong> — Save and organize frequently used links in the Link Lobby tab. Group them by category and share with your team or keep them private.</span>
+                                        </div>
+                                    </div>
+
+                                    <!-- FAQ Section -->
+                                    <div class="settings-group-label" style="margin-top: 40px;">Frequently Asked Questions</div>
+
+                                    <div class="help-faq-list">
+                                        <details class="help-faq-item">
+                                            <summary>How do I add team members?</summary>
+                                            <p>Invite new members by sharing your<strong>Team code.</strong> Anyone with the code can request to join, but an Admin or Owner must approve them first.</p>
+                                        </details>
+
+                                        <details class="help-faq-item">
+                                            <summary>What are the different member roles?</summary>
+                                            <p><strong>Owner</strong> — Full control over the team, billing, and member management. Cannot be removed.<br>
+                                            <strong>Admin</strong> — Can manage members, sheets, docs, and most settings. Can promote/demote members (excluding the owner).<br>
+                                            <strong>Member</strong> — Can create and edit tasks, docs, and use chat. Cannot manage other members or team settings.</p>
+                                        </details>
+
+                                        <details class="help-faq-item">
+                                            <summary>What does "Private" visibility mean on a sheet or doc?</summary>
+                                            <p>A <strong>private</strong> sheet or doc is only visible to the person who created it. Other team members cannot see it, and any tasks or customer data linked to it stays private as well. Use this for personal tracking, lead sheets you don't want to share, or draft documents.</p>
+                                        </details>
+
+                                        <details class="help-faq-item">
+                                            <summary>How do I track leads and customers?</summary>
+                                            <p>Create a sheet with the <strong>"Leads"</strong> type. It comes pre-configured with columns for lead name, status, contact info, value, and source. When a lead's status is changed to <strong>"Won"</strong>, a customer is automatically created in the <strong>Finances &rarr; Customers</strong> section.</p>
+                                        </details>
+
+                                        <details class="help-faq-item">
+                                            <summary>How does the XP & streak system work?</summary>
+                                            <p>You earn XP by completing tasks, creating docs, sending messages, and maintaining a daily login streak. Higher-priority tasks award more XP. Your level is based on total XP earned. Badges are unlocked for hitting milestones (e.g., completing 50 tasks, a 7-day streak). You can toggle the gamification system in <strong>Settings &rarr; Advanced</strong>.</p>
+                                        </details>
+
+                                        <details class="help-faq-item">
+                                            <summary>Can I use Teamster on my phone?</summary>
+                                            <p>Yes! Teamster is a Progressive Web App (PWA). On your phone's browser, tap <strong>"Add to Home Screen"</strong> (or "Install" on Chrome for Android) to install it as an app. It works offline for basic viewing and syncs when you're back online.</p>
+                                        </details>
+
+                                        <details class="help-faq-item">
+                                            <summary>How do I customize spreadsheet columns?</summary>
+                                            <p>Open a spreadsheet and click the <strong>column header</strong> to rename, reorder, or change column types. You can add custom columns like text, number, dropdown, date, slider, and checkbox. Each column can have its own settings including color-coded options.</p>
+                                        </details>
+
+                                        <details class="help-faq-item">
+                                            <summary>How do I embed a spreadsheet or task in a doc?</summary>
+                                            <p>In the doc editor, type <strong>/</strong> to open the insert menu. You can embed a live spreadsheet table, reference a specific task, or link to another sheet. Embedded content stays up-to-date with the original data.</p>
+                                        </details>
+
+                                        <details class="help-faq-item">
+                                            <summary>How do recurring tasks/events work?</summary>
+                                            <p>When creating or editing a task, toggle on <strong>"Recurring"</strong> and set the frequency (daily, weekly, monthly). The task will automatically regenerate after being completed. Calendar events can also repeat on a schedule.</p>
+                                        </details>
+
+                                        <details class="help-faq-item">
+                                            <summary>How do I manage subscriptions and finances?</summary>
+                                            <p>Go to the <strong>Finances</strong> tab to track income, expenses, subscriptions, and customers. Add subscriptions to get reminders before payment dates. Upcoming payments also appear on your calendar. The dashboard shows totals and trends across your financial data.</p>
+                                        </details>
+
+                                        <details class="help-faq-item">
+                                            <summary>Is my data secure?</summary>
+                                            <p>Yes. All data is stored in Firebase with security rules that restrict access to authenticated team members only. Chat messages are encrypted. Private sheets and docs are only accessible by their creator. Teamster does not share or sell your data.</p>
+                                        </details>
+
+                                        <details class="help-faq-item">
+                                            <summary>How do I leave a team?</summary>
+                                            <p>Go to the<strong>Team tab</strong> and click the <strong>"Leave Team"</strong> button. You'll be asked to confirm before being removed. Note that team owners cannot leave — they must transfer ownership first or delete the team.</p>
+                                        </details>
+                                    </div>
+
+                                    <div class="settings-group-label" style="margin-top: 40px;">Keyboard Shortcuts</div>
                                     
                                     <div style="margin-bottom: 32px;">
                                         <div style="font-weight: 500; margin-bottom: 12px; color: var(--text-primary);">Global Shortcuts</div>
@@ -1650,6 +1769,7 @@
                                             <strong style="color: var(--text-primary);">Note:</strong> Global shortcuts (T, E, M, /) work anywhere in the app except when typing in input fields or when modals are open.
                                         </div>
                                     </div>
+
                                 </div>
                             </div>
 
@@ -1692,9 +1812,6 @@
                                     <div class="settings-group-label" style="margin-top: 24px;">Your Stats</div>
                                     <div class="achievements-stats-list" id="achievementsStatsList">
                                         <!-- Stats will be rendered by JS -->
-                                    </div>
-                                    <div class="achievements-recalc-row" style="margin-top: 16px; display: flex; justify-content: flex-end;">
-                                        <button type="button" class="unified-btn unified-btn-secondary" id="recalculateXpBtn">Recalculate XP (Temp)</button>
                                     </div>
                                 </div>
                             </div>

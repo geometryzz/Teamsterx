@@ -4425,6 +4425,10 @@ function renderCalendar() {
     if (window.updateCalendarMonthDropdown) {
         window.updateCalendarMonthDropdown();
     }
+
+    if (typeof hideSkeleton === 'function') {
+        hideSkeleton('calendar');
+    }
 }
 
 // Helper function to render event items in month view
@@ -6005,8 +6009,14 @@ function initTasks() {
         renderSpreadsheetCards();
         
         // If spreadsheet panel is open, refresh its data
-        if (appState.currentSpreadsheet) {
+        // Skip re-render if a progress slider is actively being dragged (prevents visual glitch)
+        if (appState.currentSpreadsheet && !_progressSliderSuppressRender) {
             renderSpreadsheetTable(appState.currentSpreadsheet);
+        }
+
+        if (typeof hideSkeleton === 'function' && Array.isArray(appState.tasks)) {
+            hideSkeleton('tasks');
+            hideSkeleton('activity');
         }
     }
 
@@ -8089,6 +8099,20 @@ function initTasks() {
             aggregateAndRenderMetrics();
         }
     }
+
+    function getBuiltInStatusColor(spreadsheet, statusLabel) {
+        const settings = spreadsheet?.columnSettings?.status;
+        const options = settings?.options?.length
+            ? settings.options
+            : (spreadsheet?.type === 'leads'
+                ? LEADS_TABLE_PRESET.columnSettings.status.options
+                : TASKS_TABLE_PRESET.columnSettings.status.options);
+
+        if (!options || !options.length) return '#9CA3AF';
+        const match = options.find(opt => (typeof opt === 'string' ? opt : opt.label) === statusLabel);
+        if (!match) return '#9CA3AF';
+        return typeof match === 'string' ? '#9CA3AF' : (match.color || '#9CA3AF');
+    }
     
     // ===================================
     // INLINE TEXT EDITING (Title, Date, Budget, Est. Time, Leads fields)
@@ -8394,6 +8418,10 @@ function initTasks() {
     // INLINE PROGRESS EDITING - Clean Range Input
     // Simple input[type=range] with real-time updates
     // ===================================
+    // Suppress spreadsheet re-render during progress slider interaction
+    let _progressSliderSuppressRender = false;
+    let _progressSliderSuppressTimer = null;
+
     function initInlineProgressEditing(container) {
         container.querySelectorAll('.progress-cell-inline').forEach(cell => {
             const taskId = cell.dataset.taskId;
@@ -8417,6 +8445,11 @@ function initTasks() {
             
             // Update visual on input (while dragging)
             slider.addEventListener('input', (e) => {
+                // Suppress snapshot-triggered re-renders while dragging
+                _progressSliderSuppressRender = true;
+                if (_progressSliderSuppressTimer) clearTimeout(_progressSliderSuppressTimer);
+                _progressSliderSuppressTimer = setTimeout(() => { _progressSliderSuppressRender = false; }, 2000);
+
                 const value = parseInt(e.target.value);
                 if (text) {
                     text.textContent = columnId === 'progress' || text.classList.contains('progress-text') ? value + '%' : value;
@@ -8447,6 +8480,11 @@ function initTasks() {
                 const oldStatus = task.status;
                 const oldProgress = task.progress || 0;
                 if (oldProgress === newProgress) return;
+
+                // Extend suppress timer to cover Firestore round-trip
+                _progressSliderSuppressRender = true;
+                if (_progressSliderSuppressTimer) clearTimeout(_progressSliderSuppressTimer);
+                _progressSliderSuppressTimer = setTimeout(() => { _progressSliderSuppressRender = false; }, 3000);
                 
                 // Update local state
                 task.progress = newProgress;
@@ -8457,9 +8495,9 @@ function initTasks() {
                     newStatus = 'done';
                 } else if (newProgress > 0 && newProgress < 100) {
                     newStatus = 'inprogress';
+                } else if (newProgress === 0) {
+                    newStatus = 'todo';
                 }
-                // Don't auto-change from 'inprogress' to 'todo' when progress goes to 0
-                // User may want to keep it inprogress
                 
                 if (newStatus !== task.status) {
                     task.status = newStatus;
@@ -8500,10 +8538,80 @@ function initTasks() {
                             }
                         }
                         
-                        // Refresh the spreadsheet to show updated status badge
-                        const currentSpreadsheet = appState.spreadsheets.find(s => s.id === appState.currentSpreadsheetId);
-                        if (currentSpreadsheet) {
-                            renderSpreadsheet(currentSpreadsheet);
+                        // Update the status cell in-place (no full re-render to avoid slider glitch)
+                        if (newStatus !== oldStatus) {
+                            const row = cell.closest('tr');
+                            if (row) {
+                                // Find the status cell in this row
+                                const statusCell = row.querySelector('.custom-dropdown-cell[data-column-id="status"], .status-badge');
+                                if (statusCell) {
+                                    const currentSpreadsheet = appState.spreadsheets.find(s => s.id === appState.currentSpreadsheetId);
+                                    const statusSettings = currentSpreadsheet?.columnSettings?.status;
+                                    const taskStatusMap = { todo: 'To Do', inprogress: 'In Progress', done: 'Done' };
+                                    const statusValue = taskStatusMap[newStatus] || newStatus;
+                                    
+                                    if (statusSettings?.options && statusSettings.options.length > 0) {
+                                        // Custom dropdown pill rendering
+                                        const statusOption = statusSettings.options.find(opt => opt.label === statusValue);
+                                        const statusColor = statusOption?.color || '#9CA3AF';
+                                        const dropdownCell = statusCell.closest('.custom-dropdown-cell') || statusCell;
+                                        const pill = dropdownCell.querySelector('.custom-dropdown-pill');
+                                        if (pill) {
+                                            pill.style.background = statusColor + '20';
+                                            pill.style.color = statusColor;
+                                            const dot = pill.querySelector('.pill-dot');
+                                            if (dot) dot.style.background = statusColor;
+                                            pill.lastChild.textContent = statusValue;
+                                        }
+                                    } else {
+                                        // Default status pill rendering
+                                        const statusColor = getBuiltInStatusColor(currentSpreadsheet, statusValue);
+                                        const pillHTML = `<span class="custom-dropdown-pill" style="background: ${statusColor}20; color: ${statusColor}">
+                                            <span class="pill-dot" style="background: ${statusColor}"></span>
+                                            ${escapeHtml(statusValue)}
+                                        </span>
+                                        <i class="fas fa-chevron-down custom-dropdown-icon"></i>`;
+                                        if (statusCell.classList.contains('custom-dropdown-cell')) {
+                                            statusCell.classList.add('built-in-dropdown');
+                                            statusCell.dataset.taskId = taskId;
+                                            statusCell.dataset.columnId = 'status';
+                                            statusCell.innerHTML = pillHTML;
+                                        } else {
+                                            const statusTd = statusCell.closest('td');
+                                            if (statusTd) {
+                                                statusTd.innerHTML = `<div class="custom-dropdown-cell built-in-dropdown" data-task-id="${taskId}" data-column-id="status">${pillHTML}</div>`;
+                                            }
+                                        }
+                                    }
+                                }
+
+                                // Keep local active/completed arrays in sync for instant UI movement
+                                const isCompleted = newStatus === 'done' || newStatus === 'won';
+                                const wasCompleted = oldStatus === 'done' || oldStatus === 'won';
+                                if (Array.isArray(appState.activeTasks) && Array.isArray(appState.completedTasks)) {
+                                    if (isCompleted && !wasCompleted) {
+                                        appState.activeTasks = appState.activeTasks.filter(t => t.id !== taskId);
+                                        if (!appState.completedTasks.find(t => t.id === taskId)) {
+                                            appState.completedTasks.unshift(task);
+                                        }
+                                    } else if (!isCompleted && wasCompleted) {
+                                        appState.completedTasks = appState.completedTasks.filter(t => t.id !== taskId);
+                                        if (!appState.activeTasks.find(t => t.id === taskId)) {
+                                            appState.activeTasks.unshift(task);
+                                        }
+                                    }
+                                }
+
+                                // Update row visibility when completed tasks are hidden
+                                row.classList.toggle('row-completed', isCompleted);
+                                if (!spreadsheetState.showCompleted && isCompleted) {
+                                    const tbody = row.closest('tbody');
+                                    row.remove();
+                                    if (tbody && tbody.children.length === 0) {
+                                        renderSpreadsheetTable(appState.currentSpreadsheet);
+                                    }
+                                }
+                            }
                         }
                     } catch (error) {
                         const path = `teams/${appState.currentTeamId}/tasks/${taskId}`;
@@ -8868,7 +8976,7 @@ function initTasks() {
         const dropdown = document.createElement('div');
         dropdown.className = 'inline-edit-dropdown customer-dropdown';
         
-        const customers = appState.customers || [];
+        const customers = getVisibleCustomers();
         
         let html = `
             <div class="customer-dropdown-search">
@@ -9032,6 +9140,7 @@ function initTasks() {
             const { collection, addDoc, serverTimestamp } = await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
             const customersRef = collection(db, 'teams', appState.currentTeamId, 'customers');
             const identity = getIdentity(currentAuthUser.uid, currentAuthUser.displayName || currentAuthUser.email);
+            const currentSpreadsheetId = appState.currentSpreadsheetId || '';
             const docRef = await addDoc(customersRef, {
                 name: name,
                 email: '',
@@ -9039,6 +9148,7 @@ function initTasks() {
                 company: '',
                 notes: '',
                 source: 'spreadsheet',
+                spreadsheetId: currentSpreadsheetId,
                 createdBy: currentAuthUser.uid,
                 createdByName: identity.displayName || currentAuthUser.displayName || currentAuthUser.email || '',
                 createdAt: serverTimestamp(),
@@ -9047,7 +9157,7 @@ function initTasks() {
             
             // Add to local state immediately
             appState.customers = appState.customers || [];
-            appState.customers.push({ id: docRef.id, name: name, source: 'spreadsheet', createdBy: currentAuthUser.uid });
+            appState.customers.push({ id: docRef.id, name: name, source: 'spreadsheet', spreadsheetId: currentSpreadsheetId, createdBy: currentAuthUser.uid });
             appState.customers.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
             
             showToast(`Customer "${name}" added`, 'success');
@@ -9494,7 +9604,7 @@ function initTasks() {
             setTimeout(() => {
                 indicator.classList.remove('visible');
                 setTimeout(() => indicator.remove(), 200);
-            }, 800);
+            }, 400);
         });
     }
 
@@ -9790,7 +9900,16 @@ function initTasks() {
                 // Default status rendering (task mode)
                 const statusClass = task.status;
                 const statusLabel = { todo: 'To Do', inprogress: 'In Progress', done: 'Done' }[task.status] || task.status;
-                return `<td><span class="status-badge ${statusClass}"><span class="dot"></span>${statusLabel}</span></td>`;
+                const statusColor = getBuiltInStatusColor(spreadsheet, statusLabel);
+                return `<td class="cell-editable">
+                    <div class="custom-dropdown-cell built-in-dropdown" data-task-id="${task.id}" data-column-id="status">
+                        <span class="custom-dropdown-pill" style="background: ${statusColor}20; color: ${statusColor}">
+                            <span class="pill-dot" style="background: ${statusColor}"></span>
+                            ${escapeHtml(statusLabel)}
+                        </span>
+                        <i class="fas fa-chevron-down custom-dropdown-icon"></i>
+                    </div>
+                </td>`;
             
             case 'assignee':
                 // INLINE EDITABLE: Assignee cell with click-to-edit
@@ -11214,6 +11333,9 @@ function initTasks() {
         // Initialize doc editor
         initDocEditor();
         
+        // Initialize word/character counter toggle
+        initDocCounter();
+        
         // Initialize new features
         initDocFormatDropdown();
         initDocCommandPopover();
@@ -11933,9 +12055,10 @@ function initTasks() {
             });
         });
         
-        // Editor input - schedule autosave
+        // Editor input - schedule autosave + update char counter
         editor.addEventListener('input', () => {
             appState.isDocDirty = true;
+            updateDocCharCounter(editor);
             scheduleDocSave();
         });
         
@@ -12465,6 +12588,13 @@ function initTasks() {
             return;
         }
         
+        // MAX DOC COUNT per team (100 docs)
+        const MAX_DOCS_PER_TEAM = 100;
+        if (appState.docs && appState.docs.length >= MAX_DOCS_PER_TEAM) {
+            showToast(`Document limit reached (${MAX_DOCS_PER_TEAM}). Delete some documents to create new ones.`, 'warning', 4000);
+            return;
+        }
+        
         try {
             const { collection, addDoc, serverTimestamp } = 
                 await import('https://www.gstatic.com/firebasejs/10.5.0/firebase-firestore.js');
@@ -12587,6 +12717,7 @@ function initTasks() {
         setTimeout(() => {
             hydrateDocChips();
             hydrateDocEmbeds();
+            updateDocCharCounter(editor);
         }, 100);
         
         // Store project context so back button returns to project if opened from there
@@ -12668,6 +12799,67 @@ function initTasks() {
     }
     
     /**
+     * Update the document word/character counter
+     */
+    const DOC_MAX_CHARS = 50000;
+    let _docCounterMode = 'words'; // 'words' or 'characters'
+
+    function updateDocCharCounter(editor) {
+        if (!editor) editor = document.getElementById('docEditor');
+        const counter = document.getElementById('docCounter');
+        if (!editor || !counter) return;
+        const text = editor.innerText || '';
+        const charLen = text.length;
+        if (_docCounterMode === 'characters') {
+            counter.textContent = `${charLen.toLocaleString()} / ${DOC_MAX_CHARS.toLocaleString()}`;
+        } else {
+            const wordCount = text.trim() ? text.trim().split(/\s+/).length : 0;
+            counter.textContent = `${wordCount.toLocaleString()} word${wordCount !== 1 ? 's' : ''}`;
+        }
+        // Limit warnings apply to characters regardless of display mode
+        if (charLen > DOC_MAX_CHARS) {
+            counter.classList.add('over-limit');
+            counter.classList.remove('near-limit');
+        } else if (charLen > DOC_MAX_CHARS * 0.9) {
+            counter.classList.remove('over-limit');
+            counter.classList.add('near-limit');
+        } else {
+            counter.classList.remove('over-limit', 'near-limit');
+        }
+    }
+
+    // Doc counter toggle dropdown
+    function initDocCounter() {
+        const wrapper = document.getElementById('docCounterWrapper');
+        const dropdown = document.getElementById('docCounterDropdown');
+        if (!wrapper || !dropdown) return;
+
+        wrapper.addEventListener('click', (e) => {
+            e.stopPropagation();
+            dropdown.classList.toggle('open');
+        });
+
+        dropdown.querySelectorAll('.doc-counter-option').forEach(opt => {
+            opt.addEventListener('click', (e) => {
+                e.stopPropagation();
+                _docCounterMode = opt.dataset.mode;
+                dropdown.classList.remove('open');
+                // Update active state
+                dropdown.querySelectorAll('.doc-counter-option').forEach(o => o.classList.remove('active'));
+                opt.classList.add('active');
+                updateDocCharCounter();
+            });
+        });
+
+        // Set initial active
+        const initial = dropdown.querySelector('[data-mode="words"]');
+        if (initial) initial.classList.add('active');
+
+        // Close dropdown on outside click
+        document.addEventListener('click', () => dropdown.classList.remove('open'));
+    }
+
+    /**
      * Schedule a doc save with debounce
      */
     function scheduleDocSave() {
@@ -12711,11 +12903,22 @@ function initTasks() {
             const contentText = extractPlainText(contentHtml);
             const title = titleInput.value.trim() || 'Untitled';
             
-            // Size limit check (50KB for contentHtml)
+            // Size limit check (50KB for contentHtml, 50K chars for plain text)
             if (contentHtml.length > 50000) {
                 showToast('Document too large. Please reduce content.', 'error');
                 if (saveStatus) {
                     saveStatus.textContent = 'Too large';
+                    saveStatus.className = 'doc-save-status error';
+                }
+                appState.isDocSaving = false;
+                return;
+            }
+            
+            const plainTextLength = contentText.length;
+            if (plainTextLength > DOC_MAX_CHARS) {
+                showToast(`Document exceeds ${DOC_MAX_CHARS.toLocaleString()} character limit. Please shorten it.`, 'error');
+                if (saveStatus) {
+                    saveStatus.textContent = 'Too long';
                     saveStatus.className = 'doc-save-status error';
                 }
                 appState.isDocSaving = false;
@@ -17067,79 +17270,6 @@ async function loadAchievementDataFromFirestore() {
     }
 }
 
-// TEMP: Local-only XP recalculation (easy to remove)
-function recalculateAchievementXPFromBadges() {
-    if (!currentAuthUser || !isGamificationEnabled()) return;
-
-    const data = getUserAchievementData();
-    let totalXP = 0;
-
-    const allBadges = [
-        ...ACHIEVEMENT_BADGES.tasks,
-        ...ACHIEVEMENT_BADGES.docs,
-        ...ACHIEVEMENT_BADGES.messages,
-        ...ACHIEVEMENT_BADGES.sheets,
-        ...ACHIEVEMENT_BADGES.streaks,
-        ...ACHIEVEMENT_BADGES.special
-    ];
-
-    for (const badge of allBadges) {
-        if (data.earnedBadges?.includes(badge.id) && badge.xpReward) {
-            totalXP += badge.xpReward;
-        }
-    }
-
-    data.xp = totalXP;
-    saveUserAchievementData(data);
-    const levelInfo = getLevelFromXP(data.xp);
-    const totalForCurrentLevel = getTotalXPForLevel(levelInfo.level);
-    const totalForNextLevel = getTotalXPForLevel(levelInfo.level + 1);
-    const levelText = document.getElementById('userLevel');
-    const xpBar = document.getElementById('xpProgressBar');
-    const currentXP = document.getElementById('currentXP');
-    const nextLevelXP = document.getElementById('nextLevelXP');
-
-    if (levelText) levelText.textContent = levelInfo.level;
-    if (xpBar) xpBar.style.width = `${Math.min(100, (levelInfo.xpInCurrentLevel / levelInfo.xpNeededForNext) * 100)}%`;
-    if (currentXP) currentXP.textContent = levelInfo.xpInCurrentLevel;
-    if (nextLevelXP) nextLevelXP.textContent = levelInfo.xpNeededForNext;
-
-    renderAchievementsTab();
-    showToast('XP recalculated', 'success');
-}
-
-// TEMP: Recalculate XP from badges + completed tasks + docs
-function recalculateAchievementXPFromStatsAndBadges() {
-    if (!currentAuthUser || !isGamificationEnabled()) return;
-
-    const data = getUserAchievementData();
-    const stats = data.stats || {};
-
-    let totalXP = 0;
-    totalXP += (stats.tasksCompleted || 0) * XP_CONFIG.taskCompleteMedium;
-    totalXP += (stats.docsCreated || 0) * XP_CONFIG.docCreate;
-
-    const allBadges = [
-        ...ACHIEVEMENT_BADGES.tasks,
-        ...ACHIEVEMENT_BADGES.docs,
-        ...ACHIEVEMENT_BADGES.messages,
-        ...ACHIEVEMENT_BADGES.sheets,
-        ...ACHIEVEMENT_BADGES.streaks,
-        ...ACHIEVEMENT_BADGES.special
-    ];
-
-    for (const badge of allBadges) {
-        if (data.earnedBadges?.includes(badge.id) && badge.xpReward) {
-            totalXP += badge.xpReward;
-        }
-    }
-
-    data.xp = totalXP;
-    saveUserAchievementData(data);
-    renderAchievementsTab();
-    showToast('XP recalculated (temp)', 'success');
-}
-
 /**
  * Check if gamification is enabled
  */
@@ -17181,6 +17311,9 @@ function updateLoginStreak() {
     
     data.lastLoginDate = today;
     saveUserAchievementData(data);
+    
+    // Sync streak immediately (don't rely on debounce for this critical update)
+    writeAchievementsToFirestore(data);
     
     // Check for streak badges
     checkAndAwardBadges('streaks', data.streak);
@@ -17555,14 +17688,6 @@ function renderAchievementsTab() {
 
     }
 
-    const recalcBtn = document.getElementById('recalculateXpBtn');
-    if (recalcBtn && !recalcBtn.dataset.bound) {
-        recalcBtn.dataset.bound = 'true';
-        recalcBtn.addEventListener('click', () => {
-            recalculateAchievementXPFromStatsAndBadges();
-        });
-    }
-    
     // Render badges
     const container = document.getElementById('achievementsBadgesContainer');
     if (!container) return;
@@ -33552,6 +33677,10 @@ async function loadMessagesFromFirestore() {
             // Always update state, even if empty (clears old team's messages)
             appState.messages = messages;
             displayMessages();
+
+            if (typeof hideSkeleton === 'function') {
+                hideSkeleton('chat');
+            }
             
             // Update metrics if active
             updateMetricsIfActive();
@@ -36917,6 +37046,29 @@ window.openDeleteTransactionModal = openDeleteTransactionModal;
 // ===================================
 
 /**
+ * Get customers visible to the current user.
+ * Hides customers created from private spreadsheets unless the user owns that spreadsheet.
+ */
+function getVisibleCustomers() {
+    const allCustomers = appState.customers || [];
+    const uid = currentAuthUser?.uid;
+    if (!uid) return allCustomers;
+    return allCustomers.filter(c => {
+        // Customers without a spreadsheet reference are always visible
+        if (!c.spreadsheetId) return true;
+        // Customer created by the current user — always visible
+        if (c.createdBy === uid) return true;
+        // Find the source spreadsheet
+        const sheet = (appState.spreadsheets || []).find(s => s.id === c.spreadsheetId);
+        // If sheet not found (deleted?), show the customer
+        if (!sheet) return true;
+        // If the sheet is private and current user is not the creator, hide
+        if (sheet.visibility === 'private' && sheet.createdBy !== uid) return false;
+        return true;
+    });
+}
+
+/**
  * Load customers from Firestore into appState.customers
  */
 async function loadCustomers() {
@@ -36948,7 +37100,7 @@ async function loadCustomers() {
  * Render the customers list in the Finances tab
  */
 function renderCustomers() {
-    const customers = appState.customers || [];
+    const customers = getVisibleCustomers();
     const listEl = document.getElementById('customersList');
     const emptyEl = document.getElementById('customersEmptyState');
     const countEl = document.getElementById('customersCount');
@@ -37352,6 +37504,7 @@ async function autoCreateCustomerFromLead(lead) {
             notes: customerNotes,
             source: 'lead',
             leadId: lead.id || '',
+            spreadsheetId: lead.spreadsheetId || '',
             createdBy: currentAuthUser.uid,
             createdByName: identity.displayName || currentAuthUser.displayName || currentAuthUser.email || '',
             createdAt: serverTimestamp(),
@@ -37372,7 +37525,7 @@ async function autoCreateCustomerFromLead(lead) {
  * Returns an array of customer names
  */
 function getCustomerNameSuggestions() {
-    return (appState.customers || []).map(c => c.name).filter(Boolean);
+    return getVisibleCustomers().map(c => c.name).filter(Boolean);
 }
 
 /**
